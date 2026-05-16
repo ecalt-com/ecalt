@@ -1,7 +1,22 @@
-from fastapi import FastAPI
+import json
+import logging
+import time
+import uuid
+import sentry_sdk
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.api.v1.router import api_router
+
+if settings.SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=settings.SENTRY_DSN,
+        traces_sample_rate=0.1,
+        environment=settings.ENVIRONMENT,
+    )
 
 _DESCRIPTION = """
 ## ECALT — Curiosity Engine API
@@ -55,6 +70,9 @@ app = FastAPI(
     redirect_slashes=False,
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
@@ -63,7 +81,30 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def request_middleware(request: Request, call_next):
+    request_id = str(uuid.uuid4())[:8]
+    request.state.request_id = request_id
+    start = time.perf_counter()
+    response = await call_next(request)
+    ms = round((time.perf_counter() - start) * 1000, 1)
+    logging.info(json.dumps({
+        "request_id": request_id,
+        "method": request.method,
+        "path": request.url.path,
+        "status": response.status_code,
+        "duration_ms": ms,
+    }))
+    response.headers["X-Request-Id"] = request_id
+    return response
+
 app.include_router(api_router, prefix="/api/v1")
+
+# Vercel rewrite /sitemap.xml → /api/v1/sitemap
+@app.get("/sitemap.xml", include_in_schema=False)
+async def sitemap_redirect():
+    from app.api.v1.endpoints.sitemap import sitemap
+    return await sitemap()
 
 
 @app.get("/", tags=["root"])

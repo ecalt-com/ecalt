@@ -1,5 +1,5 @@
 import json
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Response
 from typing import Optional
 from app.models.schemas import Journey, JourneyStep, JourneysResponse, StepContentResponse
 from app.core.auth import get_optional_user
@@ -152,9 +152,10 @@ def _db_journey(journey_id: str) -> Optional[Journey]:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=JourneysResponse, summary="List all journeys")
-async def list_journeys(uid: Optional[str] = Depends(get_optional_user)):
+async def list_journeys(response: Response, uid: Optional[str] = Depends(get_optional_user)):
     user_journeys: list[Journey] = []
     if uid:
+        response.headers["Cache-Control"] = "private, max-age=0"
         try:
             with get_db() as conn:
                 with conn.cursor() as cur:
@@ -170,6 +171,8 @@ async def list_journeys(uid: Optional[str] = Depends(get_optional_user)):
                     user_journeys = [_row_to_journey(dict(r)) for r in rows]
         except Exception:
             pass
+    else:
+        response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300"
 
     all_journeys = user_journeys + SAMPLE_JOURNEYS
     return JourneysResponse(journeys=all_journeys, total=len(all_journeys))

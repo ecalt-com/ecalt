@@ -7,3 +7,5 @@ python-dotenv==1.0.1
 httpx==0.27.0
 PyJWT[crypto]==2.12.1
 psycopg2-binary==2.9.9
+slowapi==0.1.9
+sentry-sdk[fastapi]==2.22.0

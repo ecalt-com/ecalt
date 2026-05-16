@@ -79,6 +79,7 @@ export interface UserProfile {
   display_name?: string
   photo_url?: string
   onboarding_done: boolean
+  streak_days: number
 }
 
 export const getUserProfile = (token: string): Promise<UserProfile> =>

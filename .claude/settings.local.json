@@ -15,7 +15,9 @@
       "Bash(pip install *)",
       "Bash(./node_modules/.bin/tsc *)",
       "Bash(npm uninstall *)",
-      "Bash(python -c \"from app.api.v1.endpoints.journeys import router; print\\('OK'\\)\")"
+      "Bash(python -c \"from app.api.v1.endpoints.journeys import router; print\\('OK'\\)\")",
+      "Bash(python -c \"from app.main import app; print\\('OK'\\)\")",
+      "Bash(python3 *)"
     ]
   }
 }

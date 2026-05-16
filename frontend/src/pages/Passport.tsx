@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Award, BookOpen, Flame, ArrowRight, Lock } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import { useAuth } from '../lib/AuthContext'
-import { getPassport, type PassportData } from '../lib/api'
+import { getPassport, getUserProfile, type PassportData } from '../lib/api'
 import { usePageTitle } from '../lib/usePageTitle'
 
 export default function Passport() {
@@ -11,17 +11,20 @@ export default function Passport() {
   const navigate = useNavigate()
   const { user, loading: authLoading, getToken } = useAuth()
   const [passport, setPassport] = useState<PassportData | null>(null)
+  const [streakDays, setStreakDays] = useState(0)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (authLoading) return
     if (!user) { setLoading(false); return }
 
-    getToken()
-      .then(token => token ? getPassport(token) : null)
-      .then(data => { if (data) setPassport(data) })
-      .catch(() => {})
-      .finally(() => setLoading(false))
+    getToken().then(token => {
+      if (!token) return
+      Promise.all([getPassport(token), getUserProfile(token)]).then(([passportData, profile]) => {
+        setPassport(passportData)
+        setStreakDays(profile.streak_days ?? 0)
+      }).catch(() => {})
+    }).finally(() => setLoading(false))
   }, [user, authLoading])
 
   const fullyCompleted = passport?.journeys.filter(j => j.fully_completed) ?? []
@@ -70,11 +73,12 @@ export default function Passport() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-10">
+        <div className="grid grid-cols-4 gap-3 sm:gap-4 mb-10">
           {[
             { label: 'Missions Complete', value: passport?.total_completed ?? 0,   icon: Award,    color: 'text-violet-600 dark:text-violet-400' },
             { label: 'Topics Explored',   value: passport?.categories.length ?? 0, icon: BookOpen, color: 'text-cyan-600 dark:text-cyan-400' },
             { label: 'Hours Invested',    value: passport?.estimated_hours ?? 0,   icon: Flame,    color: 'text-amber-600 dark:text-amber-400' },
+            { label: 'Day Streak',        value: streakDays,                        icon: Flame,    color: 'text-orange-500 dark:text-orange-400' },
           ].map(({ label, value, icon: Icon, color }) => (
             <div key={label} className="glass-card rounded-2xl p-3 sm:p-5 text-center">
               <Icon size={18} className={`${color} mx-auto mb-2`} />

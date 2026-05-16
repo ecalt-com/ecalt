@@ -9,7 +9,7 @@ import clsx from 'clsx'
 import GateModal from '../components/GateModal'
 import Navigation from '../components/Navigation'
 import PageMeta from '../components/PageMeta'
-import { askSpark, getSessionStatus } from '../lib/api'
+import { askSpark, getSessionStatus, getPassport, getUserProfile, type PassportData } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import type { Mission, StepType } from '../lib/types'
 
@@ -53,10 +53,13 @@ interface AskBoxProps {
   onSpark: (q: string) => void
   loading: boolean
   autoFocus?: boolean
+  inputRef?: React.RefObject<HTMLInputElement>
 }
 
-function AskBox({ onSpark, loading, autoFocus = false }: AskBoxProps) {
+function AskBox({ onSpark, loading, autoFocus = false, inputRef }: AskBoxProps) {
   const [query, setQuery] = useState('')
+  const internalRef = useRef<HTMLInputElement>(null)
+  const resolvedRef = inputRef ?? internalRef
 
   const submit = (q: string) => {
     const trimmed = q.trim()
@@ -74,6 +77,7 @@ function AskBox({ onSpark, loading, autoFocus = false }: AskBoxProps) {
         )}>
           <Sparkles size={20} className="text-violet-500 dark:text-violet-400 shrink-0" />
           <input
+            ref={resolvedRef}
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
@@ -391,14 +395,22 @@ function PassportTeaser() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
+type RecentJourney = PassportData['journeys'][0]
+
 export default function Home() {
   const [phase, setPhase] = useState<Phase>({ kind: 'hero' })
   const [gateOpen, setGateOpen] = useState(false)
   const [gateReason, setGateReason] = useState<'mission' | 'limit'>('mission')
   const [sessionSparks, setSessionSparks] = useState<{ used: number; remaining: number } | null>(null)
+  const [recentJourney, setRecentJourney] = useState<RecentJourney | null>(null)
+  const [streakDays, setStreakDays] = useState(0)
+  const [waitlistEmail, setWaitlistEmail] = useState('')
+  const [waitlistDone, setWaitlistDone] = useState(false)
   const sessionId = useMemo(getSessionId, [])
   const resultRef = useRef<HTMLDivElement>(null)
-  const { getToken } = useAuth()
+  const askInputRef = useRef<HTMLInputElement>(null)
+  const { user, getToken } = useAuth()
+  const navigate = useNavigate()
 
   // restore spark count from server on mount (handles page refresh)
   useEffect(() => {
@@ -406,6 +418,33 @@ export default function Home() {
       .then(s => { if (s.sparks_used > 0) setSessionSparks({ used: s.sparks_used, remaining: s.sparks_remaining }) })
       .catch(() => {})
   }, [sessionId])
+
+  // fetch recent journey + streak when user signs in
+  useEffect(() => {
+    if (!user) { setRecentJourney(null); setStreakDays(0); return }
+    getToken().then(token => {
+      if (!token) return
+      Promise.all([getPassport(token), getUserProfile(token)]).then(([passport, profile]) => {
+        const inProgress = passport.journeys.filter(j => !j.fully_completed)
+        setRecentJourney(inProgress[0] ?? null)
+        setStreakDays(profile.streak_days ?? 0)
+      }).catch(() => {})
+    })
+  }, [user])
+
+  // '/' keyboard shortcut → focus the ask input
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName
+      if (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA') {
+        e.preventDefault()
+        askInputRef.current?.focus()
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [])
 
   const hasResult = phase.kind !== 'hero'
 
@@ -455,6 +494,35 @@ export default function Home() {
         jsonLd={homeJsonLd}
       />
       <Navigation />
+
+      {/* ── CONTINUE CARD ── */}
+      {recentJourney && phase.kind === 'hero' && (
+        <div className="max-w-2xl mx-auto px-4 pt-24 pb-0 flex flex-col gap-2">
+          <button
+            onClick={() => navigate(`/journey/${recentJourney.id}`)}
+            className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border border-violet-200 dark:border-violet-800/50 bg-violet-50 dark:bg-violet-900/20 hover:border-violet-400 dark:hover:border-violet-600 transition-colors text-left group"
+          >
+            <span className="text-3xl shrink-0">{recentJourney.icon}</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider mb-0.5">Continue where you left off</p>
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{recentJourney.title}</p>
+              <div className="mt-1.5 h-1 bg-violet-100 dark:bg-violet-900 rounded-full overflow-hidden w-40">
+                <div
+                  className="h-full bg-gradient-to-r from-violet-500 to-cyan-500 rounded-full"
+                  style={{ width: `${Math.round((recentJourney.completed_steps / recentJourney.total_steps) * 100)}%` }}
+                />
+              </div>
+            </div>
+            <ArrowRight size={16} className="text-violet-500 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+          {streakDays > 1 && (
+            <div className="flex items-center gap-1.5 self-end pr-1">
+              <Zap size={13} className="text-amber-500" fill="currentColor" />
+              <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">{streakDays}-day streak</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── HERO ── */}
       <section className="relative pt-16 overflow-hidden">
@@ -514,7 +582,7 @@ export default function Home() {
 
           {/* Ask box */}
           <div className="max-w-2xl mx-auto">
-            <AskBox onSpark={handleSpark} loading={phase.kind === 'loading'} autoFocus />
+            <AskBox onSpark={handleSpark} loading={phase.kind === 'loading'} autoFocus inputRef={askInputRef} />
           </div>
         </div>
       </section>
@@ -577,6 +645,47 @@ export default function Home() {
               <AskBox onSpark={handleSpark} loading={false} />
             </div>
           </section>
+
+          {/* ── EMAIL CAPTURE ── */}
+          {!user && (
+            <section className="px-4 pb-20">
+              <div className="max-w-lg mx-auto text-center">
+                <div className="bg-gradient-to-br from-violet-50 to-cyan-50 dark:from-violet-900/20 dark:to-cyan-900/20 border border-violet-100 dark:border-violet-800/40 rounded-3xl p-8">
+                  <p className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Stay in the loop</p>
+                  <p className="text-slate-500 text-sm mb-6">New journeys, features, and learning ideas — one email a week, no spam.</p>
+                  {waitlistDone ? (
+                    <div className="flex items-center justify-center gap-2 text-emerald-600 dark:text-emerald-400 font-medium">
+                      <Check size={16} />
+                      You're on the list!
+                    </div>
+                  ) : (
+                    <form
+                      onSubmit={e => {
+                        e.preventDefault()
+                        if (waitlistEmail.trim()) setWaitlistDone(true)
+                      }}
+                      className="flex gap-2"
+                    >
+                      <input
+                        type="email"
+                        required
+                        value={waitlistEmail}
+                        onChange={e => setWaitlistEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-violet-500/30"
+                      />
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors shrink-0"
+                      >
+                        Subscribe
+                      </button>
+                    </form>
+                  )}
+                </div>
+              </div>
+            </section>
+          )}
 
           <footer className="border-t border-slate-100 dark:border-slate-800 px-4 py-8">
             <div className="max-w-6xl mx-auto flex flex-col items-center md:flex-row md:justify-between gap-4 text-sm text-slate-400">

@@ -1,7 +1,7 @@
 import json
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from app.models.schemas import ExploreRequest, ExploreResponse
-from app.services.ai_service import generate_journey
+from app.services.ai_service import generate_journey, warm_journey_steps
 from app.core.auth import get_required_user
 from app.core.database import get_db
 
@@ -14,10 +14,15 @@ router = APIRouter()
     summary="Generate a learning journey",
     response_description="AI-generated Journey based on the submitted question",
 )
-async def explore(request: ExploreRequest, uid: str = Depends(get_required_user)):
+async def explore(
+    request: ExploreRequest,
+    background_tasks: BackgroundTasks,
+    uid: str = Depends(get_required_user),
+):
     """
     Submit a curiosity question and receive a fully structured Journey.
     Requires authentication. The generated journey is saved to the user's account.
+    Step content is pre-warmed in the background so the first expand is instant.
     """
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
@@ -55,5 +60,14 @@ async def explore(request: ExploreRequest, uid: str = Depends(get_required_user)
                 )
     except Exception:
         pass
+
+    # Pre-warm step content in the background so users don't wait on first expand
+    background_tasks.add_task(
+        warm_journey_steps,
+        journey.id,
+        journey.steps,
+        journey.title,
+        journey.question,
+    )
 
     return ExploreResponse(journey=journey)

@@ -13,6 +13,7 @@ class UserProfile(BaseModel):
     display_name: Optional[str] = None
     photo_url: Optional[str] = None
     onboarding_done: bool = False
+    streak_days: int = 0
 
 
 class UserUpsertRequest(BaseModel):

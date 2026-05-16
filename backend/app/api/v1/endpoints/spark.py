@@ -1,8 +1,9 @@
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional
 from app.models.schemas import SparkRequest, SparkResponse
 from app.services.spark_service import consume_spark, generate_spark
 from app.core.auth import get_optional_user
+from app.core.limiter import limiter
 
 router = APIRouter()
 
@@ -13,7 +14,8 @@ router = APIRouter()
     summary="Ask a curiosity question (free spark)",
     response_description="Short AI answer + proposed mission. Max 5 per session.",
 )
-async def spark(request: SparkRequest, uid: Optional[str] = Depends(get_optional_user)):
+@limiter.limit("30/minute")
+async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depends(get_optional_user)):
     """
     The free-tier curiosity engine.
 
@@ -24,7 +26,7 @@ async def spark(request: SparkRequest, uid: Optional[str] = Depends(get_optional
     are keyed by Firebase uid; guests are keyed by session_id.
     Returns `429` when the limit is reached.
     """
-    key = uid or request.session_id
+    key = uid or body.session_id
     if not key:
         raise HTTPException(status_code=400, detail="session_id required for unauthenticated requests")
 
@@ -42,7 +44,7 @@ async def spark(request: SparkRequest, uid: Optional[str] = Depends(get_optional
         )
 
     try:
-        answer, mission = await generate_spark(request.question.strip())
+        answer, mission = await generate_spark(body.question.strip())
     except ValueError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except Exception:

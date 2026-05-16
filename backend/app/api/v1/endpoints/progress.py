@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from typing import Optional
@@ -5,6 +6,7 @@ from app.core.auth import get_required_user
 from app.core.database import get_db
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class ProgressResponse(BaseModel):
@@ -17,6 +19,28 @@ class ProgressResponse(BaseModel):
 class JourneyProgressResponse(BaseModel):
     journey_id: str
     completed_step_ids: list[str]
+
+
+def _update_streak(uid: str) -> None:
+    """Increment streak if a new day, reset if gap, no-op if same day. Best-effort."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE users SET
+                        streak_days = CASE
+                            WHEN last_active_date = CURRENT_DATE          THEN streak_days
+                            WHEN last_active_date = CURRENT_DATE - 1      THEN streak_days + 1
+                            ELSE 1
+                        END,
+                        last_active_date = CURRENT_DATE
+                    WHERE uid = %s
+                    """,
+                    (uid,),
+                )
+    except Exception:
+        logger.debug("Streak update skipped — column may not exist yet")
 
 
 @router.get("/{journey_id}", response_model=JourneyProgressResponse)
@@ -39,7 +63,7 @@ async def get_progress(journey_id: str, uid: str = Depends(get_required_user)):
 async def mark_step_complete(
     journey_id: str, step_id: str, uid: str = Depends(get_required_user)
 ):
-    """Mark a step as complete. Idempotent."""
+    """Mark a step as complete. Idempotent. Updates daily streak."""
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -52,6 +76,9 @@ async def mark_step_complete(
                 (uid, journey_id, step_id),
             )
             row = cur.fetchone()
+
+    _update_streak(uid)
+
     return ProgressResponse(
         journey_id=journey_id,
         step_id=step_id,

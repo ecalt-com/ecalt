@@ -101,6 +101,40 @@ async def generate_step_content(
     return data["content"]
 
 
+async def warm_journey_steps(journey_id: str, steps: list[JourneyStep], journey_title: str, journey_question: str) -> None:
+    """Background task: pre-generate and cache content for all steps in a journey."""
+    from app.core.database import get_db
+    for step in steps:
+        try:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT 1 FROM step_content WHERE journey_id = %s AND step_id = %s",
+                        (journey_id, step.id),
+                    )
+                    if cur.fetchone():
+                        continue
+            content = await generate_step_content(
+                step_title=step.title,
+                step_description=step.description,
+                step_type=step.type,
+                journey_title=journey_title,
+                journey_question=journey_question,
+            )
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO step_content (journey_id, step_id, content)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (journey_id, step_id) DO NOTHING
+                        """,
+                        (journey_id, step.id, content),
+                    )
+        except Exception:
+            pass
+
+
 async def generate_journey(question: str, age_group: str = "all") -> Journey:
     client = get_client()
 

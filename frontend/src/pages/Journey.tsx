@@ -4,7 +4,7 @@ import { ArrowLeft, Clock, BookOpen, Share2, Award } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import StepNode from '../components/StepNode'
 import PageMeta from '../components/PageMeta'
-import { getJourney, getProgress, markStepComplete, markStepIncomplete } from '../lib/api'
+import { getJourney, getJourneys, getProgress, markStepComplete, markStepIncomplete } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useToast } from '../lib/ToastContext'
 import type { Journey as JourneyType, JourneyStep } from '../lib/types'
@@ -50,6 +50,7 @@ export default function Journey() {
   const { addToast } = useToast()
   const [journey, setJourney] = useState<JourneyType | null>(null)
   const [steps, setSteps] = useState<JourneyStep[]>([])
+  const [related, setRelated] = useState<JourneyType[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCompletion, setShowCompletion] = useState(false)
@@ -69,6 +70,20 @@ export default function Journey() {
         }
         setJourney(j)
         setSteps(j.steps.map(s => ({ ...s, completed: completedIds.includes(s.id) })))
+
+        // Load related journeys by tag overlap (best-effort, non-blocking)
+        getJourneys(token ?? undefined).then(res => {
+          const scored = res.journeys
+            .filter(r => r.id !== id)
+            .map(r => ({
+              ...r,
+              score: r.tags.filter(t => j.tags.includes(t)).length,
+            }))
+            .filter(r => r.score > 0)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 3)
+          setRelated(scored)
+        }).catch(() => {})
       } catch (err: unknown) {
         setError((err as Error).message)
       } finally {
@@ -209,7 +224,16 @@ export default function Journey() {
                   {completed === 0 ? 'Start Journey' : 'Continue'}
                 </button>
                 <button
-                  onClick={() => navigator.clipboard?.writeText(window.location.href)}
+                  onClick={async () => {
+                    const url = window.location.href
+                    const title = journey.title
+                    if (navigator.share) {
+                      try { await navigator.share({ title, url }) } catch { /* cancelled */ }
+                    } else {
+                      await navigator.clipboard.writeText(url)
+                      addToast('Link copied to clipboard')
+                    }
+                  }}
                   className="btn-ghost flex items-center justify-center gap-1.5"
                 >
                   <Share2 size={13} />Share
@@ -234,6 +258,28 @@ export default function Journey() {
                 onToggle={toggleStep}
               />
             ))}
+
+            {related.length > 0 && (
+              <div className="mt-16 pt-8 border-t border-slate-200 dark:border-slate-800/50">
+                <p className="text-xs text-slate-400 uppercase tracking-widest mb-4">More like this</p>
+                <div className="space-y-3">
+                  {related.map(r => (
+                    <button
+                      key={r.id}
+                      onClick={() => navigate(`/journey/${r.id}`)}
+                      className="w-full flex items-center gap-3 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 hover:border-violet-300 dark:hover:border-violet-700 bg-white/50 dark:bg-slate-900/30 text-left transition-colors group"
+                    >
+                      <span className="text-2xl shrink-0">{r.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{r.title}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{r.steps.length} steps · {r.difficulty}</p>
+                      </div>
+                      <ArrowLeft size={14} className="text-slate-400 rotate-180 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

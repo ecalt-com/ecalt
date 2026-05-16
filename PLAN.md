@@ -1,285 +1,311 @@
-# ECALT — Improvement Plan
+# ECALT — Product Roadmap
 
 > **Stack**: React + Vite (Vercel) · FastAPI (Railway) · PostgreSQL (Supabase) · Firebase Auth  
-> **Goal**: Production-grade quality + strong Google SEO visibility
+> **Goal**: World-class learning product — great UX, strong SEO, viral growth loops, production-grade backend
 
 ---
 
-## Priority Legend
+## Status Key
+- ✅ **Done**
 - 🔴 **P0** — Fix now, blocking quality/trust
-- 🟠 **P1** — High impact, do this sprint
-- 🟡 **P2** — Important, schedule next
+- 🟠 **P1** — High impact, next sprint
+- 🟡 **P2** — Important, schedule soon
 - 🟢 **P3** — Nice-to-have, backlog
 
 ---
 
-## 1. SEO — Search Engine Optimization
+## What's Already Shipped
 
-### The Core Problem
-ECALT is a React SPA. Google CAN crawl SPAs but runs a two-wave process: HTML is indexed immediately, JavaScript renders days later. Dynamic content fetched from the API (journey titles, descriptions) may never be indexed — or indexed weeks late. This kills rankings for the most valuable pages (`/journey/:id`).
+| Area | Item |
+|------|------|
+| Auth | Firebase Google Sign-In, token verification via PyJWT+JWKS, auth flash fix |
+| Backend | Full psycopg2 migration (no Supabase SDK), connection pool, RealDictCursor |
+| AI | Step content generation with Claude (on-demand, cached in DB) |
+| Progress | Per-user step tracking, completion overlay, toast feedback |
+| Passport | Capability passport with badges, progress tracking, topic cloud |
+| Onboarding | Interest picker shown after first sign-in |
+| Performance | React.lazy code splitting, `HelmetProvider` + `PageMeta` per route |
+| SEO | robots.txt, sitemap.xml, JSON-LD (Course + WebSite schema), OG meta tags |
+| Security | CORS tightened to specific origins, health check with DB ping |
 
-### Fixes (in order)
+---
+
+## 1. Retention & Re-engagement
+
+These directly determine whether users come back. Each one is a day-1 user converting to a week-1 user.
+
+| # | Task | Priority | Why it matters |
+|---|------|----------|----------------|
+| 1.1 | **"Continue where you left off"** card on Home | 🔴 P0 | Biggest retention lever — zero effort re-entry |
+| 1.2 | **Streak counter** (days of consecutive learning) | 🟠 P1 | Habit formation; Duolingo's #1 retention mechanism |
+| 1.3 | **Email capture on Home** ("Get weekly journey picks") | 🟠 P1 | Own your audience before launch |
+| 1.4 | **"More like this"** related journeys at bottom of Journey page | 🟡 P2 | Reduces drop-off after finishing a journey |
+| 1.5 | **Push/email notification for streak at risk** | 🟢 P3 | Re-engagement for churned users |
+
+#### 1.1 — "Continue where you left off" (Home.tsx)
+After sign-in, fetch the most recently touched in-progress journey and show a card above the hero input:
+```tsx
+// Fetch from GET /api/v1/passport — pick last_active journey
+// Show: journey icon + title + "X of Y steps · Resume →"
+// Only shown when user is authenticated and has in-progress journeys
+```
+
+#### 1.2 — Streak system
+Add `last_active_date DATE` and `streak_days INT DEFAULT 0` to `users` table.  
+On any `markStepComplete` call: if `last_active_date = today - 1`, increment streak; if `= today`, no-op; else reset to 1.  
+Show on Home (below spark meter) and Passport header.
+
+---
+
+## 2. Viral & Sharing
+
+These turn users into distribution channels. Each completed journey is a sharing opportunity.
+
+| # | Task | Priority | Why it matters |
+|---|------|----------|----------------|
+| 2.1 | **Share journey as link** with dynamic OG preview | 🟠 P1 | Every shared link is a free ad impression |
+| 2.2 | **Completion certificate** — downloadable/shareable image | 🟡 P2 | LinkedIn-shareable proof of learning |
+| 2.3 | **"Built with ECALT"** footer on shared pages | 🟢 P3 | Product-led growth watermark |
+
+#### 2.1 — Share button on Journey page
+Already has a `Share2` icon imported — wire it up:
+```tsx
+// On click: navigator.share({ title, url }) || copy to clipboard
+// URL: https://ecalt.vercel.app/journey/{id}
+// The PageMeta og:image and og:title already set — sharing works immediately
+```
+The hard part is dynamic OG images per journey. Options:
+- **Simple (now)**: One generic OG image. Already works since PageMeta sets og:title dynamically (social crawlers see it).
+- **Better (later)**: Vercel Edge Function `GET /api/og?title=...` that renders an image using `@vercel/og`.
+
+#### 2.2 — Completion certificate
+Use the browser Canvas API to render a styled certificate PNG:
+```
+ECALT Capability Certificate
+[User's name] has completed [Journey title]
+[Date] · ecalt.vercel.app
+```
+Show "Download Certificate" button in the CompletionOverlay.
+
+---
+
+## 3. SEO — Remaining Gaps
 
 | # | Task | Priority | Impact |
 |---|------|----------|--------|
-| 1.1 | Add `public/robots.txt` and `public/sitemap.xml` | 🔴 P0 | Crawl budget, discoverability |
-| 1.2 | Create an OG image (`public/og-image.png`, 1200×630) | 🔴 P0 | Social sharing CTR |
-| 1.3 | Add JSON-LD structured data to Home and Journey pages | 🟠 P1 | Rich results in Google |
-| 1.4 | Add prerendering for key routes via `vite-plugin-prerender` | 🟠 P1 | Crawlers get full HTML immediately |
-| 1.5 | Server-generate dynamic journey pages (`/journey/:id`) | 🟠 P1 | Long-tail keyword indexing |
-| 1.6 | Add dynamic `<meta>` tags per route (title, description, OG) | 🟠 P1 | CTR from SERPs |
-| 1.7 | Submit sitemap to Google Search Console | 🟡 P2 | Faster indexing |
-| 1.8 | Add `hreflang` and language meta for future i18n | 🟢 P3 | International SEO |
+| 3.1 | **Create og-image.png** (1200×630) | 🔴 P0 | Referenced in HTML but file doesn't exist yet |
+| 3.2 | **Dynamic sitemap endpoint** in backend | 🟠 P1 | AI-generated journeys indexed as long-tail SEO pages |
+| 3.3 | **Prerendering** for static routes | 🟡 P2 | Crawlers get full HTML without JS execution |
+| 3.4 | **Submit sitemap to Google Search Console** | 🟡 P2 | Faster indexing of all routes |
+| 3.5 | **`hreflang`** for future i18n | 🟢 P3 | International SEO |
 
-#### 1.1 — robots.txt (add to `frontend/public/robots.txt`)
-```
-User-agent: *
-Allow: /
-Disallow: /api/
+#### 3.1 — OG Image (urgent)
+The HTML references `/og-image.png` but the file doesn't exist. Create it:
+- Use Figma / Canva / any tool: 1200×630px, dark background, ECALT logo, tagline "Turn Curiosity Into Capability"
+- Export as PNG → place at `frontend/public/og-image.png`
+- Test at: https://developers.facebook.com/tools/debug/
 
-Sitemap: https://ecalt.vercel.app/sitemap.xml
-```
-
-#### 1.2 — sitemap.xml (add to `frontend/public/sitemap.xml`)
-Static routes known at build time. Journey pages need dynamic generation.
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://ecalt.vercel.app/</loc><priority>1.0</priority></url>
-  <url><loc>https://ecalt.vercel.app/journeys</loc><priority>0.9</priority></url>
-  <url><loc>https://ecalt.vercel.app/journey/journey-dna</loc><priority>0.8</priority></url>
-  <url><loc>https://ecalt.vercel.app/journey/journey-ml</loc><priority>0.8</priority></url>
-  <url><loc>https://ecalt.vercel.app/journey/journey-rockets</loc><priority>0.8</priority></url>
-  <url><loc>https://ecalt.vercel.app/journey/journey-music</loc><priority>0.8</priority></url>
-  <url><loc>https://ecalt.vercel.app/journey/journey-climate</loc><priority>0.8</priority></url>
-  <url><loc>https://ecalt.vercel.app/journey/journey-finance</loc><priority>0.8</priority></url>
-</urlset>
-```
-
-#### 1.3 — JSON-LD Structured Data
-Add to `<head>` via a React component. For journey pages use `Course` schema:
+#### 3.2 — Dynamic sitemap
+Backend adds `GET /api/v1/sitemap.xml` returning all curated + public AI journeys.  
+Vercel `vercel.json` fetches it at build time or uses a rewrite:
 ```json
-{
-  "@context": "https://schema.org",
-  "@type": "Course",
-  "name": "The Code of Life: DNA Decoded",
-  "description": "From double helix to protein factories...",
-  "provider": { "@type": "Organization", "name": "ECALT" },
-  "hasCourseInstance": { "@type": "CourseInstance", "courseMode": "online" }
-}
-```
-
-#### 1.4 — Prerendering
-Install `vite-plugin-prerender` and prerender static routes at build time:
-```ts
-// vite.config.ts
-import { PrerenderPlugin } from 'vite-plugin-prerender'
-plugins: [PrerenderPlugin({ routes: ['/', '/journeys', '/journey/journey-dna', ...] })]
-```
-This gives crawlers full HTML without waiting for JS.
-
-#### 1.5 — Backend sitemap endpoint
-Add `GET /api/v1/sitemap.xml` that includes all curated + public AI-generated journeys dynamically. Vercel can fetch and cache this at build or on-demand.
-
-#### 1.6 — Dynamic meta tags
-Create a `<PageMeta>` component using `document.head` manipulation (or `react-helmet-async`) that sets `<title>`, `<meta name="description">`, `og:title`, `og:description`, `og:url` per route. Use the journey title and description on detail pages.
-
----
-
-## 2. Backend — Industry Standards
-
-| # | Task | Priority | Notes |
-|---|------|----------|-------|
-| 2.1 | Database migrations with Alembic | 🔴 P0 | Replace raw SQL schema file |
-| 2.2 | Error monitoring with Sentry | 🟠 P1 | Know about errors before users report |
-| 2.3 | Structured JSON logging | 🟠 P1 | Essential for Railway log search |
-| 2.4 | API rate limiting (slowapi) | 🟠 P1 | Prevent abuse on public endpoints |
-| 2.5 | Request ID middleware | 🟡 P2 | Trace requests across logs |
-| 2.6 | Background task queue (ARQ / Redis) | 🟡 P2 | Offload AI generation from request cycle |
-| 2.7 | Response caching (Redis) | 🟡 P2 | Cache journey list, step content |
-| 2.8 | OpenAPI schema validation tests | 🟡 P2 | Contract tests against FastAPI |
-| 2.9 | DB connection health check in `/health` | 🟠 P1 | Railway uptime checks |
-| 2.10 | Alembic migrations in CI/CD | 🟢 P3 | Auto-migrate on deploy |
-
-#### 2.1 — Alembic migrations
-```bash
-pip install alembic
-alembic init migrations
-# replaces supabase_schema.sql — version-controlled, rollback-safe
-```
-
-#### 2.4 — Rate limiting
-```python
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
-
-@router.post("")
-@limiter.limit("30/minute")
-async def spark(request: Request, ...):
-```
-
-#### 2.9 — Health check with DB ping
-```python
-@router.get("")
-async def health():
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT 1")
-        db_status = "ok"
-    except Exception:
-        db_status = "degraded"
-    return {"status": "ok", "db": db_status, "ts": datetime.utcnow().isoformat()}
+{ "source": "/sitemap.xml", "destination": "/api/sitemap.xml" }
 ```
 
 ---
 
-## 3. Frontend — Industry Standards
+## 4. UX Polish
 
-| # | Task | Priority | Notes |
-|---|------|----------|-------|
-| 3.1 | Route-based code splitting (React.lazy) | 🔴 P0 | Current bundle is ~400KB monolithic |
-| 3.2 | Error boundaries on every route | 🟠 P1 | Prevent full-page crashes |
-| 3.3 | Skeleton loading states everywhere | 🟠 P1 | Perceived performance |
-| 3.4 | `react-helmet-async` for dynamic meta | 🟠 P1 | SEO-required |
-| 3.5 | `public/manifest.json` for PWA | 🟡 P2 | "Add to home screen" on mobile |
-| 3.6 | Service worker for offline fallback | 🟡 P2 | Works on flaky connections |
-| 3.7 | Accessibility audit (WCAG 2.1 AA) | 🟡 P2 | Screen readers, keyboard nav |
-| 3.8 | Cypress E2E tests for critical flows | 🟡 P2 | Spark → Mission → Journey |
-| 3.9 | Storybook for shared components | 🟢 P3 | Component documentation |
+| # | Task | Priority | Why it matters |
+|---|------|----------|----------------|
+| 4.1 | **Error boundaries** on every route | 🔴 P0 | One React crash = blank page for all users |
+| 4.2 | **Keyboard shortcut**: press `/` focuses curiosity input | 🟠 P1 | Power users love this; makes the product feel fast |
+| 4.3 | **Empty state on Journeys** page when search returns nothing | 🟠 P1 | Dead ends feel broken |
+| 4.4 | **Mobile StepNode experience** review | 🟠 P1 | Expanded step content UX on small screens |
+| 4.5 | **Page transition animation** (fade/slide between routes) | 🟡 P2 | Makes app feel premium |
+| 4.6 | **Back-navigation scroll restoration** | 🟡 P2 | Journey → back → Journeys resets scroll |
+| 4.7 | **Accessibility audit** (ARIA, keyboard nav, focus traps) | 🟡 P2 | Screen readers; also a trust signal |
+| 4.8 | **Feedback on AI step content** ("Was this helpful? 👍 👎") | 🟡 P2 | Improves content quality over time |
 
-#### 3.1 — Code splitting (biggest quick win)
+#### 4.1 — Error boundary (quick)
 ```tsx
-// App.tsx
-const Home     = lazy(() => import('./pages/Home'))
-const Explore  = lazy(() => import('./pages/Explore'))
-const Journey  = lazy(() => import('./pages/Journey'))
-const Journeys = lazy(() => import('./pages/Journeys'))
-const Passport = lazy(() => import('./pages/Passport'))
-
-// Wrap routes with <Suspense fallback={<PageSkeleton />}>
-```
-Expected: 400KB bundle → 4 chunks of ~100KB, loaded on demand.
-
-#### 3.2 — Error boundary
-```tsx
-class RouteErrorBoundary extends Component {
+// src/components/ErrorBoundary.tsx
+class ErrorBoundary extends Component<{children: ReactNode}, {error: Error | null}> {
   state = { error: null }
-  static getDerivedStateFromError(e) { return { error: e } }
+  static getDerivedStateFromError(e: Error) { return { error: e } }
   render() {
     if (this.state.error) return <ErrorPage />
     return this.props.children
   }
 }
+// Wrap each <Route element={...}> in App.tsx
+```
+
+#### 4.2 — Keyboard shortcut
+```tsx
+// In Home.tsx, add to useEffect:
+const handleKey = (e: KeyboardEvent) => {
+  if (e.key === '/' && document.activeElement?.tagName !== 'INPUT') {
+    e.preventDefault()
+    inputRef.current?.focus()
+  }
+}
+document.addEventListener('keydown', handleKey)
 ```
 
 ---
 
-## 4. Security
+## 5. Backend Hardening
 
 | # | Task | Priority | Notes |
 |---|------|----------|-------|
-| 4.1 | Move `ANTHROPIC_API_KEY` to Railway secrets (not .env file) | 🔴 P0 | Currently blank in .env |
-| 4.2 | Tighten CORS — replace `allow_origins=["*"]` with specific domains | 🔴 P0 | Currently wide open |
-| 4.3 | Add Content-Security-Policy header in `vercel.json` | 🟠 P1 | XSS protection |
-| 4.4 | Add `X-Frame-Options`, `X-Content-Type-Options` headers | 🟠 P1 | Standard hardening |
-| 4.5 | Enforce HTTPS redirect in FastAPI | 🟠 P1 | Railway auto-does this, but explicit is better |
-| 4.6 | Rotate Supabase DB password to one without special chars | 🟡 P2 | Avoids URL-encoding foot guns |
-| 4.7 | Add OWASP dependency scanning in CI | 🟢 P3 | Safety/pip-audit |
+| 5.1 | **Rate limiting** on public endpoints (slowapi) | 🔴 P0 | Spark endpoint is abusable without it |
+| 5.2 | **Sentry error monitoring** | 🟠 P1 | Know about crashes before users report |
+| 5.3 | **Step content pre-warming** | 🟠 P1 | Background generate all steps after journey creation |
+| 5.4 | **Response caching headers** | 🟡 P2 | Journey list rarely changes — 60s CDN cache |
+| 5.5 | **Alembic migrations** | 🟡 P2 | Schema versioning, safe rollbacks |
+| 5.6 | **Structured JSON logging** | 🟡 P2 | Railway log search needs structured output |
+| 5.7 | **Request ID middleware** | 🟡 P2 | Trace requests across logs |
+| 5.8 | **DB connection health in Railway uptime check** | ✅ Done | `/health` now pings DB |
 
-#### 4.2 — CORS fix (main.py)
+#### 5.1 — Rate limiting (add now)
+```bash
+pip install slowapi
+```
 ```python
-allow_origins=settings.allowed_origins  # already split from ALLOWED_ORIGINS env var
-# Set in Railway: ALLOWED_ORIGINS=https://ecalt.vercel.app,https://www.ecalt.com
+# main.py
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# spark.py endpoint:
+@router.post("")
+@limiter.limit("30/minute")
+async def spark(request: Request, ...):
+```
+
+#### 5.2 — Sentry
+```bash
+pip install sentry-sdk[fastapi]
+```
+```python
+# main.py
+import sentry_sdk
+sentry_sdk.init(dsn=settings.SENTRY_DSN, traces_sample_rate=0.1)
+```
+Add `SENTRY_DSN` to Railway env vars (free tier covers 5k errors/month).
+
+#### 5.3 — Step content pre-warming
+After `POST /api/v1/explore` creates a journey, fire a background task that calls `generate_step_content` for each step:
+```python
+# FastAPI BackgroundTasks
+background_tasks.add_task(warm_journey_steps, journey.id, journey.steps)
+```
+Users get instant content on first expand instead of waiting 3–4 seconds.
+
+---
+
+## 6. Security
+
+| # | Task | Priority | Notes |
+|---|------|----------|-------|
+| 6.1 | **Content-Security-Policy header** in vercel.json | 🟠 P1 | XSS protection |
+| 6.2 | **`X-Frame-Options`, `X-Content-Type-Options`** headers | 🟠 P1 | Standard hardening |
+| 6.3 | **Add `ANTHROPIC_API_KEY`** to Railway secrets | 🔴 P0 | Currently blank — AI features don't work in prod |
+| 6.4 | **OWASP dependency scanning** in CI | 🟢 P3 | `pip audit`, `npm audit` |
+
+#### 6.1 & 6.2 — Security headers in vercel.json
+```json
+"headers": [
+  {
+    "source": "/(.*)",
+    "headers": [
+      { "key": "X-Frame-Options", "value": "DENY" },
+      { "key": "X-Content-Type-Options", "value": "nosniff" },
+      { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+      { "key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com; connect-src 'self' https://*.firebaseapp.com https://*.googleapis.com https://ecalt-production.up.railway.app; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;" }
+    ]
+  }
+]
 ```
 
 ---
 
-## 5. Core Web Vitals (Google Ranking Signals)
+## 7. Performance (Core Web Vitals)
 
-Google uses LCP, FID/INP, and CLS as ranking signals. Current estimated scores:
-
-| Metric | Current (estimate) | Target | Fix |
-|--------|-------------------|--------|-----|
-| LCP | ~2.5s | < 2.5s | Preload fonts, lazy-load below-fold |
-| INP | ~80ms | < 200ms | Already good |
+| Metric | Current | Target | Fix |
+|--------|---------|--------|-----|
+| LCP | ~2.5s | < 2.5s | Preload fonts, pre-warm step content |
+| FCP | ~1.8s | < 1.8s | Code splitting ✅ Done |
 | CLS | ~0 | < 0.1 | Already good |
-| FCP | ~1.8s | < 1.8s | Code splitting, smaller initial bundle |
-| TTFB | ~200ms | < 600ms | Railway cold starts — add keep-alive ping |
+| INP | ~80ms | < 200ms | Already good |
+| TTFB | ~200ms | < 600ms | Railway cold starts — keep-alive ping |
 
 #### Quick wins
-- Add `<link rel="preconnect">` for Anthropic/Firebase domains
-- Use `font-display: swap` (already using Google Fonts — verify this)
-- Add `loading="lazy"` to any images
-- Preload critical CSS
+- `<link rel="preconnect" href="https://apis.google.com">` in index.html
+- `loading="lazy"` on any `<img>` tags
+- Railway keep-alive: ping `/health` every 5 min from a cron service (prevents cold starts)
 
 ---
 
-## 6. Product Features (Growth)
+## 8. Product Features (Growth)
 
 | # | Feature | Priority | Why |
 |---|---------|----------|-----|
-| 6.1 | Share journey as link with OG preview | 🟠 P1 | Viral distribution |
-| 6.2 | Email capture / waitlist on Home | 🟠 P1 | Build audience before launch |
-| 6.3 | Journey completion certificate (shareable image) | 🟡 P2 | Social proof, LinkedIn sharing |
-| 6.4 | "Continue where you left off" on Home | 🟡 P2 | Retention |
-| 6.5 | Admin dashboard (journey analytics, user count) | 🟡 P2 | Operator visibility |
-| 6.6 | Search across journeys | 🟡 P2 | Discovery UX |
-| 6.7 | Streak system (daily learning) | 🟢 P3 | Engagement |
-| 6.8 | Parent/family accounts | 🟢 P3 | Core brand promise |
+| 8.1 | **Admin analytics page** (journey views, completions, DAU) | 🟡 P2 | Operator visibility |
+| 8.2 | **Search across journeys** (Journeys page already has it; add to Home) | 🟡 P2 | Discovery |
+| 8.3 | **Journey rating** (1-5 stars after completion) | 🟡 P2 | Surface best content |
+| 8.4 | **"Suggest a journey"** form | 🟢 P3 | Community-driven content |
+| 8.5 | **Parent/family accounts** | 🟢 P3 | Core brand promise |
+| 8.6 | **i18n** (Hindi as first expansion) | 🟢 P3 | Massive TAM in India |
 
 ---
 
-## 7. CI/CD Pipeline
+## 9. CI/CD Pipeline
 
 ```
-GitHub Actions:
-  on: push to main
-  jobs:
-    1. lint + typecheck (tsc, eslint)
-    2. backend tests (pytest)
-    3. alembic migrate (on merge to main)
-    4. deploy frontend → Vercel (auto via Vercel GitHub integration)
-    5. deploy backend → Railway (auto via Railway GitHub integration)
+GitHub Actions — on push to main:
+  1. lint + typecheck   (eslint, tsc --noEmit)
+  2. backend tests      (pytest)
+  3. deploy frontend    → Vercel (auto via GitHub integration)
+  4. deploy backend     → Railway (auto via GitHub integration)
 ```
 
 ---
 
 ## Recommended Execution Order
 
-### Week 1 — Foundation (P0s)
-1. `robots.txt` + `sitemap.xml` → submit to Google Search Console
-2. OG image (`og-image.png`)
-3. Code splitting (React.lazy) — biggest performance win
-4. CORS: replace `*` with production domain
-5. Alembic setup
+### This week (P0 blockers)
+1. **Add `ANTHROPIC_API_KEY` to Railway** — AI features are broken in prod without it
+2. **Create og-image.png** — referenced but missing; embarrassing on social share
+3. **Error boundaries** — one component crash = blank white page
+4. **Rate limiting** on spark endpoint — open to abuse right now
+5. **"Continue where you left off"** card on Home — highest retention impact
 
-### Week 2 — SEO & Visibility
-1. JSON-LD structured data on Home + Journey pages
-2. `react-helmet-async` for dynamic per-page meta
-3. Prerendering for static routes
-4. Health check endpoint with DB ping
-5. Sentry error monitoring
+### Next sprint (P1 — growth)
+1. Share journey as link (already works — just add the button)
+2. Streak counter (backend + home UI)
+3. Email capture on Home
+4. Sentry setup
+5. Step content pre-warming (background tasks after explore)
+6. Security headers in vercel.json
+7. Keyboard shortcut `/` on Home
 
-### Week 3 — Polish
-1. Error boundaries
-2. Rate limiting on public endpoints
-3. PWA manifest
-4. Email capture on Home
-
-### Week 4 — Growth
-1. Share links with OG previews
-2. Journey completion certificate
-3. Search across journeys
-4. Google Search Console data review + keyword analysis
+### Following sprint (P2 — polish)
+1. Completion certificate download
+2. "More like this" related journeys
+3. Dynamic sitemap endpoint
+4. Page transition animations
+5. Journey rating system
+6. Alembic migrations
 
 ---
 
 ## SEO Keyword Opportunities
-
-ECALT's content naturally targets high-intent, low-competition long-tail keywords:
 
 | Target keyword | Page | Monthly volume (est.) |
 |---------------|------|----------------------|
@@ -300,7 +326,6 @@ ECALT's content naturally targets high-intent, low-competition long-tail keyword
 | Tool | Purpose | Cost |
 |------|---------|------|
 | Google Search Console | Index monitoring, keyword data | Free |
+| Sentry | Error tracking | Free tier (5k errors/mo) |
 | Vercel Analytics | Real user performance metrics | Free |
-| Sentry | Error tracking | Free tier |
 | Lighthouse CI | Automated Core Web Vitals in CI | Free |
-| Ahrefs / Semrush | Keyword research, backlink analysis | Paid |

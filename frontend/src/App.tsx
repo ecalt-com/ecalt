@@ -7,6 +7,7 @@ import { ThemeProvider } from './lib/ThemeContext'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { ToastProvider } from './lib/ToastContext'
 import OnboardingModal from './components/OnboardingModal'
+import ErrorBoundary from './components/ErrorBoundary'
 
 const Home      = lazy(() => import('./pages/Home'))
 const Explore   = lazy(() => import('./pages/Explore'))
@@ -29,11 +30,11 @@ function AppShell() {
     <>
       <Suspense fallback={<PageSkeleton />}>
         <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/explore" element={<Explore />} />
-          <Route path="/journeys" element={<Journeys />} />
-          <Route path="/journey/:id" element={<Journey />} />
-          <Route path="/passport" element={<Passport />} />
+          <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
+          <Route path="/explore" element={<ErrorBoundary><Explore /></ErrorBoundary>} />
+          <Route path="/journeys" element={<ErrorBoundary><Journeys /></ErrorBoundary>} />
+          <Route path="/journey/:id" element={<ErrorBoundary><Journey /></ErrorBoundary>} />
+          <Route path="/passport" element={<ErrorBoundary><Passport /></ErrorBoundary>} />
           <Route
             path="/sign-in"
             element={<ComingSoon title="Sign In — Coming Soon" description="User accounts are on the way. Drop your email and we'll notify you." />}
