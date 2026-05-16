@@ -25,8 +25,21 @@ type Phase =
   | { kind: 'sparked'; question: string; answer: string; mission: Mission; sparksUsed: number; sparksRemaining: number }
   | { kind: 'error'; question: string; message: string }
 
-// ── Inline sub-components ─────────────────────────────────────────────────────
+// ── Spark dots ────────────────────────────────────────────────────────────────
+function SparkDots({ used, total = 5, size = 'sm' }: { used: number; total?: number; size?: 'sm' | 'md' }) {
+  const dotCls = size === 'md' ? 'w-2.5 h-2.5' : 'w-2 h-2'
+  return (
+    <div className="flex items-center gap-1.5">
+      {Array.from({ length: total }).map((_, i) => (
+        <div key={i} className={clsx(dotCls, 'rounded-full transition-all duration-300',
+          i < used ? 'bg-slate-300 dark:bg-slate-600' : 'bg-violet-500'
+        )} />
+      ))}
+    </div>
+  )
+}
 
+// ── Ask box ───────────────────────────────────────────────────────────────────
 const CHIPS = [
   { emoji: '🤖', label: 'Build a robot' },
   { emoji: '🕳️', label: 'Explain black holes' },
@@ -55,7 +68,7 @@ function AskBox({ onSpark, loading, autoFocus = false }: AskBoxProps) {
         <div className={clsx(
           'flex items-center gap-3 bg-white dark:bg-slate-800/60 rounded-2xl px-5 py-4 transition-all duration-200',
           'border border-slate-200 dark:border-slate-700 shadow-lg shadow-slate-200/60 dark:shadow-slate-900/60',
-          'focus-within:border-violet-300 dark:focus-within:border-violet-500/50 focus-within:ring-2 focus-within:ring-violet-500/15 focus-within:shadow-violet-100/60'
+          'focus-within:border-violet-300 dark:focus-within:border-violet-500/50 focus-within:ring-2 focus-within:ring-violet-500/15'
         )}>
           <Sparkles size={20} className="text-violet-500 dark:text-violet-400 shrink-0" />
           <input
@@ -84,7 +97,6 @@ function AskBox({ onSpark, loading, autoFocus = false }: AskBoxProps) {
         </div>
       </form>
 
-      {/* Curiosity chips */}
       <div className="flex flex-wrap gap-2 justify-center">
         {CHIPS.map(({ emoji, label }) => (
           <button
@@ -106,8 +118,7 @@ function AskBox({ onSpark, loading, autoFocus = false }: AskBoxProps) {
   )
 }
 
-// ── Spark result (light) ──────────────────────────────────────────────────────
-
+// ── Spark result ──────────────────────────────────────────────────────────────
 const STEP_TYPE: Record<StepType, { icon: React.ElementType; color: string; bg: string; label: string }> = {
   concept:   { icon: BookOpen, color: 'text-violet-600', bg: 'bg-violet-50',  label: 'Learn' },
   practice:  { icon: Wrench,   color: 'text-cyan-600',   bg: 'bg-cyan-50',    label: 'Practice' },
@@ -128,96 +139,107 @@ interface LightResultProps {
   sparksUsed: number
   sparksRemaining: number
   onStartMission: () => void
+  onSavePath: () => void
   onReset: () => void
   onUpgrade: () => void
 }
 
-function LightSparkResult({ question, answer, mission, sparksUsed, sparksRemaining, onStartMission, onReset, onUpgrade }: LightResultProps) {
+function LightSparkResult({ question, answer, mission, sparksUsed, sparksRemaining, onStartMission, onSavePath, onReset, onUpgrade }: LightResultProps) {
   return (
     <div className="animate-in max-w-2xl mx-auto px-4 pb-20">
+
       {/* Answer */}
-      <div className="mb-6">
+      <div className="mb-5">
         <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-1.5">You asked</p>
         <p className="text-slate-500 italic text-sm mb-4">"{question}"</p>
-        <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/40 border-l-4 border-l-violet-500 rounded-2xl p-6">
+        <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800/40 border-l-4 border-l-violet-500 rounded-2xl p-5">
           <p className="text-slate-800 dark:text-slate-200 leading-relaxed">{answer}</p>
         </div>
       </div>
 
-      {/* Mission card */}
-      <div className="light-card rounded-2xl overflow-hidden mb-5">
-        {/* Header */}
-        <div className="p-6 pb-4 border-b border-slate-100">
-          <div className="flex items-start gap-4">
-            <span className="text-4xl">{mission.icon}</span>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                <span className={clsx('px-2.5 py-0.5 rounded-full text-xs font-medium border', DIFF_COLOR[mission.difficulty])}>
-                  {mission.difficulty}
-                </span>
-                <span className="px-2.5 py-0.5 rounded-full text-xs border border-slate-200 bg-slate-50 text-slate-500">
-                  #{mission.category}
-                </span>
-                <span className="text-xs text-slate-400">{mission.estimated_minutes} min</span>
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 leading-snug">{mission.title}</h3>
+      {/* Mission CTA card */}
+      <div className="light-card rounded-2xl p-5 mb-5">
+        {/* "Next:" prompt */}
+        <div className="flex items-start gap-2 mb-4">
+          <span className="text-violet-500 mt-0.5 shrink-0">✦</span>
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            Next: Want to turn this curiosity into a{' '}
+            <span className="font-bold text-slate-900 dark:text-white">{mission.estimated_minutes}-minute mission</span>?
+          </p>
+        </div>
+
+        {/* Mission title preview */}
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50 mb-4">
+          <span className="text-2xl leading-none">{mission.icon}</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-slate-900 dark:text-white leading-snug truncate">{mission.title}</p>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <span className={clsx('px-1.5 py-0.5 rounded text-xs font-medium border', DIFF_COLOR[mission.difficulty])}>
+                {mission.difficulty}
+              </span>
+              <span className="text-xs text-slate-400">#{mission.category}</span>
+              <span className="text-xs text-slate-400">· {mission.steps.length} steps</span>
             </div>
           </div>
-          <p className="text-sm text-slate-500 mt-2 leading-relaxed">{mission.tagline}</p>
         </div>
 
-        {/* Steps */}
-        <div className="p-6 pb-4">
-          <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-3">Mission Path</p>
-          <div className="space-y-2">
-            {mission.steps.map((step, i) => {
-              const cfg = STEP_TYPE[step.type]
-              const Icon = cfg.icon
-              return (
-                <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
-                  <div className="w-6 h-6 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-xs font-bold text-slate-500 shrink-0">
-                    {i + 1}
-                  </div>
-                  <div className={clsx('p-1 rounded-md', cfg.bg)}>
-                    <Icon size={12} className={cfg.color} />
-                  </div>
-                  <span className="text-sm text-slate-700 dark:text-slate-300 flex-1">{step.title}</span>
-                  <span className="text-xs text-slate-400">{step.minutes}m</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* CTA */}
-        <div className="px-6 pb-6">
+        {/* Two CTAs */}
+        <div className="flex gap-3 mb-3">
           <button
             onClick={onStartMission}
-            className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold text-sm transition-colors flex items-center justify-center gap-2"
+            className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-1.5"
           >
-            <Zap size={14} fill="currentColor" />
-            Start This Mission
+            <Zap size={13} fill="currentColor" />
+            Start {mission.title}
           </button>
+          <button
+            onClick={onSavePath}
+            className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors flex items-center justify-center gap-1.5"
+          >
+            Save My Path <ArrowRight size={13} />
+          </button>
+        </div>
+
+        <p className="text-xs text-slate-400 text-center">
+          Save your path and continue your Capability Passport
+        </p>
+      </div>
+
+      {/* Mission steps — secondary preview */}
+      <div className="mb-5">
+        <p className="text-xs font-medium text-slate-400 uppercase tracking-widest mb-2">Mission path preview</p>
+        <div className="space-y-2">
+          {mission.steps.map((step, i) => {
+            const cfg = STEP_TYPE[step.type]
+            const Icon = cfg.icon
+            return (
+              <div key={i} className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700/50">
+                <div className="w-5 h-5 rounded-full bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 flex items-center justify-center text-xs font-bold text-slate-500 shrink-0">
+                  {i + 1}
+                </div>
+                <div className={clsx('p-1 rounded-md shrink-0', cfg.bg)}>
+                  <Icon size={11} className={cfg.color} />
+                </div>
+                <span className="text-sm text-slate-600 dark:text-slate-400 flex-1 truncate">{step.title}</span>
+                <span className="text-xs text-slate-400 shrink-0">{step.minutes}m</span>
+              </div>
+            )
+          })}
         </div>
       </div>
 
       {/* Spark meter */}
-      <div className="flex items-center justify-between text-sm">
+      <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div
-              key={i}
-              className={clsx('w-2 h-2 rounded-full transition-all', i < sparksUsed ? 'bg-slate-300' : 'bg-violet-500')}
-            />
-          ))}
-          <span className="text-slate-400 text-xs ml-1">
+          <SparkDots used={sparksUsed} />
+          <span className="text-xs text-slate-400 ml-0.5">
             {sparksRemaining === 0
               ? <button onClick={onUpgrade} className="text-violet-600 font-medium hover:underline">Upgrade for unlimited →</button>
-              : <><span className="font-medium text-violet-600">{sparksRemaining}</span> spark{sparksRemaining !== 1 ? 's' : ''} left</>
+              : <><span className="font-semibold text-slate-600 dark:text-slate-400">{sparksRemaining}</span> of 5 sparks left</>
             }
           </span>
         </div>
-        <button onClick={onReset} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+        <button onClick={onReset} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
           ↑ Ask another
         </button>
       </div>
@@ -230,15 +252,15 @@ function LightLoadingSkeleton() {
     <div className="max-w-2xl mx-auto px-4 pb-20 space-y-4">
       <div className="shimmer-light h-4 w-1/4 rounded-lg" />
       <div className="shimmer-light h-4 w-2/3 rounded-lg" />
-      <div className="shimmer-light h-28 w-full rounded-2xl" />
-      <div className="shimmer-light h-72 w-full rounded-2xl" />
+      <div className="shimmer-light h-24 w-full rounded-2xl" />
+      <div className="shimmer-light h-48 w-full rounded-2xl" />
+      <div className="shimmer-light h-32 w-full rounded-2xl" />
       <p className="text-center text-xs text-slate-400 animate-pulse">✦ Sparking your curiosity…</p>
     </div>
   )
 }
 
 // ── Feature cards ─────────────────────────────────────────────────────────────
-
 interface FeatureCardProps {
   icon: React.ReactNode
   title: string
@@ -286,8 +308,7 @@ const FEATURES: FeatureCardProps[] = [
   },
 ]
 
-// ── Trusted by section ────────────────────────────────────────────────────────
-
+// ── Trust row ─────────────────────────────────────────────────────────────────
 function TrustRow() {
   return (
     <div className="border-t border-slate-100 dark:border-slate-800 py-10 px-4">
@@ -308,7 +329,6 @@ function TrustRow() {
 }
 
 // ── Passport teaser ───────────────────────────────────────────────────────────
-
 function PassportTeaser() {
   const navigate = useNavigate()
   return (
@@ -327,7 +347,6 @@ function PassportTeaser() {
           </p>
         </div>
 
-        {/* Mock passport card */}
         <div className="max-w-md mx-auto light-card rounded-3xl overflow-hidden">
           <div className="bg-gradient-to-r from-violet-600 to-violet-700 px-6 py-5 flex items-center justify-between">
             <div>
@@ -370,11 +389,12 @@ function PassportTeaser() {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-
 export default function Home() {
   const [phase, setPhase] = useState<Phase>({ kind: 'hero' })
   const [gateOpen, setGateOpen] = useState(false)
   const [gateReason, setGateReason] = useState<'mission' | 'limit'>('mission')
+  // tracks spark count across multiple asks in the session
+  const [sessionSparks, setSessionSparks] = useState<{ used: number; remaining: number } | null>(null)
   const sessionId = useMemo(getSessionId, [])
   const resultRef = useRef<HTMLDivElement>(null)
 
@@ -384,6 +404,7 @@ export default function Home() {
     setPhase({ kind: 'loading', question })
     try {
       const res = await askSpark({ question, session_id: sessionId })
+      setSessionSparks({ used: res.sparks_used, remaining: res.sparks_remaining })
       setPhase({ kind: 'sparked', question, answer: res.answer, mission: res.mission, sparksUsed: res.sparks_used, sparksRemaining: res.sparks_remaining })
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80)
     } catch (err: unknown) {
@@ -401,26 +422,46 @@ export default function Home() {
   const currentMission = phase.kind === 'sparked' ? phase.mission : undefined
   const currentQuestion = phase.kind !== 'hero' ? phase.question : undefined
 
+  const sparksUsed = sessionSparks?.used ?? 0
+  const sparksRemaining = sessionSparks?.remaining ?? 5
+
   return (
-    <div className="bg-white dark:bg-[#080b14] min-h-screen text-slate-900 dark:text-slate-100 font-[var(--font-inter)]">
+    <div className="bg-white dark:bg-[#080b14] min-h-screen text-slate-900 dark:text-slate-100">
       <Navigation />
 
       {/* ── HERO ── */}
       <section className="relative pt-16 overflow-hidden">
-        {/* Dot grid background */}
         <div className="absolute inset-0 hero-dot-grid opacity-40 pointer-events-none" />
-        {/* Gradient overlay to fade dots */}
         <div className="absolute inset-0 bg-gradient-to-b from-white/30 dark:from-[#080b14]/30 via-transparent to-white dark:to-[#080b14] pointer-events-none" />
-        {/* Violet glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-violet-100/60 rounded-full blur-[80px] pointer-events-none" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[400px] bg-violet-100/60 dark:bg-violet-900/20 rounded-full blur-[80px] pointer-events-none" />
 
         <div className="relative max-w-4xl mx-auto px-4 pt-20 pb-12 text-center">
-          {/* Badge */}
+
+          {/* Session header — shown only in hero state */}
           {!hasResult && (
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-violet-200 bg-violet-50 text-violet-700 text-xs font-semibold mb-8">
-              <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
-              Mission-first AI learning platform
-            </div>
+            <>
+              {sessionSparks ? (
+                /* After at least one spark — show live counter */
+                <div className="inline-flex flex-col items-center gap-2 mb-8">
+                  <div className="flex items-center gap-2.5 px-4 py-2 rounded-full border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/30">
+                    <SparkDots used={sparksUsed} />
+                    <span className="text-sm font-medium text-violet-700 dark:text-violet-300">
+                      You have <strong>{sparksRemaining}</strong> of 5 free sparks left
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">Short Haiku responses only · Create account to save path</p>
+                </div>
+              ) : (
+                /* First visit — session intro badge */
+                <div className="inline-flex flex-col items-center gap-2 mb-8">
+                  <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-violet-200 dark:border-violet-800 bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-xs font-semibold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
+                    Free Curiosity Session · 5 sparks included
+                  </div>
+                  <p className="text-xs text-slate-400">Short Haiku responses only · No sign-up needed</p>
+                </div>
+              )}
+            </>
           )}
 
           {/* Headline */}
@@ -445,7 +486,7 @@ export default function Home() {
           )}
 
           {/* Ask box */}
-          <div className={clsx('mx-auto transition-all duration-300', hasResult ? 'max-w-2xl' : 'max-w-2xl')}>
+          <div className="max-w-2xl mx-auto">
             <AskBox onSpark={handleSpark} loading={phase.kind === 'loading'} autoFocus />
           </div>
         </div>
@@ -463,6 +504,7 @@ export default function Home() {
             sparksUsed={phase.sparksUsed}
             sparksRemaining={phase.sparksRemaining}
             onStartMission={() => { setGateReason('mission'); setGateOpen(true) }}
+            onSavePath={() => { setGateReason('mission'); setGateOpen(true) }}
             onReset={() => setPhase({ kind: 'hero' })}
             onUpgrade={() => { setGateReason('limit'); setGateOpen(true) }}
           />
@@ -470,8 +512,8 @@ export default function Home() {
 
         {phase.kind === 'error' && (
           <div className="max-w-2xl mx-auto px-4 pb-12">
-            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-6 text-center">
-              <p className="text-rose-600 text-sm mb-3">{phase.message}</p>
+            <div className="bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800/40 rounded-2xl p-6 text-center">
+              <p className="text-rose-600 dark:text-rose-400 text-sm mb-3">{phase.message}</p>
               <button onClick={() => handleSpark(phase.question)} className="px-4 py-2 rounded-lg bg-rose-600 text-white text-sm font-medium hover:bg-rose-700 transition-colors">
                 Try again
               </button>
@@ -483,10 +525,8 @@ export default function Home() {
       {/* ── BELOW FOLD (hero state only) ── */}
       {phase.kind === 'hero' && (
         <>
-          {/* Trust row */}
           <TrustRow />
 
-          {/* Feature cards */}
           <section className="px-4 py-20 max-w-5xl mx-auto">
             <div className="text-center mb-12">
               <h2 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-white mb-2">
@@ -499,10 +539,8 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Capability Passport teaser */}
           <PassportTeaser />
 
-          {/* Bottom CTA */}
           <section className="px-4 py-24 text-center">
             <div className="max-w-2xl mx-auto">
               <h2 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-3">
@@ -513,7 +551,6 @@ export default function Home() {
             </div>
           </section>
 
-          {/* Footer */}
           <footer className="border-t border-slate-100 dark:border-slate-800 px-4 py-8">
             <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-slate-400">
               <div className="flex items-center gap-2">
@@ -525,7 +562,7 @@ export default function Home() {
               </div>
               <div className="flex items-center gap-6">
                 {['Privacy', 'Terms', 'Parents', 'Contact'].map(l => (
-                  <a key={l} href="#" className="hover:text-slate-600 transition-colors">{l}</a>
+                  <a key={l} href="#" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">{l}</a>
                 ))}
               </div>
             </div>
@@ -533,7 +570,6 @@ export default function Home() {
         </>
       )}
 
-      {/* Gate modal */}
       <GateModal
         isOpen={gateOpen}
         reason={gateReason}
