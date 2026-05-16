@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
-from app.models.schemas import Journey, JourneyStep, JourneysResponse
+from app.models.schemas import Journey, JourneyStep, JourneysResponse, StepContentResponse
 from app.core.auth import get_optional_user
 from app.core.supabase import get_supabase
+from app.services.ai_service import generate_step_content
 
 router = APIRouter()
 
@@ -207,3 +208,88 @@ async def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional
     if not journey:
         raise HTTPException(status_code=404, detail="Journey not found")
     return journey
+
+
+@router.get(
+    "/{journey_id}/steps/{step_id}/content",
+    response_model=StepContentResponse,
+    summary="Get or generate step content",
+    response_description="On-demand lesson content for a single step",
+    responses={404: {"description": "Journey or step not found"}},
+)
+async def get_step_content(
+    journey_id: str,
+    step_id: str,
+    uid: Optional[str] = Depends(get_optional_user),
+):
+    """
+    Returns AI-generated lesson content for a step.
+    Checks the cache first; generates and stores on first request.
+    Available to both guests and authenticated users.
+    """
+    # Check cache
+    try:
+        db = get_supabase()
+        cached = (
+            db.table("step_content")
+            .select("content")
+            .eq("journey_id", journey_id)
+            .eq("step_id", step_id)
+            .single()
+            .execute()
+        )
+        if cached.data:
+            return StepContentResponse(
+                journey_id=journey_id,
+                step_id=step_id,
+                content=cached.data["content"],
+                cached=True,
+            )
+    except Exception:
+        pass  # Cache miss or DB unavailable — generate fresh
+
+    # Resolve journey + step for context
+    journey: Optional[Journey] = None
+    try:
+        db = get_supabase()
+        result = db.table("journeys").select("*").eq("id", journey_id).single().execute()
+        if result.data:
+            journey = _row_to_journey(result.data)
+    except Exception:
+        pass
+
+    if journey is None:
+        journey = _journey_map.get(journey_id)
+
+    if journey is None:
+        raise HTTPException(status_code=404, detail="Journey not found")
+
+    step = next((s for s in journey.steps if s.id == step_id), None)
+    if step is None:
+        raise HTTPException(status_code=404, detail="Step not found")
+
+    # Generate content
+    content = await generate_step_content(
+        step_title=step.title,
+        step_description=step.description,
+        step_type=step.type,
+        journey_title=journey.title,
+        journey_question=journey.question,
+    )
+
+    # Cache in DB (non-fatal if it fails)
+    try:
+        db = get_supabase()
+        db.table("step_content").upsert(
+            {"journey_id": journey_id, "step_id": step_id, "content": content},
+            on_conflict="journey_id,step_id",
+        ).execute()
+    except Exception:
+        pass
+
+    return StepContentResponse(
+        journey_id=journey_id,
+        step_id=step_id,
+        content=content,
+        cached=False,
+    )

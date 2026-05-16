@@ -176,7 +176,15 @@ export default function Explore() {
               </div>
 
               {steps.map((step, i) => (
-                <StepNode key={step.id} step={step} index={i} isLast={i === steps.length - 1} onToggle={toggleStep} />
+                <StepNode
+                  key={step.id}
+                  step={step}
+                  index={i}
+                  isLast={i === steps.length - 1}
+                  journeyId={journey!.id}
+                  getToken={getToken}
+                  onToggle={toggleStep}
+                />
               ))}
 
               <div className="mt-16 pt-8 border-t border-slate-200 dark:border-slate-800/50">

@@ -62,3 +62,13 @@ export interface PassportData {
 
 export const getPassport = (token: string): Promise<PassportData> =>
   request('/api/v1/passport', undefined, token)
+
+export interface StepContent {
+  journey_id: string
+  step_id: string
+  content: string
+  cached: boolean
+}
+
+export const getStepContent = (journeyId: string, stepId: string, token?: string): Promise<StepContent> =>
+  request(`/api/v1/journeys/${journeyId}/steps/${stepId}/content`, undefined, token)

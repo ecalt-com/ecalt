@@ -122,6 +122,13 @@ class JourneysResponse(BaseModel):
     total: int = Field(..., description="Total number of journeys returned")
 
 
+class StepContentResponse(BaseModel):
+    journey_id: str
+    step_id: str
+    content: str
+    cached: bool = False
+
+
 class SessionStatus(BaseModel):
     session_id: str
     sparks_used: int = Field(..., ge=0)

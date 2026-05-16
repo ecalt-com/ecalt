@@ -156,7 +156,15 @@ export default function Journey() {
             </div>
 
             {steps.map((step, i) => (
-              <StepNode key={step.id} step={step} index={i} isLast={i === steps.length - 1} onToggle={toggleStep} />
+              <StepNode
+                key={step.id}
+                step={step}
+                index={i}
+                isLast={i === steps.length - 1}
+                journeyId={id!}
+                getToken={getToken}
+                onToggle={toggleStep}
+              />
             ))}
           </div>
         )}

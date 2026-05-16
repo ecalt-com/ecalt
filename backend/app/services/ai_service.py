@@ -50,6 +50,57 @@ Rules:
 """
 
 
+STEP_CONTENT_SYSTEM = """\
+You are ECALT's expert educator. Write an engaging, practical lesson for a single learning step.
+
+Return ONLY a valid JSON object with this exact structure:
+{
+  "content": "Full lesson text with simple markdown. Use **bold** for key terms. Use ## for section headings (max 4 words each). Use - for bullet lists. Target 400-550 words. Structure: hook paragraph → 2-3 key idea sections → a Try This activity → one key takeaway. Sound like a brilliant friend explaining over coffee, not a textbook. Be concrete, surprising, and immediately useful."
+}
+
+Rules:
+- Never start with 'In this step' or 'Welcome to'
+- Every section heading must start with a verb or noun (no 'Introduction', 'Overview')
+- Make the Try This activity doable in 5 minutes without special equipment
+- End with a single sentence takeaway in **bold**
+"""
+
+
+async def generate_step_content(
+    step_title: str,
+    step_description: str,
+    step_type: str,
+    journey_title: str,
+    journey_question: str,
+) -> str:
+    client = get_client()
+    response = await client.messages.create(
+        model="claude-sonnet-4-6",
+        max_tokens=1500,
+        system=STEP_CONTENT_SYSTEM,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    f"Journey: {journey_title}\n"
+                    f"Original question: {journey_question}\n"
+                    f"Step title: {step_title}\n"
+                    f"Step description: {step_description}\n"
+                    f"Step type: {step_type}\n\n"
+                    "Generate the lesson content JSON."
+                ),
+            }
+        ],
+    )
+    raw = response.content[0].text.strip()
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
+    if start == -1 or end == 0:
+        raise ValueError("AI did not return valid content JSON")
+    data = json.loads(raw[start:end])
+    return data["content"]
+
+
 async def generate_journey(question: str, age_group: str = "all") -> Journey:
     client = get_client()
 
