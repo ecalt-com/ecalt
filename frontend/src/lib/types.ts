@@ -32,11 +32,48 @@ export interface ExploreRequest {
   level?: string
 }
 
-export interface ExploreResponse {
-  journey: Journey
-}
-
 export interface JourneysResponse {
   journeys: Journey[]
   total: number
+}
+
+// ── Spark (free tier) ─────────────────────────────────────────────────────────
+
+export interface MissionStep {
+  title: string
+  type: StepType
+  minutes: number
+}
+
+export interface Mission {
+  id: string
+  title: string
+  tagline: string
+  category: string
+  difficulty: Difficulty
+  estimated_minutes: number
+  icon: string
+  steps: MissionStep[]
+}
+
+export interface SparkRequest {
+  question: string
+  session_id: string
+}
+
+export interface SparkResponse {
+  answer: string
+  mission: Mission
+  sparks_used: number
+  sparks_remaining: number
+}
+
+// ── Passport ──────────────────────────────────────────────────────────────────
+
+export interface CapabilityEntry {
+  missionId: string
+  missionTitle: string
+  icon: string
+  category: string
+  completedAt: string
 }

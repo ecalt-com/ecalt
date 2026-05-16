@@ -5,6 +5,7 @@ import clsx from 'clsx'
 const NAV_LINKS = [
   { to: '/explore', label: 'Explore' },
   { to: '/journeys', label: 'Journeys' },
+  { to: '/passport', label: 'Passport' },
 ]
 
 export default function Navigation() {
