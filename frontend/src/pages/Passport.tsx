@@ -33,13 +33,13 @@ export default function Passport() {
 
       <div className="relative min-h-screen pt-28 pb-20 px-4 max-w-3xl mx-auto">
         {/* Header */}
-        <div className="flex items-start justify-between mb-10">
+        <div className="flex items-start justify-between gap-4 mb-10">
           <div>
             <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">ECALT</p>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-1">Capability Passport</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-slate-100 mb-1">Capability Passport</h1>
             <p className="text-slate-500 text-sm">Your verified learning record</p>
           </div>
-          <div className="glass rounded-2xl px-5 py-4 text-center">
+          <div className="glass rounded-2xl px-4 sm:px-5 py-3 sm:py-4 text-center shrink-0">
             <div className="flex items-center gap-1.5 text-amber-500 dark:text-amber-400 mb-1">
               <Flame size={14} />
               <span className="text-xs font-medium">Streak</span>
@@ -50,16 +50,16 @@ export default function Passport() {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-3 gap-4 mb-10">
+        <div className="grid grid-cols-3 gap-3 sm:gap-4 mb-10">
           {[
             { label: 'Missions Complete', value: capabilities.length,          icon: Award,    color: 'text-violet-600 dark:text-violet-400' },
             { label: 'Topics Explored',   value: categories.length,            icon: BookOpen, color: 'text-cyan-600 dark:text-cyan-400' },
             { label: 'Hours Invested',    value: capabilities.length * 1.5,    icon: Flame,    color: 'text-amber-600 dark:text-amber-400' },
           ].map(({ label, value, icon: Icon, color }) => (
-            <div key={label} className="glass-card rounded-2xl p-5 text-center">
+            <div key={label} className="glass-card rounded-2xl p-3 sm:p-5 text-center">
               <Icon size={18} className={`${color} mx-auto mb-2`} />
-              <p className="text-2xl font-bold text-slate-900 dark:text-slate-100">{Number.isInteger(value) ? value : value.toFixed(1)}</p>
-              <p className="text-xs text-slate-500 mt-1">{label}</p>
+              <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">{Number.isInteger(value) ? value : value.toFixed(1)}</p>
+              <p className="text-[10px] sm:text-xs text-slate-500 mt-1 leading-tight">{label}</p>
             </div>
           ))}
         </div>
@@ -89,15 +89,15 @@ export default function Passport() {
           ) : (
             <div className="space-y-3">
               {capabilities.map((cap, i) => (
-                <div key={i} className="glass-card rounded-2xl p-5 flex items-center gap-4">
-                  <span className="text-3xl">{cap.icon}</span>
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{cap.missionTitle}</p>
+                <div key={i} className="glass-card rounded-2xl p-4 sm:p-5 flex items-center gap-3 sm:gap-4">
+                  <span className="text-2xl sm:text-3xl shrink-0">{cap.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{cap.missionTitle}</p>
                     <p className="text-xs text-slate-500 mt-0.5">
                       #{cap.category} · {new Date(cap.completedAt).toLocaleDateString()}
                     </p>
                   </div>
-                  <div className="px-3 py-1 rounded-full text-xs border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300 font-medium">
+                  <div className="px-2 sm:px-3 py-1 rounded-full text-xs border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300 font-medium shrink-0">
                     Earned
                   </div>
                 </div>

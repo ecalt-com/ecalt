@@ -84,14 +84,14 @@ function AskBox({ onSpark, loading, autoFocus = false }: AskBoxProps) {
             type="submit"
             disabled={loading || !query.trim()}
             className={clsx(
-              'shrink-0 flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200',
+              'shrink-0 flex items-center gap-1.5 px-3 sm:px-5 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200',
               'bg-violet-600 hover:bg-violet-700 text-white',
               'disabled:opacity-40 disabled:cursor-not-allowed'
             )}
           >
             {loading
-              ? <><Loader2 size={14} className="animate-spin" /><span>Thinking…</span></>
-              : <><span>Ask ECALT</span><ArrowRight size={14} /></>
+              ? <><Loader2 size={14} className="animate-spin" /><span className="hidden sm:inline">Thinking…</span></>
+              : <><span className="hidden sm:inline">Ask </span><span>ECALT</span><ArrowRight size={14} /></>
             }
           </button>
         </div>
@@ -559,7 +559,7 @@ export default function Home() {
           </section>
 
           <footer className="border-t border-slate-100 dark:border-slate-800 px-4 py-8">
-            <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-slate-400">
+            <div className="max-w-6xl mx-auto flex flex-col items-center md:flex-row md:justify-between gap-4 text-sm text-slate-400">
               <div className="flex items-center gap-2">
                 <div className="w-5 h-5 rounded-md bg-violet-600 flex items-center justify-center">
                   <Zap size={10} className="text-white" fill="currentColor" />

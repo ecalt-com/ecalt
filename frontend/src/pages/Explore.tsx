@@ -102,11 +102,11 @@ export default function Explore() {
           {journey && !loading && (
             <div className="animate-in">
               <div className="mb-10">
-                <div className="flex items-start gap-4 mb-4">
-                  <span className="text-5xl">{journey.icon}</span>
+                <div className="flex items-start gap-3 mb-4">
+                  <span className="text-4xl sm:text-5xl shrink-0">{journey.icon}</span>
                   <div>
                     <p className="text-xs text-slate-500 mb-1 uppercase tracking-wider">Learning Journey</p>
-                    <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 leading-tight">{journey.title}</h1>
+                    <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 leading-tight">{journey.title}</h1>
                   </div>
                 </div>
                 <p className="text-slate-500 leading-relaxed mb-5">{journey.description}</p>
@@ -138,11 +138,11 @@ export default function Explore() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-3">
-                  <button className="btn-primary flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+                  <button className="btn-primary flex items-center justify-center gap-2">
                     <Zap size={14} fill="currentColor" />Begin Journey
                   </button>
-                  <button onClick={() => goExplore('')} className="btn-ghost">Ask something else</button>
+                  <button onClick={() => goExplore('')} className="btn-ghost text-center">Ask something else</button>
                 </div>
               </div>
 

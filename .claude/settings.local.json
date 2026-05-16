@@ -8,7 +8,10 @@
       "Read(//tmp/**)",
       "Bash(kill %1)",
       "Bash(python -c \"from app.api.v1.router import api_router; from app.services.spark_service import get_session_status, consume_spark; from app.models.schemas import SessionStatus; print\\('imports OK'\\)\")",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5174/)",
+      "Bash(npx tsc *)",
+      "Bash(npm i *)"
     ]
   }
 }

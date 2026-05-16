@@ -62,11 +62,11 @@ export default function Journey() {
         {journey && !loading && (
           <div className="animate-in">
             <div className="mb-10">
-              <div className="flex items-start gap-4 mb-5">
-                <span className="text-5xl">{journey.icon}</span>
+              <div className="flex items-start gap-3 mb-5">
+                <span className="text-4xl sm:text-5xl shrink-0">{journey.icon}</span>
                 <div>
                   <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Learning Journey</p>
-                  <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 leading-tight">{journey.title}</h1>
+                  <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 leading-tight">{journey.title}</h1>
                 </div>
               </div>
 
@@ -97,11 +97,11 @@ export default function Journey() {
                 </div>
               </div>
 
-              <div className="flex gap-3">
-                <button className="btn-primary">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button className="btn-primary text-center">
                   {completed === 0 ? 'Start Journey' : 'Continue'}
                 </button>
-                <button className="btn-ghost flex items-center gap-1.5">
+                <button className="btn-ghost flex items-center justify-center gap-1.5">
                   <Share2 size={13} />Share
                 </button>
               </div>

@@ -44,11 +44,11 @@ export default function GateModal({ isOpen, reason, mission, question, onClose }
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md animate-in overflow-hidden">
+      <div className="relative bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-md animate-in overflow-hidden">
         {/* Top accent bar */}
         <div className="h-1 bg-gradient-to-r from-violet-500 to-violet-600" />
 
-        <div className="p-8">
+        <div className="p-5 sm:p-8">
           <button
             onClick={onClose}
             className="absolute top-5 right-5 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
