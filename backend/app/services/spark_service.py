@@ -1,12 +1,11 @@
 import json
-import threading
 import uuid
-from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 import anthropic
 
 from app.core.config import settings
+from app.core.supabase import get_supabase
 from app.models.schemas import Mission, MissionStep
 
 # ── Lazy client ───────────────────────────────────────────────────────────────
@@ -21,45 +20,57 @@ def _get_client() -> anthropic.AsyncAnthropic:
     return _client
 
 
-# ── In-memory session store ───────────────────────────────────────────────────
+# ── DB-backed spark store ─────────────────────────────────────────────────────
 
 FREE_SPARK_LIMIT = 5
 WINDOW_MINUTES = 60
 
-_lock = threading.Lock()
-_sessions: dict[str, dict] = defaultdict(lambda: {"count": 0, "expires_at": None})
 
-
-def consume_spark(session_id: str) -> tuple[bool, int, int]:
+def consume_spark(key: str) -> tuple[bool, int, int]:
     """
-    Attempt to consume one spark for the session.
+    Attempt to consume one spark for the given key (uid or session_id).
     Returns (allowed, sparks_used, sparks_remaining).
+    Backed by Supabase — survives redeploys.
     """
+    db = get_supabase()
     now = datetime.now(timezone.utc)
-    with _lock:
-        s = _sessions[session_id]
-        if s["expires_at"] is None or now > s["expires_at"]:
-            s["count"] = 0
-            s["expires_at"] = now + timedelta(minutes=WINDOW_MINUTES)
-        if s["count"] >= FREE_SPARK_LIMIT:
-            return False, s["count"], 0
-        s["count"] += 1
-        remaining = FREE_SPARK_LIMIT - s["count"]
-        return True, s["count"], remaining
+
+    result = db.table("spark_usage").select("*").eq("key", key).execute()
+    row = result.data[0] if result.data else None
+
+    if row is None or row["expires_at"] is None or now > datetime.fromisoformat(row["expires_at"]):
+        # Fresh window
+        expires_at = (now + timedelta(minutes=WINDOW_MINUTES)).isoformat()
+        db.table("spark_usage").upsert(
+            {"key": key, "count": 1, "expires_at": expires_at}, on_conflict="key"
+        ).execute()
+        return True, 1, FREE_SPARK_LIMIT - 1
+
+    count = row["count"]
+    if count >= FREE_SPARK_LIMIT:
+        return False, count, 0
+
+    new_count = count + 1
+    db.table("spark_usage").update({"count": new_count}).eq("key", key).execute()
+    return True, new_count, FREE_SPARK_LIMIT - new_count
 
 
-def get_session_status(session_id: str) -> tuple[int, int]:
+def get_session_status(key: str) -> tuple[int, int]:
     """
     Read spark count without consuming one.
     Returns (sparks_used, sparks_remaining).
     """
+    db = get_supabase()
     now = datetime.now(timezone.utc)
-    with _lock:
-        s = _sessions[session_id]
-        if s["expires_at"] is None or now > s["expires_at"]:
-            return 0, FREE_SPARK_LIMIT
-        used = min(s["count"], FREE_SPARK_LIMIT)
-        return used, max(0, FREE_SPARK_LIMIT - used)
+
+    result = db.table("spark_usage").select("*").eq("key", key).execute()
+    row = result.data[0] if result.data else None
+
+    if row is None or row["expires_at"] is None or now > datetime.fromisoformat(row["expires_at"]):
+        return 0, FREE_SPARK_LIMIT
+
+    used = min(row["count"], FREE_SPARK_LIMIT)
+    return used, max(0, FREE_SPARK_LIMIT - used)
 
 
 # ── Prompt ────────────────────────────────────────────────────────────────────

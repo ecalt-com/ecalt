@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Clock, BookOpen, Share2 } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import StepNode from '../components/StepNode'
-import { getJourney } from '../lib/api'
+import { getJourney, getProgress, markStepComplete, markStepIncomplete } from '../lib/api'
+import { useAuth } from '../lib/AuthContext'
 import type { Journey as JourneyType, JourneyStep } from '../lib/types'
 
 export default function Journey() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user, getToken } = useAuth()
   const [journey, setJourney] = useState<JourneyType | null>(null)
   const [steps, setSteps] = useState<JourneyStep[]>([])
   const [loading, setLoading] = useState(true)
@@ -16,14 +18,51 @@ export default function Journey() {
 
   useEffect(() => {
     if (!id) return
-    getJourney(id)
-      .then(j => { setJourney(j); setSteps(j.steps) })
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false))
+    const load = async () => {
+      try {
+        const token = await getToken()
+        const j = await getJourney(id, token ?? undefined)
+        let completedIds: string[] = []
+        if (token) {
+          try {
+            const prog = await getProgress(id, token)
+            completedIds = prog.completed_step_ids
+          } catch { /* guest — no progress */ }
+        }
+        setJourney(j)
+        setSteps(j.steps.map(s => ({ ...s, completed: completedIds.includes(s.id) })))
+      } catch (err: unknown) {
+        setError((err as Error).message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
   }, [id])
 
-  const toggleStep = (stepId: string) =>
+  const toggleStep = async (stepId: string) => {
+    const step = steps.find(s => s.id === stepId)
+    if (!step || !id) return
+
+    // Optimistic update
     setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: !s.completed } : s))
+
+    if (user) {
+      const token = await getToken()
+      if (token) {
+        try {
+          if (step.completed) {
+            await markStepIncomplete(id, stepId, token)
+          } else {
+            await markStepComplete(id, stepId, token)
+          }
+        } catch {
+          // Revert on failure
+          setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: step.completed } : s))
+        }
+      }
+    }
+  }
 
   const completed = steps.filter(s => s.completed).length
   const progress = steps.length > 0 ? Math.round((completed / steps.length) * 100) : 0
@@ -101,7 +140,10 @@ export default function Journey() {
                 <button className="btn-primary text-center">
                   {completed === 0 ? 'Start Journey' : 'Continue'}
                 </button>
-                <button className="btn-ghost flex items-center justify-center gap-1.5">
+                <button
+                  onClick={() => navigator.clipboard?.writeText(window.location.href)}
+                  className="btn-ghost flex items-center justify-center gap-1.5"
+                >
                   <Share2 size={13} />Share
                 </button>
               </div>

@@ -34,8 +34,31 @@ export const getSessionStatus = (sessionId: string): Promise<SessionStatus> =>
 export const exploreQuestion = (body: ExploreRequest, token: string): Promise<{ journey: Journey }> =>
   request('/api/v1/explore', { method: 'POST', body: JSON.stringify(body) }, token)
 
-export const getJourneys = (): Promise<JourneysResponse> =>
-  request('/api/v1/journeys')
+export const getJourneys = (token?: string): Promise<JourneysResponse> =>
+  request('/api/v1/journeys', undefined, token)
 
-export const getJourney = (id: string): Promise<Journey> =>
-  request(`/api/v1/journeys/${id}`)
+export const getJourney = (id: string, token?: string): Promise<Journey> =>
+  request(`/api/v1/journeys/${id}`, undefined, token)
+
+export const getProgress = (journeyId: string, token: string): Promise<{ journey_id: string; completed_step_ids: string[] }> =>
+  request(`/api/v1/progress/${journeyId}`, undefined, token)
+
+export const markStepComplete = (journeyId: string, stepId: string, token: string): Promise<void> =>
+  request(`/api/v1/progress/${journeyId}/${stepId}`, { method: 'POST' }, token)
+
+export const markStepIncomplete = (journeyId: string, stepId: string, token: string): Promise<void> =>
+  request(`/api/v1/progress/${journeyId}/${stepId}`, { method: 'DELETE' }, token)
+
+export interface PassportData {
+  journeys: {
+    id: string; title: string; icon: string; category: string
+    completed_steps: number; total_steps: number; completed_at: string; fully_completed: boolean
+  }[]
+  total_completed: number
+  total_in_progress: number
+  categories: string[]
+  estimated_hours: number
+}
+
+export const getPassport = (token: string): Promise<PassportData> =>
+  request('/api/v1/passport', undefined, token)

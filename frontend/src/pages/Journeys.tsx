@@ -3,6 +3,7 @@ import { Search } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import JourneyCard from '../components/JourneyCard'
 import { getJourneys } from '../lib/api'
+import { useAuth } from '../lib/AuthContext'
 import type { Journey } from '../lib/types'
 
 const FILTERS = ['All', 'Beginner', 'Intermediate', 'Advanced']
@@ -12,9 +13,11 @@ export default function Journeys() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('All')
   const [search, setSearch] = useState('')
+  const { getToken } = useAuth()
 
   useEffect(() => {
-    getJourneys()
+    getToken()
+      .then(token => getJourneys(token ?? undefined))
       .then(res => setJourneys(res.journeys))
       .catch(console.error)
       .finally(() => setLoading(false))

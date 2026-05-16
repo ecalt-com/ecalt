@@ -1,5 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional
 from app.models.schemas import Journey, JourneyStep, JourneysResponse
+from app.core.auth import get_optional_user
+from app.core.supabase import get_supabase
 
 router = APIRouter()
 
@@ -129,20 +132,53 @@ SAMPLE_JOURNEYS: list[Journey] = [
 _journey_map = {j.id: j for j in SAMPLE_JOURNEYS}
 
 
+def _row_to_journey(row: dict) -> Journey:
+    steps = [JourneyStep(**s) for s in (row.get("steps") or [])]
+    return Journey(
+        id=row["id"],
+        question=row["question"],
+        title=row["title"],
+        description=row["description"],
+        age_group=row.get("age_group", "all"),
+        difficulty=row.get("difficulty", "beginner"),
+        estimated_hours=row["estimated_hours"],
+        steps=steps,
+        tags=row.get("tags") or [],
+        icon=row.get("icon", "🎯"),
+        created_at=row.get("created_at", ""),
+    )
+
+
 @router.get(
     "",
     response_model=JourneysResponse,
     summary="List all journeys",
-    response_description="All available journeys with a total count",
+    response_description="Curated journeys plus the authenticated user's generated journeys",
 )
-async def list_journeys():
+async def list_journeys(uid: Optional[str] = Depends(get_optional_user)):
     """
-    Return all available pre-built and AI-generated journeys.
+    Returns curated journeys for all users. Authenticated users also get
+    their own AI-generated journeys appended at the top.
+    """
+    user_journeys: list[Journey] = []
 
-    Currently backed by an in-memory sample set — will be replaced by a
-    database query in production.
-    """
-    return JourneysResponse(journeys=SAMPLE_JOURNEYS, total=len(SAMPLE_JOURNEYS))
+    if uid:
+        try:
+            db = get_supabase()
+            rows = (
+                db.table("journeys")
+                .select("*")
+                .eq("uid", uid)
+                .eq("is_curated", False)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            user_journeys = [_row_to_journey(r) for r in (rows.data or [])]
+        except Exception:
+            pass
+
+    all_journeys = user_journeys + SAMPLE_JOURNEYS
+    return JourneysResponse(journeys=all_journeys, total=len(all_journeys))
 
 
 @router.get(
@@ -152,13 +188,21 @@ async def list_journeys():
     response_description="The requested Journey object",
     responses={404: {"description": "Journey not found"}},
 )
-async def get_journey(journey_id: str):
+async def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional_user)):
     """
     Fetch a single Journey by its unique `journey_id`.
-
-    **Errors**
-    - `404` — no journey exists with the given ID
+    Checks DB first (for user-generated journeys), then falls back to curated set.
     """
+    # Check DB first
+    try:
+        db = get_supabase()
+        result = db.table("journeys").select("*").eq("id", journey_id).single().execute()
+        if result.data:
+            return _row_to_journey(result.data)
+    except Exception:
+        pass
+
+    # Fall back to curated
     journey = _journey_map.get(journey_id)
     if not journey:
         raise HTTPException(status_code=404, detail="Journey not found")

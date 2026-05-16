@@ -11,7 +11,10 @@
       "Bash(python -c ' *)",
       "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5174/)",
       "Bash(npx tsc *)",
-      "Bash(npm i *)"
+      "Bash(npm i *)",
+      "Bash(pip install *)",
+      "Bash(./node_modules/.bin/tsc *)",
+      "Bash(npm uninstall *)"
     ]
   }
 }

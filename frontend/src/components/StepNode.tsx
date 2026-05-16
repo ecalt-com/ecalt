@@ -13,7 +13,7 @@ interface StepNodeProps {
   step: JourneyStep
   index: number
   isLast: boolean
-  onToggle?: (id: string) => void
+  onToggle?: (id: string) => void | Promise<void>
 }
 
 export default function StepNode({ step, index, isLast, onToggle }: StepNodeProps) {

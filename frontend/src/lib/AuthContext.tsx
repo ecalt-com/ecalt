@@ -36,7 +36,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signIn = async () => {
-    await signInWithPopup(firebaseAuth, googleProvider)
+    const result = await signInWithPopup(firebaseAuth, googleProvider)
+    // Sync user to our DB on every sign-in (upsert is idempotent)
+    try {
+      const token = await result.user.getIdToken()
+      await fetch('/api/v1/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          email: result.user.email,
+          display_name: result.user.displayName,
+          photo_url: result.user.photoURL,
+        }),
+      })
+    } catch { /* non-critical */ }
   }
 
   const signOut = async () => {

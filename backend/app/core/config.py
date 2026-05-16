@@ -6,6 +6,8 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3000"
     ENVIRONMENT: str = "development"
     FIREBASE_PROJECT_ID: str = ""
+    SUPABASE_URL: str = ""
+    SUPABASE_KEY: str = ""
 
     @property
     def allowed_origins(self) -> list[str]:

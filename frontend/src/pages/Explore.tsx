@@ -4,7 +4,7 @@ import { ArrowLeft, Clock, BookOpen, Zap } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import CuriosityInput from '../components/CuriosityInput'
 import StepNode from '../components/StepNode'
-import { exploreQuestion } from '../lib/api'
+import { exploreQuestion, markStepComplete, markStepIncomplete } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import type { Journey, JourneyStep } from '../lib/types'
 
@@ -46,7 +46,21 @@ export default function Explore() {
   }
 
   const goExplore = (question: string) => navigate(`/explore?q=${encodeURIComponent(question)}`)
-  const toggleStep = (id: string) => setSteps(prev => prev.map(s => s.id === id ? { ...s, completed: !s.completed } : s))
+
+  const toggleStep = async (stepId: string) => {
+    const step = steps.find(s => s.id === stepId)
+    if (!step || !journey) return
+    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: !s.completed } : s))
+    const token = await getToken()
+    if (token) {
+      try {
+        if (step.completed) await markStepIncomplete(journey.id, stepId, token)
+        else await markStepComplete(journey.id, stepId, token)
+      } catch {
+        setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: step.completed } : s))
+      }
+    }
+  }
 
   const completed = steps.filter(s => s.completed).length
   const progress = steps.length > 0 ? Math.round((completed / steps.length) * 100) : 0
