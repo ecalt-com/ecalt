@@ -1,7 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import firebase_admin
 from app.core.config import settings
 from app.api.v1.router import api_router
+
+if settings.FIREBASE_PROJECT_ID:
+    firebase_admin.initialize_app(options={"projectId": settings.FIREBASE_PROJECT_ID})
 
 _DESCRIPTION = """
 ## ECALT — Curiosity Engine API

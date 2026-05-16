@@ -5,11 +5,13 @@ import Navigation from '../components/Navigation'
 import CuriosityInput from '../components/CuriosityInput'
 import StepNode from '../components/StepNode'
 import { exploreQuestion } from '../lib/api'
+import { useAuth } from '../lib/AuthContext'
 import type { Journey, JourneyStep } from '../lib/types'
 
 export default function Explore() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
+  const { user, loading: authLoading, getToken } = useAuth()
   const [journey, setJourney] = useState<Journey | null>(null)
   const [steps, setSteps] = useState<JourneyStep[]>([])
   const [loading, setLoading] = useState(false)
@@ -17,16 +19,23 @@ export default function Explore() {
 
   const q = searchParams.get('q') || ''
 
+  // Redirect guests to home — explore requires authentication
   useEffect(() => {
-    if (q) fetchJourney(q)
-  }, [q])
+    if (!authLoading && !user) navigate('/')
+  }, [user, authLoading, navigate])
+
+  useEffect(() => {
+    if (q && user) fetchJourney(q)
+  }, [q, user])
 
   const fetchJourney = async (question: string) => {
     setLoading(true)
     setError(null)
     setJourney(null)
     try {
-      const { journey: result } = await exploreQuestion({ question, age_group: 'all' })
+      const token = await getToken()
+      if (!token) { navigate('/'); return }
+      const { journey: result } = await exploreQuestion({ question, age_group: 'all' }, token)
       setJourney(result)
       setSteps(result.steps)
     } catch (err) {

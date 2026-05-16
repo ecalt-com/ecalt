@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Zap, Menu, X } from 'lucide-react'
+import { Zap, Menu, X, LogOut } from 'lucide-react'
 import clsx from 'clsx'
 import ThemeToggle from './ThemeToggle'
+import { useAuth } from '../lib/AuthContext'
 
 const NAV_LINKS = [
   { to: '/explore', label: 'Explore' },
@@ -10,8 +11,21 @@ const NAV_LINKS = [
   { to: '/passport', label: 'Passport' },
 ]
 
+function UserAvatar({ photoURL, displayName }: { photoURL: string | null; displayName: string | null }) {
+  if (photoURL) {
+    return <img src={photoURL} alt={displayName ?? 'User'} className="w-7 h-7 rounded-full object-cover" referrerPolicy="no-referrer" />
+  }
+  const initials = (displayName ?? 'U').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
+  return (
+    <div className="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-white text-xs font-bold">
+      {initials}
+    </div>
+  )
+}
+
 export default function Navigation() {
   const { pathname } = useLocation()
+  const { user, signIn, signOut } = useAuth()
   const [open, setOpen] = useState(false)
 
   return (
@@ -46,12 +60,39 @@ export default function Navigation() {
             <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
             <ThemeToggle />
             <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
-            <Link to="/sign-in" className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors">
-              Sign In
-            </Link>
-            <Link to="/get-started" className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors ml-1">
-              Start Free
-            </Link>
+
+            {user ? (
+              <>
+                <div className="flex items-center gap-2 px-2">
+                  <UserAvatar photoURL={user.photoURL} displayName={user.displayName} />
+                  <span className="text-sm text-slate-600 dark:text-slate-400 max-w-[120px] truncate">
+                    {user.displayName?.split(' ')[0] ?? user.email}
+                  </span>
+                </div>
+                <button
+                  onClick={signOut}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-all ml-1"
+                >
+                  <LogOut size={13} />
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={signIn}
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={signIn}
+                  className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors ml-1"
+                >
+                  Start Free
+                </button>
+              </>
+            )}
           </div>
 
           {/* Mobile controls */}
@@ -76,6 +117,17 @@ export default function Navigation() {
             className="absolute top-[68px] left-4 right-4 glass rounded-2xl p-3 shadow-xl border border-white/20 dark:border-slate-700/50"
             onClick={e => e.stopPropagation()}
           >
+            {/* User info when signed in */}
+            {user && (
+              <div className="flex items-center gap-3 px-4 py-3 mb-1 border-b border-slate-200/80 dark:border-slate-700/50">
+                <UserAvatar photoURL={user.photoURL} displayName={user.displayName} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{user.displayName}</p>
+                  <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-0.5">
               {NAV_LINKS.map(({ to, label }) => (
                 <Link
@@ -93,21 +145,32 @@ export default function Navigation() {
                 </Link>
               ))}
             </div>
+
             <div className="border-t border-slate-200/80 dark:border-slate-700/50 mt-2 pt-2 space-y-0.5">
-              <Link
-                to="/sign-in"
-                onClick={() => setOpen(false)}
-                className="flex items-center px-4 py-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors"
-              >
-                Sign In
-              </Link>
-              <Link
-                to="/get-started"
-                onClick={() => setOpen(false)}
-                className="flex items-center justify-center px-4 py-3 rounded-xl text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors"
-              >
-                Start Free
-              </Link>
+              {user ? (
+                <button
+                  onClick={() => { signOut(); setOpen(false) }}
+                  className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+                >
+                  <LogOut size={14} />
+                  Sign out
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => { signIn(); setOpen(false) }}
+                    className="flex items-center px-4 py-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors w-full"
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={() => { signIn(); setOpen(false) }}
+                    className="flex items-center justify-center px-4 py-3 rounded-xl text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors w-full"
+                  >
+                    Start Free
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>

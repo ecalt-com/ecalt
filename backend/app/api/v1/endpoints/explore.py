@@ -1,6 +1,7 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from app.models.schemas import ExploreRequest, ExploreResponse
 from app.services.ai_service import generate_journey
+from app.core.auth import get_required_user
 
 router = APIRouter()
 
@@ -11,7 +12,7 @@ router = APIRouter()
     summary="Generate a learning journey",
     response_description="AI-generated Journey based on the submitted question",
 )
-async def explore(request: ExploreRequest):
+async def explore(request: ExploreRequest, uid: str = Depends(get_required_user)):
     """
     Submit a curiosity question and receive a fully structured **Journey**.
 

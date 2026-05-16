@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
 import { ThemeProvider } from './lib/ThemeContext'
+import { AuthProvider } from './lib/AuthContext'
 import Home from './pages/Home'
 import Explore from './pages/Explore'
 import Journeys from './pages/Journeys'
@@ -12,6 +13,7 @@ import ComingSoon from './pages/ComingSoon'
 export default function App() {
   return (
     <ThemeProvider>
+      <AuthProvider>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/" element={<Home />} />
@@ -33,6 +35,7 @@ export default function App() {
           />
         </Routes>
       </BrowserRouter>
+      </AuthProvider>
       <Analytics />
       <SpeedInsights />
     </ThemeProvider>

@@ -1,6 +1,8 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional
 from app.models.schemas import SparkRequest, SparkResponse
 from app.services.spark_service import consume_spark, generate_spark
+from app.core.auth import get_optional_user
 
 router = APIRouter()
 
@@ -11,17 +13,22 @@ router = APIRouter()
     summary="Ask a curiosity question (free spark)",
     response_description="Short AI answer + proposed mission. Max 5 per session.",
 )
-async def spark(request: SparkRequest):
+async def spark(request: SparkRequest, uid: Optional[str] = Depends(get_optional_user)):
     """
     The free-tier curiosity engine.
 
     Uses **Claude Haiku** (minimal cost) to return a 2-3 sentence answer
     and a proposed 4-5 step learning mission.
 
-    Rate-limited to **5 sparks per session per hour**. Returns `429` when the
-    limit is reached — prompt the user to enroll for unlimited access.
+    Rate-limited to **5 sparks per session per hour**. Authenticated users
+    are keyed by Firebase uid; guests are keyed by session_id.
+    Returns `429` when the limit is reached.
     """
-    allowed, used, remaining = consume_spark(request.session_id)
+    key = uid or request.session_id
+    if not key:
+        raise HTTPException(status_code=400, detail="session_id required for unauthenticated requests")
+
+    allowed, used, remaining = consume_spark(key)
 
     if not allowed:
         raise HTTPException(

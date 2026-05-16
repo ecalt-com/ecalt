@@ -9,6 +9,7 @@ import clsx from 'clsx'
 import GateModal from '../components/GateModal'
 import Navigation from '../components/Navigation'
 import { askSpark, getSessionStatus } from '../lib/api'
+import { useAuth } from '../lib/AuthContext'
 import type { Mission, StepType } from '../lib/types'
 
 // ── Session ───────────────────────────────────────────────────────────────────
@@ -393,10 +394,10 @@ export default function Home() {
   const [phase, setPhase] = useState<Phase>({ kind: 'hero' })
   const [gateOpen, setGateOpen] = useState(false)
   const [gateReason, setGateReason] = useState<'mission' | 'limit'>('mission')
-  // tracks spark count across multiple asks in the session
   const [sessionSparks, setSessionSparks] = useState<{ used: number; remaining: number } | null>(null)
   const sessionId = useMemo(getSessionId, [])
   const resultRef = useRef<HTMLDivElement>(null)
+  const { getToken } = useAuth()
 
   // restore spark count from server on mount (handles page refresh)
   useEffect(() => {
@@ -410,7 +411,8 @@ export default function Home() {
   const handleSpark = useCallback(async (question: string) => {
     setPhase({ kind: 'loading', question })
     try {
-      const res = await askSpark({ question, session_id: sessionId })
+      const token = await getToken()
+      const res = await askSpark({ question, session_id: sessionId }, token ?? undefined)
       setSessionSparks({ used: res.sparks_used, remaining: res.sparks_remaining })
       setPhase({ kind: 'sparked', question, answer: res.answer, mission: res.mission, sparksUsed: res.sparks_used, sparksRemaining: res.sparks_remaining })
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80)
@@ -424,7 +426,7 @@ export default function Home() {
         setPhase({ kind: 'error', question, message: e.message ?? 'Something went wrong.' })
       }
     }
-  }, [sessionId])
+  }, [sessionId, getToken])
 
   const currentMission = phase.kind === 'sparked' ? phase.mission : undefined
   const currentQuestion = phase.kind !== 'hero' ? phase.question : undefined

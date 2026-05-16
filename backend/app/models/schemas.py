@@ -87,7 +87,7 @@ class Mission(BaseModel):
 
 class SparkRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=300, description="Curiosity question (max 300 chars)")
-    session_id: str = Field(..., min_length=1, max_length=128, description="Client-generated UUID for rate limiting")
+    session_id: Optional[str] = Field(None, max_length=128, description="Client session UUID — used for guest rate limiting; ignored when auth token present")
 
 
 class SparkResponse(BaseModel):
