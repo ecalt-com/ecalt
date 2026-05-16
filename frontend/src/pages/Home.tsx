@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
+import { useState, useMemo, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Zap, ArrowRight, Loader2, Sparkles,
@@ -37,9 +37,10 @@ const CHIPS = [
 interface AskBoxProps {
   onSpark: (q: string) => void
   loading: boolean
+  autoFocus?: boolean
 }
 
-function AskBox({ onSpark, loading }: AskBoxProps) {
+function AskBox({ onSpark, loading, autoFocus = false }: AskBoxProps) {
   const [query, setQuery] = useState('')
 
   const submit = (q: string) => {
@@ -62,7 +63,7 @@ function AskBox({ onSpark, loading }: AskBoxProps) {
             value={query}
             onChange={e => setQuery(e.target.value)}
             placeholder="What do you want to understand or build?"
-            autoFocus
+            autoFocus={autoFocus}
             disabled={loading}
             className="flex-1 bg-transparent text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 text-base outline-none"
           />
@@ -377,8 +378,6 @@ export default function Home() {
   const sessionId = useMemo(getSessionId, [])
   const resultRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { window.scrollTo(0, 0) }, [])
-
   const hasResult = phase.kind !== 'hero'
 
   const handleSpark = useCallback(async (question: string) => {
@@ -447,7 +446,7 @@ export default function Home() {
 
           {/* Ask box */}
           <div className={clsx('mx-auto transition-all duration-300', hasResult ? 'max-w-2xl' : 'max-w-2xl')}>
-            <AskBox onSpark={handleSpark} loading={phase.kind === 'loading'} />
+            <AskBox onSpark={handleSpark} loading={phase.kind === 'loading'} autoFocus />
           </div>
         </div>
       </section>
