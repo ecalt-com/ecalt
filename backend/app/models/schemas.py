@@ -120,3 +120,10 @@ class ExploreResponse(BaseModel):
 class JourneysResponse(BaseModel):
     journeys: List[Journey] = Field(..., description="List of Journey objects")
     total: int = Field(..., description="Total number of journeys returned")
+
+
+class SessionStatus(BaseModel):
+    session_id: str
+    sparks_used: int = Field(..., ge=0)
+    sparks_remaining: int = Field(..., ge=0)
+    limit: int = Field(5, description="Total free sparks per session window")

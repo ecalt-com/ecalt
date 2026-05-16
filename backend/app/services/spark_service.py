@@ -9,7 +9,7 @@ import anthropic
 from app.core.config import settings
 from app.models.schemas import Mission, MissionStep
 
-# ── Lazy client ──────────────────────────────────────────────────────────────
+# ── Lazy client ───────────────────────────────────────────────────────────────
 
 _client: anthropic.AsyncAnthropic | None = None
 
@@ -21,7 +21,7 @@ def _get_client() -> anthropic.AsyncAnthropic:
     return _client
 
 
-# ── In-memory rate limiter ────────────────────────────────────────────────────
+# ── In-memory session store ───────────────────────────────────────────────────
 
 FREE_SPARK_LIMIT = 5
 WINDOW_MINUTES = 60
@@ -31,7 +31,10 @@ _sessions: dict[str, dict] = defaultdict(lambda: {"count": 0, "expires_at": None
 
 
 def consume_spark(session_id: str) -> tuple[bool, int, int]:
-    """Return (allowed, sparks_used, sparks_remaining)."""
+    """
+    Attempt to consume one spark for the session.
+    Returns (allowed, sparks_used, sparks_remaining).
+    """
     now = datetime.now(timezone.utc)
     with _lock:
         s = _sessions[session_id]
@@ -45,32 +48,47 @@ def consume_spark(session_id: str) -> tuple[bool, int, int]:
         return True, s["count"], remaining
 
 
+def get_session_status(session_id: str) -> tuple[int, int]:
+    """
+    Read spark count without consuming one.
+    Returns (sparks_used, sparks_remaining).
+    """
+    now = datetime.now(timezone.utc)
+    with _lock:
+        s = _sessions[session_id]
+        if s["expires_at"] is None or now > s["expires_at"]:
+            return 0, FREE_SPARK_LIMIT
+        used = min(s["count"], FREE_SPARK_LIMIT)
+        return used, max(0, FREE_SPARK_LIMIT - used)
+
+
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
 _SYSTEM = """\
-You are ECALT's curiosity engine. Give a SHORT vivid answer then propose a learning mission.
+You are ECALT's curiosity engine. Your job: give a SHORT vivid answer, then propose a mission.
 
-Return ONLY valid JSON — no markdown, no extra text:
+Return ONLY a valid JSON object. No markdown, no explanation, no extra text — just the JSON.
+
 {
-  "answer": "2-3 sentences. Start with a surprising fact or analogy. NOT textbook tone.",
+  "answer": "EXACTLY 2-3 sentences. Under 120 words. Open with a concrete fact, number, or analogy that surprises the learner. Never start with 'I' or 'Sure'. Sound like a curious friend, not a textbook.",
   "mission": {
-    "title": "Mission title (max 7 words)",
-    "tagline": "One sentence that makes the learner itch to start",
-    "category": "biology|physics|math|tech|history|arts|finance|language|engineering|psychology",
-    "difficulty": "beginner|intermediate|advanced",
+    "title": "Action-packed mission title (max 7 words)",
+    "tagline": "One sentence that makes the learner itch to start — what they'll be able to DO",
+    "category": "one of: biology|physics|math|tech|history|arts|finance|language|engineering|psychology",
+    "difficulty": "one of: beginner|intermediate|advanced",
     "estimated_minutes": 30,
-    "icon": "single emoji that represents this topic",
+    "icon": "single emoji representing the topic",
     "steps": [
-      {"title": "Step title (action-oriented)", "type": "concept|practice|challenge|explore", "minutes": 10}
+      {"title": "Step title — start with a verb (Build, Decode, Wire, Map...)", "type": "concept|practice|challenge|explore", "minutes": 10}
     ]
   }
 }
 
-Rules:
-- Answer: 2-3 sentences ONLY. Be vivid and concrete — surprise them.
-- Mission: exactly 4-5 steps that build naturally from the question.
-- Step titles must be action-oriented ("Build your first...", "Decode the...", not "Learn about...").
-- estimated_minutes must equal the sum of all step minutes.
+Strict rules:
+- answer: 2-3 sentences, ≤ 120 words. Vivid, concrete, surprising. No filler phrases.
+- mission.steps: exactly 4-5 steps that progress logically from the question.
+- estimated_minutes must equal the exact sum of all step minutes.
+- Every step title must start with an action verb.
 """
 
 
@@ -79,19 +97,23 @@ Rules:
 async def generate_spark(question: str) -> tuple[str, Mission]:
     response = await _get_client().messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=700,
+        max_tokens=750,
         system=_SYSTEM,
         messages=[{"role": "user", "content": f"Question: {question}"}],
     )
 
     raw = response.content[0].text.strip()
-    start, end = raw.find("{"), raw.rfind("}") + 1
+    start = raw.find("{")
+    end = raw.rfind("}") + 1
     if start == -1 or end == 0:
         raise ValueError("AI returned an unexpected response format")
 
-    data = json.loads(raw[start:end])
-    m = data["mission"]
+    try:
+        data = json.loads(raw[start:end])
+    except json.JSONDecodeError as e:
+        raise ValueError(f"AI returned invalid JSON: {e}")
 
+    m = data["mission"]
     steps = [
         MissionStep(title=s["title"], type=s["type"], minutes=int(s["minutes"]))
         for s in m["steps"]

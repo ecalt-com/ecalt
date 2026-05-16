@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useCallback } from 'react'
+import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Zap, ArrowRight, Loader2, Sparkles,
@@ -8,7 +8,7 @@ import {
 import clsx from 'clsx'
 import GateModal from '../components/GateModal'
 import Navigation from '../components/Navigation'
-import { askSpark } from '../lib/api'
+import { askSpark, getSessionStatus } from '../lib/api'
 import type { Mission, StepType } from '../lib/types'
 
 // ── Session ───────────────────────────────────────────────────────────────────
@@ -397,6 +397,13 @@ export default function Home() {
   const [sessionSparks, setSessionSparks] = useState<{ used: number; remaining: number } | null>(null)
   const sessionId = useMemo(getSessionId, [])
   const resultRef = useRef<HTMLDivElement>(null)
+
+  // restore spark count from server on mount (handles page refresh)
+  useEffect(() => {
+    getSessionStatus(sessionId)
+      .then(s => { if (s.sparks_used > 0) setSessionSparks({ used: s.sparks_used, remaining: s.sparks_remaining }) })
+      .catch(() => {})
+  }, [sessionId])
 
   const hasResult = phase.kind !== 'hero'
 

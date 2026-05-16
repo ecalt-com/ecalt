@@ -68,6 +68,15 @@ export interface SparkResponse {
   sparks_remaining: number
 }
 
+// ── Session ───────────────────────────────────────────────────────────────────
+
+export interface SessionStatus {
+  session_id: string
+  sparks_used: number
+  sparks_remaining: number
+  limit: number
+}
+
 // ── Passport ──────────────────────────────────────────────────────────────────
 
 export interface CapabilityEntry {

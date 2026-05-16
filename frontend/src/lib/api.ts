@@ -1,4 +1,5 @@
-import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse } from './types'
+import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus } from './types'
+
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -21,6 +22,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const askSpark = (body: SparkRequest): Promise<SparkResponse> =>
   request('/api/v1/spark', { method: 'POST', body: JSON.stringify(body) })
+
+export const getSessionStatus = (sessionId: string): Promise<SessionStatus> =>
+  request(`/api/v1/session/${encodeURIComponent(sessionId)}`)
 
 export const exploreQuestion = (body: ExploreRequest): Promise<{ journey: Journey }> =>
   request('/api/v1/explore', { method: 'POST', body: JSON.stringify(body) })
