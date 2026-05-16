@@ -694,7 +694,7 @@ export default function Home() {
                   <Zap size={10} className="text-white" fill="currentColor" />
                 </div>
                 <span className="font-semibold text-slate-600 dark:text-slate-400">ECALT</span>
-                <span>© 2025</span>
+                <span>© {new Date().getFullYear()}</span>
               </div>
               <div className="flex items-center gap-6">
                 {['Privacy', 'Terms', 'Parents', 'Contact'].map(l => (
