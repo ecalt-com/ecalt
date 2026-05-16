@@ -1,7 +1,10 @@
 import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus } from './types'
 
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+// In production, Vercel rewrites /api/* → Railway (no env var needed, no mixed-content).
+// In local dev, the Vite proxy forwards /api/* → localhost:8000.
+// VITE_API_URL can still override both (e.g. to hit Railway directly from dev).
+const BASE = import.meta.env.VITE_API_URL || ''
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
