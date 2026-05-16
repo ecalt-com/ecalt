@@ -1,4 +1,3 @@
-import json
 import logging
 import time
 import uuid
@@ -9,7 +8,10 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.limiter import limiter
+from app.core.logging_config import setup_logging
 from app.api.v1.router import api_router
+
+setup_logging(settings.LOG_LEVEL)
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
@@ -81,26 +83,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+_req_log = logging.getLogger("ecalt.request")
+
+
 @app.middleware("http")
 async def request_middleware(request: Request, call_next):
     request_id = str(uuid.uuid4())[:8]
     request.state.request_id = request_id
     start = time.perf_counter()
+
     response = await call_next(request)
+
     ms = round((time.perf_counter() - start) * 1000, 1)
-    logging.info(json.dumps({
+    ctx = {
         "request_id": request_id,
         "method": request.method,
         "path": request.url.path,
         "status": response.status_code,
         "duration_ms": ms,
-    }))
+    }
+    if response.status_code >= 500:
+        _req_log.error("server error", extra=ctx)
+    elif response.status_code >= 400:
+        _req_log.warning("client error", extra=ctx)
+    else:
+        _req_log.info("ok", extra=ctx)
+
     response.headers["X-Request-Id"] = request_id
     return response
 
+
 app.include_router(api_router, prefix="/api/v1")
 
-# Vercel rewrite /sitemap.xml → /api/v1/sitemap
+
 @app.get("/sitemap.xml", include_in_schema=False)
 async def sitemap_redirect():
     from app.api.v1.endpoints.sitemap import sitemap

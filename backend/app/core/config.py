@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     DB_PASSWORD: str = ""
 
     SENTRY_DSN: str = ""
+    LOG_LEVEL: str = "INFO"
 
     @property
     def allowed_origins(self) -> list[str]:

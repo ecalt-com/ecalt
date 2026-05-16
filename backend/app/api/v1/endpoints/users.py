@@ -50,7 +50,7 @@ async def get_me(uid: str = Depends(get_required_user)):
             cur.execute("SELECT * FROM users WHERE uid = %s", (uid,))
             row = cur.fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="User not found")
+        return UserProfile(uid=uid)
     return UserProfile(**dict(row))
 
 

@@ -1,4 +1,5 @@
 import json
+import logging
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from app.models.schemas import ExploreRequest, ExploreResponse
 from app.services.ai_service import generate_journey, warm_journey_steps
@@ -6,6 +7,7 @@ from app.core.auth import get_required_user
 from app.core.database import get_db
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -33,8 +35,10 @@ async def explore(
             age_group=request.age_group or "all",
         )
     except ValueError as e:
+        logger.warning("explore upstream error", extra={"question": request.question[:120], "error": str(e)})
         raise HTTPException(status_code=502, detail=str(e))
     except Exception:
+        logger.exception("explore generation failed", extra={"question": request.question[:120]})
         raise HTTPException(status_code=500, detail="Failed to generate journey. Please try again.")
 
     # Persist to DB (non-fatal if it fails)
@@ -59,7 +63,7 @@ async def explore(
                     ),
                 )
     except Exception:
-        pass
+        logger.exception("failed to persist journey to db", extra={"journey_id": journey.id})
 
     # Pre-warm step content in the background so users don't wait on first expand
     background_tasks.add_task(

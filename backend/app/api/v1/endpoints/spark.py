@@ -1,3 +1,4 @@
+import logging
 from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional
 from app.models.schemas import SparkRequest, SparkResponse
@@ -6,6 +7,7 @@ from app.core.auth import get_optional_user
 from app.core.limiter import limiter
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -46,8 +48,10 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
     try:
         answer, mission = await generate_spark(body.question.strip())
     except ValueError as e:
+        logger.warning("spark upstream error", extra={"question": body.question[:120], "error": str(e)})
         raise HTTPException(status_code=502, detail=str(e))
     except Exception:
+        logger.exception("spark generation failed", extra={"question": body.question[:120]})
         raise HTTPException(status_code=500, detail="Spark generation failed — please try again.")
 
     return SparkResponse(

@@ -35,6 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const [needsOnboarding, setNeedsOnboarding] = useState(false)
   const userRef = useRef<User | null>(firebaseAuth.currentUser)
+  const signingIn = useRef(false)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(firebaseAuth, u => {
@@ -46,7 +47,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const signIn = async () => {
-    const result = await signInWithPopup(firebaseAuth, googleProvider)
+    if (signingIn.current) return
+    signingIn.current = true
+    let result
+    try {
+      result = await signInWithPopup(firebaseAuth, googleProvider)
+    } finally {
+      signingIn.current = false
+    }
     try {
       const token = await result.user.getIdToken()
       const res = await fetch('/api/v1/users', {
