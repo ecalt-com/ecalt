@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { X, Zap, Lock, ArrowRight } from 'lucide-react'
+import { X, Zap, Lock, ArrowRight, Check } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import type { Mission } from '../lib/types'
 
@@ -27,12 +27,11 @@ export default function GateModal({ isOpen, reason, mission, question, onClose }
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!email.trim()) return
-    // TODO: wire up real auth/waitlist API
     setSubmitted(true)
     setTimeout(() => {
       onClose()
       if (question) navigate(`/explore?q=${encodeURIComponent(question)}`)
-    }, 1800)
+    }, 1600)
   }
 
   const handleGuest = () => {
@@ -43,85 +42,100 @@ export default function GateModal({ isOpen, reason, mission, question, onClose }
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm" onClick={onClose} />
 
-      {/* Modal */}
-      <div className="relative glass rounded-3xl p-8 w-full max-w-md shadow-2xl animate-in">
-        <button
-          onClick={onClose}
-          className="absolute top-5 right-5 p-1.5 rounded-lg text-slate-600 hover:text-slate-300 hover:bg-slate-800/50 transition-all"
-        >
-          <X size={16} />
-        </button>
+      <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md animate-in overflow-hidden">
+        {/* Top accent bar */}
+        <div className="h-1 bg-gradient-to-r from-violet-500 to-violet-600" />
 
-        {/* Icon */}
-        <div className="flex justify-center mb-6">
-          <div className="w-14 h-14 rounded-2xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center">
-            {reason === 'limit'
-              ? <Lock size={24} className="text-violet-400" />
-              : <Zap size={24} className="text-violet-400" fill="currentColor" />
-            }
-          </div>
-        </div>
+        <div className="p-8">
+          <button
+            onClick={onClose}
+            className="absolute top-5 right-5 p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-all"
+          >
+            <X size={16} />
+          </button>
 
-        {submitted ? (
-          <div className="text-center py-4">
-            <div className="text-4xl mb-3">✓</div>
-            <h2 className="text-xl font-bold mb-2">You're on the list!</h2>
-            <p className="text-slate-500 text-sm">Taking you to your mission…</p>
-          </div>
-        ) : (
-          <>
-            <h2 className="text-xl font-bold text-center mb-2">
-              {reason === 'limit' ? 'Free sparks used up' : 'Your mission is ready'}
-            </h2>
-
-            <p className="text-slate-400 text-sm text-center mb-2 leading-relaxed">
+          {/* Icon */}
+          <div className="flex justify-center mb-5">
+            <div className="w-12 h-12 rounded-2xl bg-violet-50 border border-violet-100 flex items-center justify-center">
               {reason === 'limit'
-                ? 'Create a free account to unlock unlimited sparks, save your learning path, and earn capability badges.'
-                : 'Save your progress, unlock the full mission, and get a Capability Passport as you level up.'}
-            </p>
-
-            {mission && (
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-violet-600/10 border border-violet-500/20 mb-6">
-                <span className="text-2xl">{mission.icon}</span>
-                <div>
-                  <p className="text-xs text-violet-400 font-medium mb-0.5">Your mission</p>
-                  <p className="text-sm text-slate-200 font-semibold leading-snug">{mission.title}</p>
-                </div>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-3 mb-4">
-              <input
-                type="email"
-                placeholder="your@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                required
-                className="w-full glass rounded-xl px-4 py-3 text-sm text-slate-200 placeholder:text-slate-600 outline-none focus:border-violet-500/50"
-              />
-              <button type="submit" className="w-full btn-primary py-3 flex items-center justify-center gap-2">
-                Create free account
-                <ArrowRight size={15} />
-              </button>
-            </form>
-
-            <div className="relative flex items-center gap-3 mb-4">
-              <div className="flex-1 h-px bg-slate-800" />
-              <span className="text-xs text-slate-600">or</span>
-              <div className="flex-1 h-px bg-slate-800" />
+                ? <Lock size={22} className="text-violet-600" />
+                : <Zap size={22} className="text-violet-600" fill="currentColor" />
+              }
             </div>
+          </div>
 
-            <button
-              onClick={handleGuest}
-              className="w-full text-sm text-slate-500 hover:text-slate-300 py-2 transition-colors"
-            >
-              Continue as guest (no save)
-            </button>
-          </>
-        )}
+          {submitted ? (
+            <div className="text-center py-4">
+              <div className="w-12 h-12 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto mb-3">
+                <Check size={22} className="text-emerald-600" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 mb-1">You're on the list!</h2>
+              <p className="text-slate-500 text-sm">Taking you to your mission…</p>
+            </div>
+          ) : (
+            <>
+              <h2 className="text-xl font-bold text-slate-900 text-center mb-2">
+                {reason === 'limit' ? 'Free sparks used up' : 'Your mission is ready'}
+              </h2>
+              <p className="text-slate-500 text-sm text-center mb-5 leading-relaxed">
+                {reason === 'limit'
+                  ? 'Create a free account to unlock unlimited sparks, save your progress, and earn capability badges.'
+                  : 'Save your path, unlock the full mission, and build your Capability Passport as you grow.'}
+              </p>
+
+              {/* Mission preview */}
+              {mission && (
+                <div className="flex items-center gap-3 p-3 rounded-xl bg-violet-50 border border-violet-100 mb-5">
+                  <span className="text-2xl">{mission.icon}</span>
+                  <div>
+                    <p className="text-xs text-violet-600 font-medium mb-0.5">Your mission</p>
+                    <p className="text-sm text-slate-800 font-semibold leading-snug">{mission.title}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* What you get */}
+              <ul className="space-y-2 mb-6">
+                {['Unlimited sparks', 'Full mission access', 'Capability Passport'].map(item => (
+                  <li key={item} className="flex items-center gap-2 text-sm text-slate-600">
+                    <Check size={14} className="text-emerald-500 shrink-0" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+
+              <form onSubmit={handleSubmit} className="space-y-3 mb-4">
+                <input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-500/10"
+                />
+                <button type="submit" className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2">
+                  Create free account
+                  <ArrowRight size={14} />
+                </button>
+              </form>
+
+              <div className="relative flex items-center gap-3 mb-4">
+                <div className="flex-1 h-px bg-slate-100" />
+                <span className="text-xs text-slate-400">or</span>
+                <div className="flex-1 h-px bg-slate-100" />
+              </div>
+
+              <button
+                onClick={handleGuest}
+                className="w-full text-sm text-slate-400 hover:text-slate-600 py-2 transition-colors"
+              >
+                Continue as guest (progress won't save)
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )

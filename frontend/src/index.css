@@ -6,37 +6,102 @@
 
 html { scroll-behavior: smooth; }
 
-body {
-  background-color: #080b14;
-  color: #f1f5f9;
-  font-family: 'Inter', system-ui, sans-serif;
-  -webkit-font-smoothing: antialiased;
+/* ── Theme tokens ────────────────────────────────────────────────────────────── */
+:root {
+  --bg:              #ffffff;
+  --surface:         #f8fafc;
+  --card-bg:         #ffffff;
+  --card-border:     #e2e8f0;
+  --t1:              #0f172a;
+  --t2:              #475569;
+  --t3:              #94a3b8;
+  --nav-bg:          rgba(255, 255, 255, 0.92);
+  --nav-border:      rgba(226, 232, 240, 0.8);
+  --scroll-thumb:    #cbd5e1;
+  --scroll-thumb-h:  #94a3b8;
+  --shimmer1:        #f1f5f9;
+  --shimmer2:        #e2e8f0;
 }
 
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: #080b14; }
-::-webkit-scrollbar-thumb { background: #1e2d4a; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #2d4470; }
+.dark {
+  --bg:              #080b14;
+  --surface:         #0f1629;
+  --card-bg:         rgba(15, 22, 41, 0.7);
+  --card-border:     rgba(30, 45, 74, 0.6);
+  --t1:              #f1f5f9;
+  --t2:              #94a3b8;
+  --t3:              #475569;
+  --nav-bg:          rgba(8, 11, 20, 0.88);
+  --nav-border:      rgba(30, 45, 74, 0.7);
+  --scroll-thumb:    #1e2d4a;
+  --scroll-thumb-h:  #2d4470;
+  --shimmer1:        #0f1629;
+  --shimmer2:        #1e2d4a;
+}
 
+body {
+  background-color: var(--bg);
+  color: var(--t1);
+  font-family: 'Inter', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+::-webkit-scrollbar        { width: 6px; }
+::-webkit-scrollbar-track  { background: var(--bg); }
+::-webkit-scrollbar-thumb  { background: var(--scroll-thumb); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-h); }
+
+/* ── Component classes ───────────────────────────────────────────────────────── */
 @layer components {
+  /* Light-default glass: white card / dark-mode: translucent dark */
   .glass {
-    background: rgba(15, 22, 41, 0.75);
+    background: rgba(255, 255, 255, 0.88);
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }
+
+  .dark .glass {
+    background: rgba(15, 22, 41, 0.75);
     border: 1px solid rgba(30, 45, 74, 0.7);
   }
 
   .glass-card {
-    background: rgba(15, 22, 41, 0.6);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    border: 1px solid rgba(30, 45, 74, 0.5);
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
 
   .glass-card:hover {
+    border-color: rgba(139, 92, 246, 0.3);
+    box-shadow: 0 8px 32px rgba(139, 92, 246, 0.1);
+  }
+
+  .dark .glass-card {
+    background: rgba(15, 22, 41, 0.6);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(30, 45, 74, 0.5);
+    box-shadow: none;
+  }
+
+  .dark .glass-card:hover {
     border-color: rgba(139, 92, 246, 0.35);
     box-shadow: 0 8px 32px rgba(139, 92, 246, 0.12);
+  }
+
+  .light-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05);
+  }
+
+  .dark .light-card {
+    background: rgba(15, 22, 41, 0.7);
+    border: 1px solid rgba(30, 45, 74, 0.5);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   }
 
   .gradient-text {
@@ -52,11 +117,12 @@ body {
     @apply px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 active:bg-violet-700
            text-white font-semibold text-sm transition-all duration-200
            disabled:opacity-40 disabled:cursor-not-allowed
-           focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-[#080b14];
+           focus:outline-none focus:ring-2 focus:ring-violet-500 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-[#080b14];
   }
 
   .btn-ghost {
-    @apply px-4 py-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/50
+    @apply px-4 py-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100
+           dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/50
            transition-all duration-200 text-sm font-medium;
   }
 
@@ -65,8 +131,18 @@ body {
     background: linear-gradient(to bottom, #8b5cf6, #22d3ee);
     opacity: 0.3;
   }
+
+  .hero-dot-grid {
+    background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+
+  .dark .hero-dot-grid {
+    background-image: radial-gradient(circle, rgba(71, 85, 105, 0.5) 1px, transparent 1px);
+  }
 }
 
+/* ── Utilities ───────────────────────────────────────────────────────────────── */
 @layer utilities {
   .animate-in {
     animation: slide-up 0.55s ease-out forwards;
@@ -77,8 +153,16 @@ body {
   .delay-200 { animation-delay: 200ms; }
   .delay-300 { animation-delay: 300ms; }
 
+  /* Light shimmer (used in Home skeleton) */
+  .shimmer-light {
+    background: linear-gradient(90deg, var(--shimmer1) 25%, var(--shimmer2) 50%, var(--shimmer1) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 2.5s linear infinite;
+  }
+
+  /* Dark/page shimmer (used in Explore/Journeys/Journey skeletons) */
   .shimmer-bg {
-    background: linear-gradient(90deg, #0f1629 25%, #1e2d4a 50%, #0f1629 75%);
+    background: linear-gradient(90deg, var(--shimmer1) 25%, var(--shimmer2) 50%, var(--shimmer1) 75%);
     background-size: 200% 100%;
     animation: shimmer 2.5s linear infinite;
   }

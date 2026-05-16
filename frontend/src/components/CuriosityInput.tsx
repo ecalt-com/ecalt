@@ -55,7 +55,7 @@ export default function CuriosityInput({ onExplore, loading = false, initialValu
           <div className="absolute -inset-px rounded-2xl bg-gradient-to-r from-violet-600/40 via-cyan-500/40 to-violet-600/40 opacity-0 group-focus-within:opacity-100 blur-sm transition-opacity duration-300" />
           <div className="relative glass rounded-2xl">
             <div className="flex items-center gap-3 px-5 py-4 md:py-5">
-              <Sparkles size={22} className="text-violet-400 shrink-0 group-focus-within:text-violet-300 transition-colors" />
+              <Sparkles size={22} className="text-violet-500 dark:text-violet-400 shrink-0 group-focus-within:text-violet-600 dark:group-focus-within:text-violet-300 transition-colors" />
               <input
                 ref={inputRef}
                 type="text"
@@ -64,10 +64,10 @@ export default function CuriosityInput({ onExplore, loading = false, initialValu
                 placeholder={PLACEHOLDERS[phIdx]}
                 disabled={loading}
                 autoFocus
-                className={`flex-1 bg-transparent text-base md:text-lg text-slate-100 outline-none
+                className={`flex-1 bg-transparent text-base md:text-lg text-slate-800 dark:text-slate-100 outline-none
                   placeholder:transition-opacity placeholder:duration-300
                   ${fading ? 'placeholder:opacity-0' : 'placeholder:opacity-100'}
-                  placeholder:text-slate-600`}
+                  placeholder:text-slate-400 dark:placeholder:text-slate-600`}
               />
               <button type="submit" disabled={loading || !query.trim()} className="shrink-0 btn-primary flex items-center gap-2 py-2.5">
                 {loading
@@ -85,9 +85,10 @@ export default function CuriosityInput({ onExplore, loading = false, initialValu
           <button
             key={label}
             onClick={() => { setQuery(label); inputRef.current?.focus() }}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm border border-slate-700/50
-              bg-slate-800/30 text-slate-400 hover:text-slate-200 hover:border-violet-500/40
-              hover:bg-violet-500/10 transition-all duration-200"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full text-sm border
+              border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-violet-300 hover:bg-violet-50
+              dark:border-slate-700/50 dark:bg-slate-800/30 dark:text-slate-400 dark:hover:text-slate-200 dark:hover:border-violet-500/40 dark:hover:bg-violet-500/10
+              transition-all duration-200"
           >
             <span>{emoji}</span><span>{label}</span>
           </button>

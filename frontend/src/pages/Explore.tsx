@@ -45,8 +45,8 @@ export default function Explore() {
   return (
     <>
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-violet-600/6 rounded-full blur-[120px] animate-glow-pulse" />
-        <div className="absolute bottom-1/4 left-1/4 w-80 h-80 bg-cyan-500/6 rounded-full blur-[100px] animate-glow-pulse" style={{ animationDelay: '2s' }} />
+        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-violet-500/5 rounded-full blur-[120px] animate-glow-pulse" />
+        <div className="absolute bottom-1/4 left-1/4 w-80 h-80 bg-cyan-500/5 rounded-full blur-[100px] animate-glow-pulse" style={{ animationDelay: '2s' }} />
       </div>
 
       <Navigation />
@@ -55,7 +55,7 @@ export default function Explore() {
         <div className="max-w-3xl mx-auto">
           <button
             onClick={() => navigate('/')}
-            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 mb-8 transition-colors group"
+            className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 mb-8 transition-colors group"
           >
             <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
             Back home
@@ -63,7 +63,7 @@ export default function Explore() {
 
           {!loading && !journey && (
             <div className="mb-12">
-              <h1 className="text-3xl font-bold mb-3">What do you want to learn?</h1>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-slate-100 mb-3">What do you want to learn?</h1>
               <p className="text-slate-500 mb-8">Ask anything — ECALT will build your learning path.</p>
               <CuriosityInput onExplore={goExplore} initialValue={q} />
             </div>
@@ -88,13 +88,13 @@ export default function Explore() {
                   </div>
                 ))}
               </div>
-              <p className="text-center text-sm text-slate-600 mt-4">✦ Building your learning journey…</p>
+              <p className="text-center text-sm text-slate-500 mt-4">✦ Building your learning journey…</p>
             </div>
           )}
 
           {error && (
-            <div className="glass rounded-2xl p-8 text-center border border-rose-500/20">
-              <p className="text-rose-400 mb-4">{error}</p>
+            <div className="glass rounded-2xl p-8 text-center border border-rose-200 dark:border-rose-500/20">
+              <p className="text-rose-600 dark:text-rose-400 mb-4">{error}</p>
               <button onClick={() => fetchJourney(q)} className="btn-primary">Try again</button>
             </div>
           )}
@@ -105,24 +105,24 @@ export default function Explore() {
                 <div className="flex items-start gap-4 mb-4">
                   <span className="text-5xl">{journey.icon}</span>
                   <div>
-                    <p className="text-xs text-slate-600 mb-1 uppercase tracking-wider">Learning Journey</p>
-                    <h1 className="text-2xl md:text-3xl font-bold leading-tight">{journey.title}</h1>
+                    <p className="text-xs text-slate-500 mb-1 uppercase tracking-wider">Learning Journey</p>
+                    <h1 className="text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 leading-tight">{journey.title}</h1>
                   </div>
                 </div>
-                <p className="text-slate-400 leading-relaxed mb-5">{journey.description}</p>
+                <p className="text-slate-500 leading-relaxed mb-5">{journey.description}</p>
 
                 <div className="flex flex-wrap gap-2 mb-5">
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border border-slate-700 bg-slate-800/50 text-slate-400">
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border border-slate-200 bg-slate-100/60 text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
                     <BookOpen size={11} />{journey.steps.length} steps
                   </span>
-                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border border-slate-700 bg-slate-800/50 text-slate-400">
+                  <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border border-slate-200 bg-slate-100/60 text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
                     <Clock size={11} />~{journey.estimated_hours}h
                   </span>
-                  <span className="px-3 py-1.5 rounded-full text-xs border border-violet-500/30 bg-violet-500/10 text-violet-300 capitalize">
+                  <span className="px-3 py-1.5 rounded-full text-xs border border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300 capitalize">
                     {journey.difficulty}
                   </span>
                   {journey.tags.map(tag => (
-                    <span key={tag} className="px-3 py-1.5 rounded-full text-xs border border-slate-800 bg-slate-900 text-slate-600">#{tag}</span>
+                    <span key={tag} className="px-3 py-1.5 rounded-full text-xs border border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-600">#{tag}</span>
                   ))}
                 </div>
 
@@ -132,7 +132,7 @@ export default function Explore() {
                       <span>{completed} of {steps.length} steps complete</span>
                       <span>{progress}%</span>
                     </div>
-                    <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
                       <div className="h-full bg-gradient-to-r from-violet-600 to-cyan-500 rounded-full transition-all duration-500" style={{ width: `${progress}%` }} />
                     </div>
                   </div>
@@ -147,16 +147,16 @@ export default function Explore() {
               </div>
 
               <div className="flex items-center gap-3 mb-8">
-                <div className="flex-1 h-px bg-slate-800" />
-                <span className="text-xs text-slate-600 uppercase tracking-widest">Your Path</span>
-                <div className="flex-1 h-px bg-slate-800" />
+                <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+                <span className="text-xs text-slate-400 uppercase tracking-widest">Your Path</span>
+                <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
               </div>
 
               {steps.map((step, i) => (
                 <StepNode key={step.id} step={step} index={i} isLast={i === steps.length - 1} onToggle={toggleStep} />
               ))}
 
-              <div className="mt-16 pt-8 border-t border-slate-800/50">
+              <div className="mt-16 pt-8 border-t border-slate-200 dark:border-slate-800/50">
                 <p className="text-center text-slate-500 text-sm mb-6">Curious about something else?</p>
                 <CuriosityInput onExplore={goExplore} />
               </div>

@@ -31,26 +31,26 @@ export default function Journeys() {
   return (
     <>
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-violet-600/6 rounded-full blur-[120px] animate-glow-pulse" />
+        <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-violet-500/5 rounded-full blur-[120px] animate-glow-pulse" />
       </div>
 
       <Navigation />
 
       <div className="relative pt-28 pb-20 px-4 max-w-7xl mx-auto">
         <div className="mb-10">
-          <h1 className="text-4xl font-bold mb-2">All Journeys</h1>
+          <h1 className="text-4xl font-bold text-slate-900 dark:text-slate-100 mb-2">All Journeys</h1>
           <p className="text-slate-500">Explore our curated learning paths across every topic</p>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 mb-10">
           <div className="relative flex-1 max-w-md">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600" />
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-600" />
             <input
               type="text"
               placeholder="Search journeys…"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full glass rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-200 placeholder:text-slate-600 outline-none"
+              className="w-full glass rounded-xl pl-9 pr-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 outline-none"
             />
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -59,7 +59,9 @@ export default function Journeys() {
                 key={f}
                 onClick={() => setFilter(f)}
                 className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  filter === f ? 'bg-violet-600 text-white' : 'glass text-slate-400 hover:text-white'
+                  filter === f
+                    ? 'bg-violet-600 text-white'
+                    : 'glass text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
                 }`}
               >
                 {f}
@@ -77,10 +79,10 @@ export default function Journeys() {
             {filtered.map(j => <JourneyCard key={j.id} journey={j} />)}
           </div>
         ) : (
-          <div className="text-center py-24 text-slate-600">
+          <div className="text-center py-24">
             <p className="text-4xl mb-4">🔍</p>
-            <p className="text-lg font-medium text-slate-400">No journeys found</p>
-            <p className="text-sm mt-1">Try a different search or filter</p>
+            <p className="text-lg font-medium text-slate-700 dark:text-slate-400">No journeys found</p>
+            <p className="text-sm text-slate-500 mt-1">Try a different search or filter</p>
           </div>
         )}
       </div>
