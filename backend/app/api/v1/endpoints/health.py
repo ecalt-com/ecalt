@@ -5,7 +5,7 @@ router = APIRouter()
 
 
 @router.get(
-    "/",
+    "",
     summary="Health check",
     response_description="Service liveness status with UTC timestamp",
 )

@@ -6,7 +6,7 @@ router = APIRouter()
 
 
 @router.post(
-    "/",
+    "",
     response_model=ExploreResponse,
     summary="Generate a learning journey",
     response_description="AI-generated Journey based on the submitted question",

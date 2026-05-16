@@ -130,7 +130,7 @@ _journey_map = {j.id: j for j in SAMPLE_JOURNEYS}
 
 
 @router.get(
-    "/",
+    "",
     response_model=JourneysResponse,
     summary="List all journeys",
     response_description="All available journeys with a total count",

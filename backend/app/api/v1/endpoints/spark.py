@@ -6,7 +6,7 @@ router = APIRouter()
 
 
 @router.post(
-    "/",
+    "",
     response_model=SparkResponse,
     summary="Ask a curiosity question (free spark)",
     response_description="Short AI answer + proposed mission. Max 5 per session.",
