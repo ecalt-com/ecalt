@@ -1,20 +1,59 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Clock, BookOpen, Share2 } from 'lucide-react'
+import { ArrowLeft, Clock, BookOpen, Share2, Award } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import StepNode from '../components/StepNode'
 import { getJourney, getProgress, markStepComplete, markStepIncomplete } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
+import { useToast } from '../lib/ToastContext'
+import { usePageTitle } from '../lib/usePageTitle'
 import type { Journey as JourneyType, JourneyStep } from '../lib/types'
+
+function CompletionOverlay({ journey, onDismiss }: { journey: JourneyType; onDismiss: () => void }) {
+  const navigate = useNavigate()
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      <div className="animate-celebration glass-card rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+        <div className="text-6xl mb-4">{journey.icon}</div>
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 text-xs font-semibold mb-4">
+          <Award size={12} />
+          Capability Earned
+        </div>
+        <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">Journey Complete!</h2>
+        <p className="text-sm text-slate-500 mb-6">
+          You've finished <span className="font-semibold text-slate-700 dark:text-slate-300">{journey.title}</span> and earned a capability badge.
+        </p>
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => navigate('/passport')}
+            className="btn-primary flex items-center justify-center gap-2"
+          >
+            <Award size={14} />
+            View Passport
+          </button>
+          <button
+            onClick={onDismiss}
+            className="btn-ghost text-sm"
+          >
+            Keep exploring
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function Journey() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user, getToken } = useAuth()
+  const { addToast } = useToast()
   const [journey, setJourney] = useState<JourneyType | null>(null)
+  usePageTitle(journey?.title)
   const [steps, setSteps] = useState<JourneyStep[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [showCompletion, setShowCompletion] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -44,8 +83,18 @@ export default function Journey() {
     const step = steps.find(s => s.id === stepId)
     if (!step || !id) return
 
-    // Optimistic update
-    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: !s.completed } : s))
+    const completing = !step.completed
+
+    // Optimistic update + check for journey completion
+    setSteps(prev => {
+      const updated = prev.map(s => s.id === stepId ? { ...s, completed: completing } : s)
+      if (completing && updated.every(s => s.completed)) {
+        setShowCompletion(true)
+      }
+      return updated
+    })
+
+    addToast(completing ? 'Step complete ✓' : 'Step unmarked')
 
     if (user) {
       const token = await getToken()
@@ -59,6 +108,7 @@ export default function Journey() {
         } catch {
           // Revert on failure
           setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: step.completed } : s))
+          addToast("Couldn't save — try again", 'error')
         }
       }
     }
@@ -169,6 +219,10 @@ export default function Journey() {
           </div>
         )}
       </div>
+
+      {showCompletion && journey && (
+        <CompletionOverlay journey={journey} onDismiss={() => setShowCompletion(false)} />
+      )}
     </>
   )
 }

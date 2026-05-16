@@ -4,11 +4,13 @@ import Navigation from '../components/Navigation'
 import JourneyCard from '../components/JourneyCard'
 import { getJourneys } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
+import { usePageTitle } from '../lib/usePageTitle'
 import type { Journey } from '../lib/types'
 
 const FILTERS = ['All', 'Beginner', 'Intermediate', 'Advanced']
 
 export default function Journeys() {
+  usePageTitle('Learning Journeys')
   const [journeys, setJourneys] = useState<Journey[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('All')

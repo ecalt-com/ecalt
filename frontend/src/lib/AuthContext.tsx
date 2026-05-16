@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import {
   onAuthStateChanged,
   signInWithPopup,
@@ -10,25 +10,34 @@ import { firebaseAuth, googleProvider } from './firebase'
 interface AuthContextValue {
   user: User | null
   loading: boolean
+  needsOnboarding: boolean
   signIn: () => Promise<void>
   signOut: () => Promise<void>
   getToken: () => Promise<string | null>
+  dismissOnboarding: () => void
 }
 
 const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: true,
+  needsOnboarding: false,
   signIn: async () => {},
   signOut: async () => {},
   getToken: async () => null,
+  dismissOnboarding: () => {},
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [needsOnboarding, setNeedsOnboarding] = useState(false)
+  // Keep a ref to the current user so getToken always sees the latest value
+  // without needing to be recreated on every user change.
+  const userRef = useRef<User | null>(null)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(firebaseAuth, u => {
+      userRef.current = u
       setUser(u)
       setLoading(false)
     })
@@ -37,10 +46,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signIn = async () => {
     const result = await signInWithPopup(firebaseAuth, googleProvider)
-    // Sync user to our DB on every sign-in (upsert is idempotent)
     try {
       const token = await result.user.getIdToken()
-      await fetch('/api/v1/users', {
+      const res = await fetch('/api/v1/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({
@@ -49,20 +57,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           photo_url: result.user.photoURL,
         }),
       })
+      if (res.ok) {
+        const profile = await res.json()
+        if (profile.onboarding_done === false) {
+          setNeedsOnboarding(true)
+        }
+      }
     } catch { /* non-critical */ }
   }
 
   const signOut = async () => {
     await firebaseSignOut(firebaseAuth)
+    setNeedsOnboarding(false)
   }
 
-  const getToken = async (): Promise<string | null> => {
-    if (!firebaseAuth.currentUser) return null
-    return firebaseAuth.currentUser.getIdToken()
-  }
+  // Use the ref so this function is stable and always returns a fresh token
+  // from the React-state-tracked user, not the Firebase singleton.
+  const getToken = useCallback(async (): Promise<string | null> => {
+    const u = userRef.current
+    if (!u) return null
+    try {
+      return await u.getIdToken()
+    } catch {
+      return null
+    }
+  }, [])
+
+  const dismissOnboarding = () => setNeedsOnboarding(false)
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, getToken }}>
+    <AuthContext.Provider value={{ user, loading, needsOnboarding, signIn, signOut, getToken, dismissOnboarding }}>
       {children}
     </AuthContext.Provider>
   )

@@ -6,9 +6,11 @@ import CuriosityInput from '../components/CuriosityInput'
 import StepNode from '../components/StepNode'
 import { exploreQuestion, markStepComplete, markStepIncomplete } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
+import { usePageTitle } from '../lib/usePageTitle'
 import type { Journey, JourneyStep } from '../lib/types'
 
 export default function Explore() {
+  usePageTitle('Explore')
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { user, loading: authLoading, getToken } = useAuth()

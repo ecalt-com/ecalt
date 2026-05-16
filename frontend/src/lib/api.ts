@@ -72,3 +72,17 @@ export interface StepContent {
 
 export const getStepContent = (journeyId: string, stepId: string, token?: string): Promise<StepContent> =>
   request(`/api/v1/journeys/${journeyId}/steps/${stepId}/content`, undefined, token)
+
+export interface UserProfile {
+  uid: string
+  email?: string
+  display_name?: string
+  photo_url?: string
+  onboarding_done: boolean
+}
+
+export const getUserProfile = (token: string): Promise<UserProfile> =>
+  request('/api/v1/users/me', undefined, token)
+
+export const completeOnboarding = (token: string): Promise<UserProfile> =>
+  request('/api/v1/users/me/onboarding', { method: 'PATCH' }, token)

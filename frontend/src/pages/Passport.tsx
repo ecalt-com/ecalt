@@ -4,8 +4,10 @@ import { Award, BookOpen, Flame, ArrowRight, Lock } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import { useAuth } from '../lib/AuthContext'
 import { getPassport, type PassportData } from '../lib/api'
+import { usePageTitle } from '../lib/usePageTitle'
 
 export default function Passport() {
+  usePageTitle('Capability Passport')
   const navigate = useNavigate()
   const { user, loading: authLoading, getToken } = useAuth()
   const [passport, setPassport] = useState<PassportData | null>(null)
