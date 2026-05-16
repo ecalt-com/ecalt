@@ -10,5 +10,8 @@ def get_supabase() -> Client:
     if _client is None:
         if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
             raise HTTPException(status_code=503, detail="Database not configured")
-        _client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+        try:
+            _client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+        except Exception as e:
+            raise HTTPException(status_code=503, detail=f"Database client error: {e}")
     return _client

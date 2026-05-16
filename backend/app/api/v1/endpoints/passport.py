@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from typing import Optional
 from app.core.auth import get_required_user
-from app.core.supabase import get_supabase
+from app.core.database import get_db
 
 router = APIRouter()
 
@@ -29,46 +28,49 @@ class PassportResponse(BaseModel):
 @router.get("", response_model=PassportResponse)
 async def get_passport(uid: str = Depends(get_required_user)):
     """Return the authenticated user's full capability passport."""
-    db = get_supabase()
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # All progress rows for this user
+            cur.execute(
+                """
+                SELECT journey_id, step_id, completed_at
+                FROM user_progress
+                WHERE uid = %s
+                ORDER BY completed_at DESC
+                """,
+                (uid,),
+            )
+            progress_rows = cur.fetchall()
 
-    progress_result = (
-        db.table("user_progress")
-        .select("journey_id, step_id, completed_at")
-        .eq("uid", uid)
-        .order("completed_at", desc=True)
-        .execute()
-    )
-    rows = progress_result.data or []
+            if not progress_rows:
+                return PassportResponse(
+                    journeys=[], total_completed=0, total_in_progress=0,
+                    categories=[], estimated_hours=0.0,
+                )
 
-    if not rows:
-        return PassportResponse(
-            journeys=[], total_completed=0, total_in_progress=0,
-            categories=[], estimated_hours=0.0,
-        )
+            # Group progress by journey
+            by_journey: dict[str, dict] = {}
+            for r in progress_rows:
+                jid = r["journey_id"]
+                if jid not in by_journey:
+                    by_journey[jid] = {"steps": [], "latest": r["completed_at"]}
+                by_journey[jid]["steps"].append(r["step_id"])
 
-    # Group progress by journey
-    by_journey: dict[str, dict] = {}
-    for r in rows:
-        jid = r["journey_id"]
-        if jid not in by_journey:
-            by_journey[jid] = {"steps": [], "latest": r["completed_at"]}
-        by_journey[jid]["steps"].append(r["step_id"])
-
-    # Fetch journey metadata
-    journey_ids = list(by_journey.keys())
-    journey_result = (
-        db.table("journeys")
-        .select("id, title, icon, tags, steps")
-        .in_("id", journey_ids)
-        .execute()
-    )
-    journey_rows = journey_result.data or []
+            # Fetch journey metadata for all touched journeys
+            journey_ids = list(by_journey.keys())
+            cur.execute(
+                "SELECT id, title, icon, tags, steps FROM journeys WHERE id = ANY(%s)",
+                (journey_ids,),
+            )
+            journey_rows = cur.fetchall()
 
     passport_journeys: list[PassportJourney] = []
     for j in journey_rows:
         completed_steps = len(by_journey[j["id"]]["steps"])
         total_steps = len(j.get("steps") or [])
-        category = ((j.get("tags") or []) + ["general"])[0]
+        tags = j.get("tags") or []
+        category = tags[0] if tags else "general"
+        latest = by_journey[j["id"]]["latest"]
         passport_journeys.append(PassportJourney(
             id=j["id"],
             title=j["title"],
@@ -76,10 +78,11 @@ async def get_passport(uid: str = Depends(get_required_user)):
             category=category,
             completed_steps=completed_steps,
             total_steps=total_steps,
-            completed_at=by_journey[j["id"]]["latest"],
+            completed_at=str(latest),
             fully_completed=completed_steps >= total_steps and total_steps > 0,
         ))
 
+    # Also handle journeys that are in progress but not in DB (curated ones)
     fully_done = [j for j in passport_journeys if j.fully_completed]
     in_progress = [j for j in passport_journeys if not j.fully_completed]
     categories = list({j.category for j in fully_done})

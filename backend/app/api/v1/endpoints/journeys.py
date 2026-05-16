@@ -1,23 +1,22 @@
+import json
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional
 from app.models.schemas import Journey, JourneyStep, JourneysResponse, StepContentResponse
 from app.core.auth import get_optional_user
-from app.core.supabase import get_supabase
+from app.core.database import get_db
 from app.services.ai_service import generate_step_content
 
 router = APIRouter()
 
-# Sample journeys — replace with a database in production
+# ── Curated journeys ──────────────────────────────────────────────────────────
+
 SAMPLE_JOURNEYS: list[Journey] = [
     Journey(
         id="journey-dna",
         question="How does DNA work?",
         title="The Code of Life: DNA Decoded",
         description="From double helix to protein factories — unlock the molecular language that makes you, you.",
-        age_group="all",
-        difficulty="beginner",
-        estimated_hours=3.0,
-        icon="🧬",
+        age_group="all", difficulty="beginner", estimated_hours=3.0, icon="🧬",
         tags=["biology", "genetics", "molecules"],
         steps=[
             JourneyStep(id="dna-1", title="What is DNA?", description="Discover the molecule that holds the blueprint for all life on Earth", type="concept", estimated_minutes=15),
@@ -34,10 +33,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         question="How does machine learning work?",
         title="How Machines Actually Learn",
         description="Strip away the hype — understand the math, patterns, and intuition behind AI with zero jargon.",
-        age_group="adults",
-        difficulty="intermediate",
-        estimated_hours=4.0,
-        icon="🤖",
+        age_group="adults", difficulty="intermediate", estimated_hours=4.0, icon="🤖",
         tags=["AI", "math", "technology"],
         steps=[
             JourneyStep(id="ml-1", title="What is learning, really?", description="Before machines can learn, we need to understand what learning actually means", type="concept", estimated_minutes=15),
@@ -55,10 +51,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         question="How do rockets work?",
         title="From Gunpowder to Orbit",
         description="Newton's laws meet engineering to explain how humans punch through Earth's gravity.",
-        age_group="all",
-        difficulty="beginner",
-        estimated_hours=2.5,
-        icon="🚀",
+        age_group="all", difficulty="beginner", estimated_hours=2.5, icon="🚀",
         tags=["physics", "engineering", "space"],
         steps=[
             JourneyStep(id="r-1", title="Newton's Third Law", description="Every action has an equal and opposite reaction — the engine of rocketry", type="concept", estimated_minutes=15),
@@ -75,10 +68,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         question="How does music theory work?",
         title="Music Theory Without the Boring Parts",
         description="Why do minor chords feel sad? Why does a melody feel unresolved? Discover the physics of beauty.",
-        age_group="all",
-        difficulty="beginner",
-        estimated_hours=3.0,
-        icon="🎵",
+        age_group="all", difficulty="beginner", estimated_hours=3.0, icon="🎵",
         tags=["music", "creativity", "acoustics"],
         steps=[
             JourneyStep(id="m-1", title="What is Sound?", description="Vibrations, frequencies, and why your ear tells a story from air waves", type="concept", estimated_minutes=15),
@@ -94,10 +84,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         question="Why does climate change happen?",
         title="Why Does Climate Change?",
         description="Atmospheric physics, feedback loops, and what the data says — no politics, just the science.",
-        age_group="adults",
-        difficulty="intermediate",
-        estimated_hours=3.5,
-        icon="🌍",
+        age_group="adults", difficulty="intermediate", estimated_hours=3.5, icon="🌍",
         tags=["climate", "science", "environment"],
         steps=[
             JourneyStep(id="c-1", title="The Greenhouse Effect", description="How certain gases trap heat like a blanket around the planet", type="concept", estimated_minutes=20),
@@ -114,10 +101,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         question="How does personal finance work?",
         title="Money: How It Actually Works",
         description="Interest, inflation, and investing — the financial literacy school never taught you.",
-        age_group="adults",
-        difficulty="beginner",
-        estimated_hours=2.0,
-        icon="💰",
+        age_group="adults", difficulty="beginner", estimated_hours=2.0, icon="💰",
         tags=["finance", "investing", "life skills"],
         steps=[
             JourneyStep(id="f-1", title="What is Money, Actually?", description="Beyond paper and coins — money as trust, debt, and collective agreement", type="concept", estimated_minutes=15),
@@ -134,7 +118,11 @@ _journey_map = {j.id: j for j in SAMPLE_JOURNEYS}
 
 
 def _row_to_journey(row: dict) -> Journey:
-    steps = [JourneyStep(**s) for s in (row.get("steps") or [])]
+    steps_data = row.get("steps") or []
+    if isinstance(steps_data, str):
+        steps_data = json.loads(steps_data)
+    steps = [JourneyStep(**s) for s in steps_data]
+    tags = row.get("tags") or []
     return Journey(
         id=row["id"],
         question=row["question"],
@@ -144,37 +132,42 @@ def _row_to_journey(row: dict) -> Journey:
         difficulty=row.get("difficulty", "beginner"),
         estimated_hours=row["estimated_hours"],
         steps=steps,
-        tags=row.get("tags") or [],
+        tags=tags if isinstance(tags, list) else list(tags),
         icon=row.get("icon", "🎯"),
-        created_at=row.get("created_at", ""),
+        created_at=str(row.get("created_at", "")),
     )
 
 
-@router.get(
-    "",
-    response_model=JourneysResponse,
-    summary="List all journeys",
-    response_description="Curated journeys plus the authenticated user's generated journeys",
-)
-async def list_journeys(uid: Optional[str] = Depends(get_optional_user)):
-    """
-    Returns curated journeys for all users. Authenticated users also get
-    their own AI-generated journeys appended at the top.
-    """
-    user_journeys: list[Journey] = []
+def _db_journey(journey_id: str) -> Optional[Journey]:
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM journeys WHERE id = %s", (journey_id,))
+                row = cur.fetchone()
+                return _row_to_journey(dict(row)) if row else None
+    except Exception:
+        return None
 
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@router.get("", response_model=JourneysResponse, summary="List all journeys")
+async def list_journeys(uid: Optional[str] = Depends(get_optional_user)):
+    user_journeys: list[Journey] = []
     if uid:
         try:
-            db = get_supabase()
-            rows = (
-                db.table("journeys")
-                .select("*")
-                .eq("uid", uid)
-                .eq("is_curated", False)
-                .order("created_at", desc=True)
-                .execute()
-            )
-            user_journeys = [_row_to_journey(r) for r in (rows.data or [])]
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT * FROM journeys
+                        WHERE uid = %s AND is_curated = FALSE
+                        ORDER BY created_at DESC
+                        """,
+                        (uid,),
+                    )
+                    rows = cur.fetchall()
+                    user_journeys = [_row_to_journey(dict(r)) for r in rows]
         except Exception:
             pass
 
@@ -182,29 +175,9 @@ async def list_journeys(uid: Optional[str] = Depends(get_optional_user)):
     return JourneysResponse(journeys=all_journeys, total=len(all_journeys))
 
 
-@router.get(
-    "/{journey_id}",
-    response_model=Journey,
-    summary="Get a journey by ID",
-    response_description="The requested Journey object",
-    responses={404: {"description": "Journey not found"}},
-)
+@router.get("/{journey_id}", response_model=Journey, summary="Get a journey by ID")
 async def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional_user)):
-    """
-    Fetch a single Journey by its unique `journey_id`.
-    Checks DB first (for user-generated journeys), then falls back to curated set.
-    """
-    # Check DB first
-    try:
-        db = get_supabase()
-        result = db.table("journeys").select("*").eq("id", journey_id).single().execute()
-        if result.data:
-            return _row_to_journey(result.data)
-    except Exception:
-        pass
-
-    # Fall back to curated
-    journey = _journey_map.get(journey_id)
+    journey = _db_journey(journey_id) or _journey_map.get(journey_id)
     if not journey:
         raise HTTPException(status_code=404, detail="Journey not found")
     return journey
@@ -214,61 +187,38 @@ async def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional
     "/{journey_id}/steps/{step_id}/content",
     response_model=StepContentResponse,
     summary="Get or generate step content",
-    response_description="On-demand lesson content for a single step",
-    responses={404: {"description": "Journey or step not found"}},
 )
 async def get_step_content(
     journey_id: str,
     step_id: str,
     uid: Optional[str] = Depends(get_optional_user),
 ):
-    """
-    Returns AI-generated lesson content for a step.
-    Checks the cache first; generates and stores on first request.
-    Available to both guests and authenticated users.
-    """
+    """Returns AI-generated lesson content for a step. Checks cache first."""
     # Check cache
     try:
-        db = get_supabase()
-        cached = (
-            db.table("step_content")
-            .select("content")
-            .eq("journey_id", journey_id)
-            .eq("step_id", step_id)
-            .single()
-            .execute()
-        )
-        if cached.data:
-            return StepContentResponse(
-                journey_id=journey_id,
-                step_id=step_id,
-                content=cached.data["content"],
-                cached=True,
-            )
-    except Exception:
-        pass  # Cache miss or DB unavailable — generate fresh
-
-    # Resolve journey + step for context
-    journey: Optional[Journey] = None
-    try:
-        db = get_supabase()
-        result = db.table("journeys").select("*").eq("id", journey_id).single().execute()
-        if result.data:
-            journey = _row_to_journey(result.data)
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT content FROM step_content WHERE journey_id = %s AND step_id = %s",
+                    (journey_id, step_id),
+                )
+                cached = cur.fetchone()
+                if cached:
+                    return StepContentResponse(
+                        journey_id=journey_id, step_id=step_id,
+                        content=cached["content"], cached=True,
+                    )
     except Exception:
         pass
 
-    if journey is None:
-        journey = _journey_map.get(journey_id)
-
-    if journey is None:
+    # Resolve journey + step for generation context
+    journey = _db_journey(journey_id) or _journey_map.get(journey_id)
+    if not journey:
         raise HTTPException(status_code=404, detail="Journey not found")
-
     step = next((s for s in journey.steps if s.id == step_id), None)
-    if step is None:
+    if not step:
         raise HTTPException(status_code=404, detail="Step not found")
 
-    # Generate content
     content = await generate_step_content(
         step_title=step.title,
         step_description=step.description,
@@ -277,19 +227,21 @@ async def get_step_content(
         journey_question=journey.question,
     )
 
-    # Cache in DB (non-fatal if it fails)
+    # Cache result
     try:
-        db = get_supabase()
-        db.table("step_content").upsert(
-            {"journey_id": journey_id, "step_id": step_id, "content": content},
-            on_conflict="journey_id,step_id",
-        ).execute()
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO step_content (journey_id, step_id, content)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (journey_id, step_id) DO UPDATE SET content = EXCLUDED.content
+                    """,
+                    (journey_id, step_id, content),
+                )
     except Exception:
         pass
 
     return StepContentResponse(
-        journey_id=journey_id,
-        step_id=step_id,
-        content=content,
-        cached=False,
+        journey_id=journey_id, step_id=step_id, content=content, cached=False,
     )

@@ -1,8 +1,9 @@
+import json
 from fastapi import APIRouter, HTTPException, Depends
 from app.models.schemas import ExploreRequest, ExploreResponse
 from app.services.ai_service import generate_journey
 from app.core.auth import get_required_user
-from app.core.supabase import get_supabase
+from app.core.database import get_db
 
 router = APIRouter()
 
@@ -15,16 +16,8 @@ router = APIRouter()
 )
 async def explore(request: ExploreRequest, uid: str = Depends(get_required_user)):
     """
-    Submit a curiosity question and receive a fully structured **Journey**.
-
-    Requires authentication. The generated journey is saved to the user's
-    account so it appears in their journeys list.
-
-    **Errors**
-    - `400` — question is empty or blank
-    - `401` — not authenticated
-    - `502` — Claude API returned an unexpected response
-    - `500` — unexpected server error
+    Submit a curiosity question and receive a fully structured Journey.
+    Requires authentication. The generated journey is saved to the user's account.
     """
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
@@ -39,24 +32,28 @@ async def explore(request: ExploreRequest, uid: str = Depends(get_required_user)
     except Exception:
         raise HTTPException(status_code=500, detail="Failed to generate journey. Please try again.")
 
-    # Persist to Supabase
+    # Persist to DB (non-fatal if it fails)
     try:
-        db = get_supabase()
-        db.table("journeys").insert({
-            "id": journey.id,
-            "uid": uid,
-            "question": journey.question,
-            "title": journey.title,
-            "description": journey.description,
-            "age_group": journey.age_group,
-            "difficulty": journey.difficulty,
-            "estimated_hours": journey.estimated_hours,
-            "steps": [s.model_dump() for s in journey.steps],
-            "tags": journey.tags,
-            "icon": journey.icon,
-            "is_curated": False,
-        }).execute()
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO journeys
+                        (id, uid, question, title, description, age_group, difficulty,
+                         estimated_hours, steps, tags, icon, is_curated)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, FALSE)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    (
+                        journey.id, uid, journey.question, journey.title,
+                        journey.description, journey.age_group, journey.difficulty,
+                        journey.estimated_hours,
+                        json.dumps([s.model_dump() for s in journey.steps]),
+                        journey.tags,
+                        journey.icon,
+                    ),
+                )
     except Exception:
-        pass  # Don't fail the request if DB write fails
+        pass
 
     return ExploreResponse(journey=journey)

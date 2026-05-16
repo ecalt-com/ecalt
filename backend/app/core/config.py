@@ -6,8 +6,12 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3000"
     ENVIRONMENT: str = "development"
     FIREBASE_PROJECT_ID: str = ""
-    SUPABASE_URL: str = ""
-    SUPABASE_KEY: str = ""
+    # Postgres connection — use individual params so special chars in passwords work
+    DB_HOST: str = ""
+    DB_PORT: int = 5432
+    DB_NAME: str = "postgres"
+    DB_USER: str = "postgres"
+    DB_PASSWORD: str = ""
 
     @property
     def allowed_origins(self) -> list[str]:
