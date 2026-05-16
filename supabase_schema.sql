@@ -1,0 +1,64 @@
+-- ── Users ─────────────────────────────────────────────────────────────────────
+create table if not exists users (
+  uid            text primary key,
+  email          text,
+  display_name   text,
+  photo_url      text,
+  onboarding_done boolean default false,
+  created_at     timestamptz default now()
+);
+
+-- ── Journeys ──────────────────────────────────────────────────────────────────
+create table if not exists journeys (
+  id              text primary key,
+  uid             text references users(uid) on delete set null,
+  question        text not null,
+  title           text not null,
+  description     text not null,
+  age_group       text default 'all',
+  difficulty      text default 'beginner',
+  estimated_hours float not null,
+  steps           jsonb not null default '[]',
+  tags            text[] default '{}',
+  icon            text default '🎯',
+  is_curated      boolean default false,
+  created_at      timestamptz default now()
+);
+
+-- ── User progress (step completion) ───────────────────────────────────────────
+create table if not exists user_progress (
+  id          uuid primary key default gen_random_uuid(),
+  uid         text references users(uid) on delete cascade,
+  journey_id  text references journeys(id) on delete cascade,
+  step_id     text not null,
+  completed_at timestamptz default now(),
+  unique(uid, journey_id, step_id)
+);
+
+-- ── Missions (from sparks) ────────────────────────────────────────────────────
+create table if not exists missions (
+  id                 text primary key,
+  uid                text references users(uid) on delete cascade,
+  title              text not null,
+  tagline            text,
+  category           text,
+  difficulty         text,
+  estimated_minutes  int,
+  icon               text,
+  steps              jsonb default '[]',
+  question           text,
+  completed          boolean default false,
+  created_at         timestamptz default now()
+);
+
+-- ── Spark usage (replaces in-memory rate limiter) ─────────────────────────────
+create table if not exists spark_usage (
+  key         text primary key,   -- firebase uid or anonymous session_id
+  count       int default 0,
+  expires_at  timestamptz
+);
+
+-- Indexes
+create index if not exists journeys_uid_idx on journeys(uid);
+create index if not exists progress_uid_journey_idx on user_progress(uid, journey_id);
+create index if not exists missions_uid_idx on missions(uid);
