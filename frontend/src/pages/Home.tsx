@@ -184,7 +184,7 @@ function LightSparkResult({ question, answer, mission, sparksUsed, sparksRemaini
         </div>
 
         {/* Two CTAs */}
-        <div className="flex gap-3 mb-3">
+        <div className="flex flex-col sm:flex-row gap-3 mb-3">
           <button
             onClick={onStartMission}
             className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-1.5"
@@ -312,9 +312,9 @@ const FEATURES: FeatureCardProps[] = [
 function TrustRow() {
   return (
     <div className="border-t border-slate-100 dark:border-slate-800 py-10 px-4">
-      <div className="max-w-3xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6">
+      <div className="max-w-3xl mx-auto flex flex-col items-center md:flex-row md:justify-between gap-4 md:gap-6">
         <p className="text-sm text-slate-400 font-medium">Trusted by curious learners</p>
-        <div className="flex items-center gap-8 opacity-40 grayscale">
+        <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-8 opacity-40 grayscale">
           {['🧠 Students', '👨‍👩‍👧 Families', '🏫 Educators', '💼 Professionals'].map(label => (
             <span key={label} className="text-sm font-medium text-slate-600 dark:text-slate-400">{label}</span>
           ))}
@@ -481,7 +481,7 @@ export default function Home() {
             </div>
           ) : (
             <>
-              <h1 className="text-4xl md:text-6xl lg:text-7xl font-bold text-slate-900 dark:text-white leading-[1.05] tracking-tight mb-4">
+              <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-slate-900 dark:text-white leading-[1.05] tracking-tight mb-4">
                 Ask anything.<br />
                 Turn curiosity into{' '}
                 <span className="text-violet-600">capability.</span>
