@@ -142,6 +142,26 @@ body {
   }
 }
 
+/* ── Keyframes ───────────────────────────────────────────────────────────────── */
+/* Defined here so they're always emitted — Tailwind JIT only generates a
+   keyframe when the corresponding animate-* class appears in JSX. These are
+   used from CSS @layer utilities classes (animate-in, shimmer-*, gradient-text)
+   where no Tailwind class name is present, so JIT would otherwise skip them. */
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50%      { background-position: 100% 50%; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
 /* ── Utilities ───────────────────────────────────────────────────────────────── */
 @layer utilities {
   .animate-in {

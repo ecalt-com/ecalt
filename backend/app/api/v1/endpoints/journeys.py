@@ -1,4 +1,5 @@
 import json
+import logging
 from fastapi import APIRouter, HTTPException, Depends, Response
 from typing import Optional
 from app.models.schemas import Journey, JourneyStep, JourneysResponse, StepContentResponse
@@ -7,6 +8,7 @@ from app.core.database import get_db
 from app.services.ai_service import generate_step_content
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # ── Curated journeys ──────────────────────────────────────────────────────────
 
@@ -222,13 +224,20 @@ async def get_step_content(
     if not step:
         raise HTTPException(status_code=404, detail="Step not found")
 
-    content = await generate_step_content(
-        step_title=step.title,
-        step_description=step.description,
-        step_type=step.type,
-        journey_title=journey.title,
-        journey_question=journey.question,
-    )
+    try:
+        content = await generate_step_content(
+            step_title=step.title,
+            step_description=step.description,
+            step_type=step.type,
+            journey_title=journey.title,
+            journey_question=journey.question,
+        )
+    except ValueError as e:
+        logger.warning("step content upstream error", extra={"journey_id": journey_id, "step_id": step_id, "error": str(e)})
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception:
+        logger.exception("step content generation failed", extra={"journey_id": journey_id, "step_id": step_id})
+        raise HTTPException(status_code=500, detail="Failed to generate step content.")
 
     # Cache result
     try:
