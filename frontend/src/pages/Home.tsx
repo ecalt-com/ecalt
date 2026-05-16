@@ -8,6 +8,7 @@ import {
 import clsx from 'clsx'
 import GateModal from '../components/GateModal'
 import Navigation from '../components/Navigation'
+import PageMeta from '../components/PageMeta'
 import { askSpark, getSessionStatus } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import type { Mission, StepType } from '../lib/types'
@@ -434,8 +435,25 @@ export default function Home() {
   const sparksUsed = sessionSparks?.used ?? 0
   const sparksRemaining = sessionSparks?.remaining ?? 5
 
+  const homeJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'ECALT',
+    url: 'https://ecalt.vercel.app',
+    description: 'AI-powered personalized learning journeys for curious minds of all ages.',
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: 'https://ecalt.vercel.app/journeys?q={search_term_string}',
+      'query-input': 'required name=search_term_string',
+    },
+  }
+
   return (
     <div className="bg-white dark:bg-[#080b14] min-h-screen text-slate-900 dark:text-slate-100">
+      <PageMeta
+        canonicalPath="/"
+        jsonLd={homeJsonLd}
+      />
       <Navigation />
 
       {/* ── HERO ── */}

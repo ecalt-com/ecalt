@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from datetime import datetime, timezone
+from app.core.database import get_db
 
 router = APIRouter()
 
@@ -10,13 +11,17 @@ router = APIRouter()
     response_description="Service liveness status with UTC timestamp",
 )
 async def health():
-    """
-    Liveness probe used by Railway and load balancers.
+    db_status = "ok"
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+    except Exception:
+        db_status = "degraded"
 
-    Returns `status: ok` plus the current UTC timestamp when the service is up.
-    """
     return {
         "status": "ok",
+        "db": db_status,
         "service": "ecalt-api",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }

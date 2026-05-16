@@ -2,15 +2,14 @@ import { useState, useEffect } from 'react'
 import { Search } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import JourneyCard from '../components/JourneyCard'
+import PageMeta from '../components/PageMeta'
 import { getJourneys } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
-import { usePageTitle } from '../lib/usePageTitle'
 import type { Journey } from '../lib/types'
 
 const FILTERS = ['All', 'Beginner', 'Intermediate', 'Advanced']
 
 export default function Journeys() {
-  usePageTitle('Learning Journeys')
   const [journeys, setJourneys] = useState<Journey[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('All')
@@ -35,6 +34,11 @@ export default function Journeys() {
 
   return (
     <>
+      <PageMeta
+        title="Learning Journeys"
+        description="Explore AI-powered learning journeys across science, technology, music, finance, and more. Start learning today with ECALT."
+        canonicalPath="/journeys"
+      />
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/4 left-1/3 w-96 h-96 bg-violet-500/5 rounded-full blur-[120px] animate-glow-pulse" />
       </div>

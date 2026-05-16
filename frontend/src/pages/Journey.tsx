@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Clock, BookOpen, Share2, Award } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import StepNode from '../components/StepNode'
+import PageMeta from '../components/PageMeta'
 import { getJourney, getProgress, markStepComplete, markStepIncomplete } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useToast } from '../lib/ToastContext'
-import { usePageTitle } from '../lib/usePageTitle'
 import type { Journey as JourneyType, JourneyStep } from '../lib/types'
 
 function CompletionOverlay({ journey, onDismiss }: { journey: JourneyType; onDismiss: () => void }) {
@@ -49,7 +49,6 @@ export default function Journey() {
   const { user, getToken } = useAuth()
   const { addToast } = useToast()
   const [journey, setJourney] = useState<JourneyType | null>(null)
-  usePageTitle(journey?.title)
   const [steps, setSteps] = useState<JourneyStep[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -117,8 +116,27 @@ export default function Journey() {
   const completed = steps.filter(s => s.completed).length
   const progress = steps.length > 0 ? Math.round((completed / steps.length) * 100) : 0
 
+  const jsonLd = journey
+    ? {
+        '@context': 'https://schema.org',
+        '@type': 'Course',
+        name: journey.title,
+        description: journey.description,
+        provider: { '@type': 'Organization', name: 'ECALT', url: 'https://ecalt.vercel.app' },
+        hasCourseInstance: { '@type': 'CourseInstance', courseMode: 'online' },
+        educationalLevel: journey.difficulty,
+        teaches: journey.tags.join(', '),
+      }
+    : undefined
+
   return (
     <>
+      <PageMeta
+        title={journey?.title}
+        description={journey?.description}
+        canonicalPath={id ? `/journey/${id}` : undefined}
+        jsonLd={jsonLd}
+      />
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-1/4 right-1/3 w-96 h-96 bg-violet-500/5 rounded-full blur-[120px] animate-glow-pulse" />
       </div>
