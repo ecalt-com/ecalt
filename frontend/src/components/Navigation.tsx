@@ -25,7 +25,7 @@ function UserAvatar({ photoURL, displayName }: { photoURL: string | null; displa
 
 export default function Navigation() {
   const { pathname } = useLocation()
-  const { user, signIn, signOut } = useAuth()
+  const { user, loading, signIn, signOut } = useAuth()
   const [open, setOpen] = useState(false)
 
   return (
@@ -61,7 +61,9 @@ export default function Navigation() {
             <ThemeToggle />
             <div className="w-px h-4 bg-slate-200 dark:bg-slate-700 mx-1" />
 
-            {user ? (
+            {loading ? (
+              <div className="w-20 h-7 rounded-lg bg-slate-200/60 dark:bg-slate-700/40 animate-pulse" />
+            ) : user ? (
               <>
                 <div className="flex items-center gap-2 px-2">
                   <UserAvatar photoURL={user.photoURL} displayName={user.displayName} />
@@ -146,32 +148,34 @@ export default function Navigation() {
               ))}
             </div>
 
-            <div className="border-t border-slate-200/80 dark:border-slate-700/50 mt-2 pt-2 space-y-0.5">
-              {user ? (
-                <button
-                  onClick={() => { signOut(); setOpen(false) }}
-                  className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
-                >
-                  <LogOut size={14} />
-                  Sign out
-                </button>
-              ) : (
-                <>
+            {!loading && (
+              <div className="border-t border-slate-200/80 dark:border-slate-700/50 mt-2 pt-2 space-y-0.5">
+                {user ? (
                   <button
-                    onClick={() => { signIn(); setOpen(false) }}
-                    className="flex items-center px-4 py-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors w-full"
+                    onClick={() => { signOut(); setOpen(false) }}
+                    className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
                   >
-                    Sign In
+                    <LogOut size={14} />
+                    Sign out
                   </button>
-                  <button
-                    onClick={() => { signIn(); setOpen(false) }}
-                    className="flex items-center justify-center px-4 py-3 rounded-xl text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors w-full"
-                  >
-                    Start Free
-                  </button>
-                </>
-              )}
-            </div>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => { signIn(); setOpen(false) }}
+                      className="flex items-center px-4 py-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors w-full"
+                    >
+                      Sign In
+                    </button>
+                    <button
+                      onClick={() => { signIn(); setOpen(false) }}
+                      className="flex items-center justify-center px-4 py-3 rounded-xl text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors w-full"
+                    >
+                      Start Free
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

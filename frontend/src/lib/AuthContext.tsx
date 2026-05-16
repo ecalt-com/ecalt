@@ -28,12 +28,13 @@ const AuthContext = createContext<AuthContextValue>({
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  // firebaseAuth.currentUser is populated synchronously from the persisted
+  // session (IndexedDB/localStorage), so initializing here avoids the 1-second
+  // flash while onAuthStateChanged fires asynchronously.
+  const [user, setUser] = useState<User | null>(firebaseAuth.currentUser)
   const [loading, setLoading] = useState(true)
   const [needsOnboarding, setNeedsOnboarding] = useState(false)
-  // Keep a ref to the current user so getToken always sees the latest value
-  // without needing to be recreated on every user change.
-  const userRef = useRef<User | null>(null)
+  const userRef = useRef<User | null>(firebaseAuth.currentUser)
 
   useEffect(() => {
     const unsub = onAuthStateChanged(firebaseAuth, u => {
