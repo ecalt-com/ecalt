@@ -33,7 +33,8 @@
       "Bash(python -c \"from app.api.v1.endpoints.admin import router; from app.api.v1.endpoints.subscriptions import router as sr; print\\('OK'\\)\")",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(xargs cat)"
     ]
   }
 }
