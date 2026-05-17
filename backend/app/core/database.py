@@ -58,6 +58,6 @@ def get_db():
     except Exception as e:
         conn.rollback()
         logger.error("DB error (%s): %s", type(e).__name__, e)
-        raise HTTPException(status_code=500, detail="Database error")
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
     finally:
         conn.close()
