@@ -87,3 +87,42 @@ export const getUserProfile = (token: string): Promise<UserProfile> =>
 
 export const completeOnboarding = (token: string): Promise<UserProfile> =>
   request('/api/v1/users/me/onboarding', { method: 'PATCH' }, token)
+
+// ── Chat / Knowledge ──────────────────────────────────────────────────────────
+
+export interface Conversation {
+  id: string
+  title: string | null
+  started_at: string
+  last_active: string
+}
+
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  created_at: string
+}
+
+export interface KnowledgeNode {
+  concept: string
+  domain: string
+  strength: number
+  discovered_at: string
+  last_reinforced: string
+}
+
+export const getConversations = (token: string): Promise<{ conversations: Conversation[] }> =>
+  request('/api/v1/chat/conversations', undefined, token)
+
+export const getConversation = (id: string, token: string): Promise<{ messages: ChatMessage[] }> =>
+  request(`/api/v1/chat/conversations/${id}`, undefined, token)
+
+export const deleteConversation = (id: string, token: string): Promise<{ deleted: boolean }> =>
+  request(`/api/v1/chat/conversations/${id}`, { method: 'DELETE' }, token)
+
+export const getKnowledgeNodes = (token: string): Promise<{ nodes: KnowledgeNode[] }> =>
+  request('/api/v1/knowledge/nodes', undefined, token)
+
+export const getDailySpark = (token: string): Promise<{ spark: string }> =>
+  request('/api/v1/knowledge/spark', undefined, token)

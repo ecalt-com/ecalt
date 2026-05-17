@@ -116,6 +116,66 @@ Strict rules:
 
 # ── Generator ─────────────────────────────────────────────────────────────────
 
+async def generate_daily_spark(uid: str) -> str:
+    """Return today's personalized curiosity prompt, generating and caching it if needed."""
+    from datetime import date
+    today = date.today()
+
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT prompt FROM daily_sparks WHERE uid = %s AND generated_at = %s",
+                    (uid, today),
+                )
+                row = cur.fetchone()
+                if row:
+                    return row["prompt"]
+    except Exception:
+        pass
+
+    topics: list[str] = []
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT topics FROM user_interests WHERE uid = %s", (uid,))
+                row = cur.fetchone()
+                if row and row["topics"]:
+                    topics = row["topics"]
+    except Exception:
+        pass
+
+    topic_hint = ", ".join(topics[:3]) if topics else "science, history, or technology"
+
+    response = await _get_client().messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=120,
+        system=(
+            "Generate a single fascinating curiosity question that would make someone want to learn immediately. "
+            "Return ONLY the question — nothing else, no quotes, no preamble."
+        ),
+        messages=[{"role": "user", "content": f"Topics the learner loves: {topic_hint}"}],
+    )
+
+    spark = response.content[0].text.strip().strip('"').strip("'")
+
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO daily_sparks (uid, prompt, generated_at)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (uid) DO UPDATE SET prompt = %s, generated_at = %s
+                    """,
+                    (uid, spark, today, spark, today),
+                )
+    except Exception:
+        pass
+
+    return spark
+
+
 async def generate_spark(question: str) -> tuple[str, Mission]:
     response = await _get_client().messages.create(
         model="claude-haiku-4-5-20251001",

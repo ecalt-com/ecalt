@@ -17,7 +17,10 @@
       "Bash(npm uninstall *)",
       "Bash(python -c \"from app.api.v1.endpoints.journeys import router; print\\('OK'\\)\")",
       "Bash(python -c \"from app.main import app; print\\('OK'\\)\")",
-      "Bash(python3 *)"
+      "Bash(python3 *)",
+      "Bash(xargs ls -1)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(echo \"Frontend PID: $!\")"
     ]
   }
 }

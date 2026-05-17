@@ -10,6 +10,7 @@ import OnboardingModal from './components/OnboardingModal'
 import ErrorBoundary from './components/ErrorBoundary'
 
 const Home      = lazy(() => import('./pages/Home'))
+const Learn     = lazy(() => import('./pages/Learn'))
 const Explore   = lazy(() => import('./pages/Explore'))
 const Journeys  = lazy(() => import('./pages/Journeys'))
 const Journey   = lazy(() => import('./pages/Journey'))
@@ -31,6 +32,7 @@ function AppShell() {
       <Suspense fallback={<PageSkeleton />}>
         <Routes>
           <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
+          <Route path="/learn" element={<ErrorBoundary><Learn /></ErrorBoundary>} />
           <Route path="/explore" element={<ErrorBoundary><Explore /></ErrorBoundary>} />
           <Route path="/journeys" element={<ErrorBoundary><Journeys /></ErrorBoundary>} />
           <Route path="/journey/:id" element={<ErrorBoundary><Journey /></ErrorBoundary>} />

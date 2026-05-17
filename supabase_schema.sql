@@ -73,3 +73,58 @@ create index if not exists journeys_uid_idx on journeys(uid);
 create index if not exists progress_uid_journey_idx on user_progress(uid, journey_id);
 create index if not exists missions_uid_idx on missions(uid);
 create index if not exists step_content_journey_idx on step_content(journey_id);
+
+-- ── Phase 1: Conversation Interface ──────────────────────────────────────────
+
+alter table users add column if not exists streak_days int default 0;
+alter table users add column if not exists last_active_date date;
+
+-- User interest profile (populated during onboarding)
+create table if not exists user_interests (
+  uid          text primary key references users(uid) on delete cascade,
+  topics       text[] default '{}',
+  age_group    text default 'all',
+  last_updated timestamptz default now()
+);
+
+-- Conversation sessions
+create table if not exists conversations (
+  id          uuid primary key default gen_random_uuid(),
+  uid         text references users(uid) on delete cascade,
+  title       text,
+  started_at  timestamptz default now(),
+  last_active timestamptz default now()
+);
+
+-- Messages within conversations
+create table if not exists conversation_messages (
+  id              uuid primary key default gen_random_uuid(),
+  conversation_id uuid references conversations(id) on delete cascade,
+  role            text not null,     -- 'user' | 'assistant'
+  content         text not null,
+  model_used      text,
+  created_at      timestamptz default now()
+);
+
+-- Knowledge nodes extracted from conversations
+create table if not exists knowledge_nodes (
+  id              uuid primary key default gen_random_uuid(),
+  uid             text references users(uid) on delete cascade,
+  concept         text not null,
+  domain          text not null,
+  strength        float default 0.3,
+  discovered_at   timestamptz default now(),
+  last_reinforced timestamptz default now(),
+  unique(uid, concept)
+);
+
+-- Daily spark cache (one personalized prompt per user per day)
+create table if not exists daily_sparks (
+  uid          text primary key references users(uid) on delete cascade,
+  prompt       text not null,
+  generated_at date default current_date
+);
+
+create index if not exists conversations_uid_idx on conversations(uid);
+create index if not exists messages_conversation_idx on conversation_messages(conversation_id);
+create index if not exists knowledge_nodes_uid_idx on knowledge_nodes(uid);
