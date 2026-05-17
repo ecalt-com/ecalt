@@ -6,7 +6,8 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3000"
     ENVIRONMENT: str = "development"
     FIREBASE_PROJECT_ID: str = ""
-    # Postgres connection — use individual params so special chars in passwords work
+    # Postgres — prefer DATABASE_URL (Supabase pooler); fallback to individual params
+    DATABASE_URL: str = ""
     DB_HOST: str = ""
     DB_PORT: int = 5432
     DB_NAME: str = "postgres"
