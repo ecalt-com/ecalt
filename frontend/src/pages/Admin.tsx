@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings, ArrowLeft, Save, Loader2, ShieldCheck, ShieldOff, Check, Zap, Users, GraduationCap, Building2 } from 'lucide-react'
+import { Settings, ArrowLeft, Save, Loader2, ShieldCheck, ShieldOff, Check, Zap, Users, GraduationCap, Building2, Search } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../lib/AuthContext'
 import PageMeta from '../components/PageMeta'
@@ -60,6 +60,17 @@ export default function Admin() {
   const [edits, setEdits] = useState<Record<string, Partial<PlanRow>>>({})
   const [togglingUid, setTogglingUid] = useState<string | null>(null)
   const [tab, setTab] = useState<'overview' | 'plans' | 'users'>('overview')
+  const [userSearch, setUserSearch] = useState('')
+
+  const filteredUsers = useMemo(() => {
+    const q = userSearch.toLowerCase().trim()
+    if (!q) return users
+    return users.filter(u =>
+      u.display_name?.toLowerCase().includes(q) ||
+      u.email?.toLowerCase().includes(q) ||
+      u.uid.toLowerCase().includes(q)
+    )
+  }, [users, userSearch])
 
   useEffect(() => {
     if (!user) return
@@ -320,9 +331,26 @@ export default function Admin() {
           {/* Users tab */}
           {tab === 'users' && (
             <>
-              <h2 className="text-sm font-semibold text-slate-300 mb-4">Users ({users.length})</h2>
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <h2 className="text-sm font-semibold text-slate-300 shrink-0">
+                  Users ({filteredUsers.length}{userSearch ? ` of ${users.length}` : ''})
+                </h2>
+                <div className="flex items-center gap-2 glass-card rounded-lg px-3 py-1.5 max-w-xs w-full">
+                  <Search size={12} className="text-slate-500 shrink-0" />
+                  <input
+                    type="text"
+                    value={userSearch}
+                    onChange={e => setUserSearch(e.target.value)}
+                    placeholder="Search by name, email or UID…"
+                    className="bg-transparent text-xs text-slate-200 placeholder-slate-500 outline-none w-full"
+                  />
+                </div>
+              </div>
               <div className="space-y-2">
-                {users.map(u => (
+                {filteredUsers.length === 0 && (
+                  <p className="text-xs text-slate-500 py-4 text-center">No users match "{userSearch}"</p>
+                )}
+                {filteredUsers.map(u => (
                   <div key={u.uid} className="glass-card rounded-xl px-4 py-3 flex items-center justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-medium text-slate-200 truncate">

@@ -18,7 +18,7 @@ interface Plan {
 const PLAN_DETAILS: Record<string, { icon: React.ElementType; features: string[]; badge?: string; cta?: string }> = {
   free_trial: {
     icon: Zap,
-    features: ['6 lifetime messages', 'Knowledge Universe preview', 'Today\'s spark'],
+    features: ["6 lifetime messages", "Knowledge Universe preview", "Today's spark"],
   },
   individual: {
     icon: Zap,
@@ -100,14 +100,14 @@ export default function Pricing() {
         <div className="max-w-6xl mx-auto">
           <button
             onClick={() => navigate(-1)}
-            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-300 mb-10 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300 mb-10 transition-colors"
           >
             <ArrowLeft size={12} /> Back
           </button>
 
           <div className="text-center mb-12">
             <h1 className="text-3xl font-bold gradient-text mb-3">Simple, honest pricing</h1>
-            <p className="text-slate-400">Choose the plan that fits your learning journey.</p>
+            <p className="text-slate-500 dark:text-slate-400">Choose the plan that fits your learning journey.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -128,45 +128,45 @@ export default function Pricing() {
                   )}
                 >
                   {details?.badge && (
-                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-violet-300 bg-violet-500/20 px-2 py-0.5 rounded-full mb-3 self-start">
+                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-300 bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 rounded-full mb-3 self-start">
                       {details.badge}
                     </span>
                   )}
                   {isCurrent && (
-                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-cyan-300 bg-cyan-500/20 px-2 py-0.5 rounded-full mb-3 self-start">
+                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-300 bg-cyan-100 dark:bg-cyan-500/20 px-2 py-0.5 rounded-full mb-3 self-start">
                       Current plan
                     </span>
                   )}
 
                   <div className="flex items-center gap-3 mb-4">
-                    <div className="w-9 h-9 rounded-xl bg-violet-500/15 flex items-center justify-center">
-                      <Icon size={16} className="text-violet-400" />
+                    <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center">
+                      <Icon size={16} className="text-violet-600 dark:text-violet-400" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-slate-100">{plan.name}</h3>
+                      <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">{plan.name}</h3>
                       {plan.max_seats > 1 && (
-                        <p className="text-[10px] text-slate-500">Up to {plan.max_seats} users</p>
+                        <p className="text-[10px] text-slate-500">{plan.max_seats} users</p>
                       )}
                     </div>
                   </div>
 
                   <div className="mb-5">
                     {plan.base_price_cents === 0 ? (
-                      <span className="text-2xl font-bold text-slate-100">Free</span>
+                      <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">Free</span>
                     ) : (
                       <>
-                        <span className="text-2xl font-bold text-slate-100">
+                        <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">
                           ${(plan.base_price_cents / 100).toFixed(0)}
                         </span>
-                        <span className="text-xs text-slate-500">/month</span>
+                        <span className="text-xs text-slate-400 dark:text-slate-500">/month</span>
                       </>
                     )}
                   </div>
 
                   <ul className="space-y-2 mb-6 flex-1">
                     {(details?.features ?? []).map(f => (
-                      <li key={f} className="flex items-start gap-2 text-xs text-slate-400">
-                        <Check size={11} className="text-violet-400 mt-0.5 shrink-0" />
+                      <li key={f} className="flex items-start gap-2 text-xs text-slate-600 dark:text-slate-400">
+                        <Check size={11} className="text-violet-500 dark:text-violet-400 mt-0.5 shrink-0" />
                         {f}
                       </li>
                     ))}
@@ -178,10 +178,10 @@ export default function Pricing() {
                     className={clsx(
                       'w-full py-2.5 rounded-xl text-xs font-semibold transition-all',
                       isCurrent || plan.plan_id === 'free_trial'
-                        ? 'bg-slate-700/50 text-slate-500 cursor-default'
+                        ? 'bg-slate-100 dark:bg-slate-700/50 text-slate-400 dark:text-slate-500 cursor-default'
                         : isHighlighted
                           ? 'bg-violet-600 hover:bg-violet-500 text-white'
-                          : 'border border-slate-600 hover:border-violet-500/50 text-slate-300 hover:text-violet-300',
+                          : 'border border-slate-200 dark:border-slate-600 hover:border-violet-400 dark:hover:border-violet-500/50 text-slate-700 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-300',
                     )}
                   >
                     {isLoading ? 'Redirecting…' : isCurrent ? 'Current plan' : plan.plan_id === 'free_trial' ? 'Free forever' : (details?.cta ?? 'Get started')}
@@ -191,7 +191,7 @@ export default function Pricing() {
             })}
           </div>
 
-          <p className="text-center text-xs text-slate-600 mt-10">
+          <p className="text-center text-xs text-slate-400 dark:text-slate-600 mt-10">
             All prices in USD · Cancel anytime · Powered by Stripe
           </p>
         </div>
