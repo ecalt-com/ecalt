@@ -10,15 +10,17 @@ import { SubscriptionProvider } from './lib/SubscriptionContext'
 import OnboardingModal from './components/OnboardingModal'
 import ErrorBoundary from './components/ErrorBoundary'
 
-const Home      = lazy(() => import('./pages/Home'))
-const Learn     = lazy(() => import('./pages/Learn'))
-const Pricing   = lazy(() => import('./pages/Pricing'))
-const Admin     = lazy(() => import('./pages/Admin'))
-const Explore   = lazy(() => import('./pages/Explore'))
-const Journeys  = lazy(() => import('./pages/Journeys'))
-const Journey   = lazy(() => import('./pages/Journey'))
-const Passport  = lazy(() => import('./pages/Passport'))
-const ComingSoon = lazy(() => import('./pages/ComingSoon'))
+const Home          = lazy(() => import('./pages/Home'))
+const Learn         = lazy(() => import('./pages/Learn'))
+const Pricing       = lazy(() => import('./pages/Pricing'))
+const Admin         = lazy(() => import('./pages/Admin'))
+const MindSignature = lazy(() => import('./pages/MindSignature'))
+const Verify        = lazy(() => import('./pages/Verify'))
+const Explore       = lazy(() => import('./pages/Explore'))
+const Journeys      = lazy(() => import('./pages/Journeys'))
+const Journey       = lazy(() => import('./pages/Journey'))
+const Passport      = lazy(() => import('./pages/Passport'))
+const ComingSoon    = lazy(() => import('./pages/ComingSoon'))
 
 function PageSkeleton() {
   return (
@@ -38,6 +40,8 @@ function AppShell() {
           <Route path="/learn" element={<ErrorBoundary><Learn /></ErrorBoundary>} />
           <Route path="/pricing" element={<ErrorBoundary><Pricing /></ErrorBoundary>} />
           <Route path="/admin" element={<ErrorBoundary><Admin /></ErrorBoundary>} />
+          <Route path="/mind-signature" element={<ErrorBoundary><MindSignature /></ErrorBoundary>} />
+          <Route path="/verify/:hash" element={<ErrorBoundary><Verify /></ErrorBoundary>} />
           <Route path="/explore" element={<ErrorBoundary><Explore /></ErrorBoundary>} />
           <Route path="/journeys" element={<ErrorBoundary><Journeys /></ErrorBoundary>} />
           <Route path="/journey/:id" element={<ErrorBoundary><Journey /></ErrorBoundary>} />

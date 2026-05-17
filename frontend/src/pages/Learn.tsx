@@ -61,6 +61,12 @@ export default function Learn() {
             >
               Pricing
             </button>
+            <button
+              onClick={() => navigate('/mind-signature')}
+              className="text-xs text-slate-400 hover:text-slate-300 transition-colors"
+            >
+              Mind Signature
+            </button>
             {isAdmin && (
               <button
                 onClick={() => navigate('/admin')}

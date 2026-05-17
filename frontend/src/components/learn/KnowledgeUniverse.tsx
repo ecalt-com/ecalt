@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Network } from 'lucide-react'
+import { Network, Sparkles } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/AuthContext'
 
 interface KnowledgeNode {
@@ -37,18 +38,26 @@ interface KnowledgeUniverseProps {
 
 export default function KnowledgeUniverse({ refreshTrigger }: KnowledgeUniverseProps) {
   const { getToken } = useAuth()
+  const navigate = useNavigate()
   const [nodes, setNodes] = useState<KnowledgeNode[]>([])
+  const [hasSignature, setHasSignature] = useState(false)
 
   const fetchNodes = useCallback(async () => {
     try {
       const token = await getToken()
       if (!token) return
-      const res = await fetch('/api/v1/knowledge/nodes', {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      if (!res.ok) return
-      const data = await res.json()
-      setNodes(data.nodes ?? [])
+      const [nodesRes, sigRes] = await Promise.all([
+        fetch('/api/v1/knowledge/nodes', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/mind-signature/me', { headers: { Authorization: `Bearer ${token}` } }),
+      ])
+      if (nodesRes.ok) {
+        const data = await nodesRes.json()
+        setNodes(data.nodes ?? [])
+      }
+      if (sigRes.ok) {
+        const data = await sigRes.json()
+        setHasSignature(!!data.signature)
+      }
     } catch {
       // non-critical
     }
@@ -90,11 +99,22 @@ export default function KnowledgeUniverse({ refreshTrigger }: KnowledgeUniverseP
             })}
           </div>
 
-          {nodes.length >= 5 && (
-            <p className="mt-4 text-[10px] text-slate-600">
-              {nodes.length} concept{nodes.length !== 1 ? 's' : ''} discovered
-            </p>
-          )}
+          <div className="mt-4 flex items-center justify-between">
+            {nodes.length >= 5 && (
+              <p className="text-[10px] text-slate-500 dark:text-slate-600">
+                {nodes.length} concept{nodes.length !== 1 ? 's' : ''} discovered
+              </p>
+            )}
+            {hasSignature && (
+              <button
+                onClick={() => navigate('/mind-signature')}
+                className="flex items-center gap-1 text-[10px] text-violet-500 dark:text-violet-400 hover:text-violet-600 dark:hover:text-violet-300 transition-colors ml-auto"
+              >
+                <Sparkles size={10} />
+                View Mind Signature
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
