@@ -37,10 +37,22 @@ export default function OnboardingModal() {
     setSaving(true)
     try {
       const token = await getToken()
-      if (token) await completeOnboarding(token)
+      if (token) {
+        const topics = Array.from(selected).map(t => t.toLowerCase())
+        await Promise.allSettled([
+          completeOnboarding(token),
+          selected.size > 0
+            ? fetch('/api/v1/users/me/interests', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+                body: JSON.stringify({ topics }),
+              })
+            : Promise.resolve(),
+        ])
+      }
     } catch { /* non-critical */ } finally {
       dismissOnboarding()
-      navigate('/journeys')
+      navigate('/learn')
     }
   }
 

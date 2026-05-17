@@ -3,7 +3,9 @@ import { Send, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
 import MarkdownContent from '../MarkdownContent'
 import WarmthIndicator from './WarmthIndicator'
+import UpgradePrompt from '../UpgradePrompt'
 import { useAuth } from '../../lib/AuthContext'
+import { useSubscription } from '../../lib/SubscriptionContext'
 
 interface Message {
   id: string
@@ -24,11 +26,13 @@ export default function ConversationInterface({
   onMessageComplete,
 }: ConversationInterfaceProps) {
   const { getToken } = useAuth()
+  const { isLimited, refresh: refreshSubscription } = useSubscription()
   const [messages, setMessages] = useState<Message[]>([])
   const [conversationId, setConversationId] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [isStreaming, setIsStreaming] = useState(false)
   const [messageCount, setMessageCount] = useState(0)
+  const [limitReason, setLimitReason] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -48,6 +52,7 @@ export default function ConversationInterface({
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return
+    if (isLimited) { setLimitReason('free_trial_exhausted'); return }
     const token = await getToken()
     if (!token) return
 
@@ -73,6 +78,14 @@ export default function ConversationInterface({
         },
         body: JSON.stringify({ message: text, conversation_id: conversationId }),
       })
+
+      if (response.status === 402) {
+        const data = await response.json().catch(() => ({}))
+        setLimitReason(data.detail?.error ?? 'free_trial_exhausted')
+        setMessages(prev => prev.slice(0, -2))
+        refreshSubscription()
+        return
+      }
 
       if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
 
@@ -131,7 +144,7 @@ export default function ConversationInterface({
       setIsStreaming(false)
       onMessageComplete()
     }
-  }, [conversationId, getToken, isStreaming, onMessageComplete])
+  }, [conversationId, getToken, isLimited, isStreaming, onMessageComplete, refreshSubscription])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -183,6 +196,11 @@ export default function ConversationInterface({
         )}
         <div ref={bottomRef} />
       </div>
+
+      {/* Upgrade prompt */}
+      {limitReason && (
+        <UpgradePrompt reason={limitReason} onDismiss={() => setLimitReason(null)} />
+      )}
 
       {/* Input bar */}
       <div className="px-4 pb-4 pt-2 border-t border-white/5">

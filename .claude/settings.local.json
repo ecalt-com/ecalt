@@ -23,7 +23,14 @@
       "Bash(echo \"Frontend PID: $!\")",
       "Bash(curl -s http://localhost:8000/api/v1/health)",
       "Bash(curl -s -o /dev/null -w \"Frontend HTTP %{http_code}\" http://localhost:3000)",
-      "Bash(curl -s -o /dev/null -w \"Frontend: HTTP %{http_code}\\\\n\" http://localhost:3000)"
+      "Bash(curl -s -o /dev/null -w \"Frontend: HTTP %{http_code}\\\\n\" http://localhost:3000)",
+      "Bash(curl -s -o /dev/null -w \"HTTP %{http_code}\" http://localhost:3002/learn)",
+      "Bash(curl -s http://localhost:3002/learn)",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\" http://localhost:8000/api/v1/chat/stream)",
+      "Bash(curl -s -w \"\\\\nHTTP %{http_code}\" http://localhost:8000/api/v1/knowledge/nodes)",
+      "Bash(curl *)",
+      "Bash(PGPASSWORD=\"XNygzD0NqaspjKqS\" psql -h aws-1-ap-south-1.pooler.supabase.com -p 6543 -U postgres.eqpyiyucgtncqfrympxn -d postgres -c \"\\\\dt\")",
+      "Bash(python -c \"from app.api.v1.endpoints.admin import router; from app.api.v1.endpoints.subscriptions import router as sr; print\\('OK'\\)\")"
     ]
   }
 }

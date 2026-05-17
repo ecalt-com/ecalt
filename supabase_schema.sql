@@ -128,3 +128,55 @@ create table if not exists daily_sparks (
 create index if not exists conversations_uid_idx on conversations(uid);
 create index if not exists messages_conversation_idx on conversation_messages(conversation_id);
 create index if not exists knowledge_nodes_uid_idx on knowledge_nodes(uid);
+
+-- ── Phase 2: Subscriptions & Token Budget ─────────────────────────────────────
+
+alter table users add column if not exists is_admin boolean default false;
+
+create table if not exists plan_configs (
+  plan_id                 text primary key,
+  name                    text not null,
+  base_price_cents        int not null,
+  token_budget_cents      int not null,
+  lifetime_message_limit  int,
+  max_seats               int default 1,
+  is_active               boolean default true,
+  stripe_price_id         text,
+  updated_at              timestamptz default now()
+);
+
+insert into plan_configs (plan_id, name, base_price_cents, token_budget_cents, lifetime_message_limit, max_seats)
+values
+  ('free_trial',  'Free Trial',  0,     2,     6,    1),
+  ('individual',  'Individual',  1900,  760,   null, 1),
+  ('student',     'Student',     900,   360,   null, 1),
+  ('family',      'Family',      3900,  1560,  null, 5),
+  ('university',  'University',  29900, 11960, null, 100),
+  ('enterprise',  'Enterprise',  49900, 19900, null, 500)
+on conflict (plan_id) do nothing;
+
+create table if not exists subscriptions (
+  id                       uuid primary key default gen_random_uuid(),
+  uid                      text references users(uid) on delete cascade unique,
+  plan_id                  text references plan_configs(plan_id) default 'free_trial',
+  stripe_subscription_id   text unique,
+  stripe_customer_id       text,
+  status                   text not null default 'active',
+  current_period_start     timestamptz,
+  current_period_end       timestamptz,
+  created_at               timestamptz default now()
+);
+
+create table if not exists token_usage (
+  uid                   text references users(uid) on delete cascade,
+  period_start          date not null,
+  input_tokens          bigint default 0,
+  output_tokens         bigint default 0,
+  estimated_cost_cents  float default 0,
+  message_count         int default 0,
+  updated_at            timestamptz default now(),
+  primary key (uid, period_start)
+);
+
+create index if not exists subscriptions_uid_idx on subscriptions(uid);
+create index if not exists token_usage_uid_idx on token_usage(uid, period_start);

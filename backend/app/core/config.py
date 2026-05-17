@@ -15,6 +15,10 @@ class Settings(BaseSettings):
 
     SENTRY_DSN: str = ""
     LOG_LEVEL: str = "INFO"
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    FRONTEND_URL: str = "http://localhost:3000"
 
     @property
     def allowed_origins(self) -> list[str]:

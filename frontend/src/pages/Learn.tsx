@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/AuthContext'
+import { useSubscription } from '../lib/SubscriptionContext'
 import TodaysSpark from '../components/learn/TodaysSpark'
 import ConversationInterface from '../components/learn/ConversationInterface'
 import KnowledgeUniverse from '../components/learn/KnowledgeUniverse'
@@ -8,6 +9,7 @@ import PageMeta from '../components/PageMeta'
 
 export default function Learn() {
   const { user, loading } = useAuth()
+  const { isAdmin } = useSubscription()
   const navigate = useNavigate()
   const [sparkInput, setSparkInput] = useState<string | undefined>()
   const [knowledgeRefresh, setKnowledgeRefresh] = useState(0)
@@ -53,6 +55,20 @@ export default function Learn() {
             ECALT
           </button>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => navigate('/pricing')}
+              className="text-xs text-slate-400 hover:text-slate-300 transition-colors"
+            >
+              Pricing
+            </button>
+            {isAdmin && (
+              <button
+                onClick={() => navigate('/admin')}
+                className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+              >
+                Admin
+              </button>
+            )}
             <button
               onClick={() => navigate('/passport')}
               className="text-xs text-slate-400 hover:text-slate-300 transition-colors"

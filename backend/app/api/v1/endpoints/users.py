@@ -66,3 +66,31 @@ async def complete_onboarding(uid: str = Depends(get_required_user)):
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
     return UserProfile(**dict(row))
+
+
+class InterestsRequest(BaseModel):
+    topics: list[str]
+    age_group: str = "all"
+
+
+@router.patch("/me/interests", summary="Save user interest topics")
+async def save_interests(body: InterestsRequest, uid: str = Depends(get_required_user)):
+    topics = [t.lower()[:50] for t in body.topics[:12]]
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO user_interests (uid, topics, age_group)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (uid) DO UPDATE SET
+                    topics = EXCLUDED.topics,
+                    age_group = EXCLUDED.age_group,
+                    last_updated = now()
+                """,
+                (uid, topics, body.age_group),
+            )
+    # Invalidate daily spark cache so it regenerates with new topics
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM daily_sparks WHERE uid = %s", (uid,))
+    return {"saved": True}

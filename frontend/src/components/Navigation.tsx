@@ -4,10 +4,12 @@ import { Zap, Menu, X, LogOut } from 'lucide-react'
 import clsx from 'clsx'
 import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../lib/AuthContext'
+import { useSubscription } from '../lib/SubscriptionContext'
 
 const NAV_LINKS = [
   { to: '/explore', label: 'Explore' },
   { to: '/journeys', label: 'Journeys' },
+  { to: '/pricing', label: 'Pricing' },
   { to: '/passport', label: 'Passport' },
 ]
 
@@ -26,7 +28,9 @@ function UserAvatar({ photoURL, displayName }: { photoURL: string | null; displa
 export default function Navigation() {
   const { pathname } = useLocation()
   const { user, loading, signIn, signOut } = useAuth()
+  const { isAdmin } = useSubscription()
   const [open, setOpen] = useState(false)
+  const visibleLinks = isAdmin ? [...NAV_LINKS, { to: '/admin', label: 'Admin' }] : NAV_LINKS
 
   return (
     <>
@@ -43,7 +47,7 @@ export default function Navigation() {
 
           {/* Desktop nav */}
           <div className="hidden md:flex glass rounded-xl px-2 py-1.5 items-center gap-1">
-            {NAV_LINKS.map(({ to, label }) => (
+            {visibleLinks.map(({ to, label }) => (
               <Link
                 key={to}
                 to={to}
@@ -131,7 +135,7 @@ export default function Navigation() {
             )}
 
             <div className="space-y-0.5">
-              {NAV_LINKS.map(({ to, label }) => (
+              {visibleLinks.map(({ to, label }) => (
                 <Link
                   key={to}
                   to={to}

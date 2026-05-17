@@ -166,6 +166,8 @@ async def stream_chat(
     yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id})}\n\n"
 
     full_response = ""
+    input_tokens = 0
+    output_tokens = 0
     try:
         async with _get_client().messages.stream(
             model=model,
@@ -176,6 +178,9 @@ async def stream_chat(
             async for text in stream.text_stream:
                 full_response += text
                 yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
+            final = await stream.get_final_message()
+            input_tokens = final.usage.input_tokens
+            output_tokens = final.usage.output_tokens
     except Exception:
         yield f"data: {json.dumps({'type': 'error', 'message': 'Could not generate response. Please try again.'})}\n\n"
         return
@@ -185,11 +190,23 @@ async def stream_chat(
 
     yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
 
-    asyncio.ensure_future(_extract_knowledge_nodes_bg(uid, user_message, validated))
+    asyncio.ensure_future(_post_stream_bg(uid, user_message, validated, model, input_tokens, output_tokens))
 
 
-async def _extract_knowledge_nodes_bg(uid: str, user_message: str, assistant_response: str) -> None:
+async def _post_stream_bg(
+    uid: str,
+    user_message: str,
+    assistant_response: str,
+    model: str,
+    input_tokens: int,
+    output_tokens: int,
+) -> None:
     from app.services.knowledge_service import extract_knowledge_nodes
+    from app.services.subscription_service import record_usage
+    try:
+        record_usage(uid, input_tokens, output_tokens, model)
+    except Exception:
+        pass
     try:
         await extract_knowledge_nodes(uid, user_message, assistant_response)
     except Exception:
