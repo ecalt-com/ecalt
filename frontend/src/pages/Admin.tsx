@@ -52,7 +52,7 @@ const PLAN_FEATURES: Record<string, string[]> = {
 
 export default function Admin() {
   const navigate = useNavigate()
-  const { getToken } = useAuth()
+  const { getToken, user } = useAuth()
   const [plans, setPlans] = useState<PlanRow[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<UserRow[]>([])
@@ -62,6 +62,7 @@ export default function Admin() {
   const [tab, setTab] = useState<'overview' | 'plans' | 'users'>('overview')
 
   useEffect(() => {
+    if (!user) return
     let cancelled = false
     async function load() {
       const token = await getToken()
@@ -80,7 +81,7 @@ export default function Admin() {
     }
     load().catch(() => navigate('/'))
     return () => { cancelled = true }
-  }, [getToken, navigate])
+  }, [getToken, navigate, user])
 
   const handleSavePlan = async (planId: string) => {
     const patch = edits[planId]
