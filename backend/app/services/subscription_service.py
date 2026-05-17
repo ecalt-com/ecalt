@@ -56,13 +56,13 @@ def count_lifetime_messages(uid: str) -> int:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT COUNT(*) FROM conversation_messages
+                SELECT COUNT(*) AS n FROM conversation_messages
                 WHERE conversation_id IN (SELECT id FROM conversations WHERE uid = %s)
                   AND role = 'user'
                 """,
                 (uid,),
             )
-            return cur.fetchone()[0]
+            return cur.fetchone()["n"]
 
 
 def check_budget(uid: str) -> tuple[bool, str]:
@@ -139,19 +139,19 @@ def upsert_subscription_from_stripe(
 def get_admin_stats() -> dict:
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM users")
-            total_users = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) AS n FROM users")
+            total_users = cur.fetchone()["n"]
 
-            cur.execute("SELECT COUNT(DISTINCT uid) FROM conversations WHERE started_at >= now() - interval '24 hours'")
-            dau = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(DISTINCT uid) AS n FROM conversations WHERE started_at >= now() - interval '24 hours'")
+            dau = cur.fetchone()["n"]
 
-            cur.execute("SELECT COUNT(*) FROM conversation_messages WHERE created_at >= now() - interval '24 hours'")
-            messages_today = cur.fetchone()[0]
+            cur.execute("SELECT COUNT(*) AS n FROM conversation_messages WHERE created_at >= now() - interval '24 hours'")
+            messages_today = cur.fetchone()["n"]
 
             cur.execute(
-                "SELECT COALESCE(SUM(estimated_cost_cents), 0) FROM token_usage WHERE period_start = date_trunc('month', now())::date"
+                "SELECT COALESCE(SUM(estimated_cost_cents), 0) AS n FROM token_usage WHERE period_start = date_trunc('month', now())::date"
             )
-            monthly_cost_cents = float(cur.fetchone()[0])
+            monthly_cost_cents = float(cur.fetchone()["n"])
 
     return {
         "total_users": total_users,

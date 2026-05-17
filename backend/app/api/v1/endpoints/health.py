@@ -40,7 +40,7 @@ async def db_check():
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute(f"SELECT COUNT(*) FROM {table}")
-                    results[table] = cur.fetchone()[0]
+                    results[table] = cur.fetchone()["count"]
         except Exception as e:
             errors[table] = str(e)
 
@@ -52,7 +52,7 @@ async def db_check():
                     "SELECT column_name FROM information_schema.columns "
                     "WHERE table_name = 'users' ORDER BY column_name"
                 )
-                results["users_columns"] = [r[0] for r in cur.fetchall()]
+                results["users_columns"] = [r["column_name"] for r in cur.fetchall()]
     except Exception as e:
         errors["users_columns"] = str(e)
 
