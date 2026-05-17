@@ -52,6 +52,7 @@ export default function Pricing() {
   const { user, getToken } = useAuth()
   const { plan: currentPlan } = useSubscription()
   const [plans, setPlans] = useState<Plan[]>([])
+  const [loadingPlans, setLoadingPlans] = useState(true)
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
 
   useEffect(() => {
@@ -59,6 +60,7 @@ export default function Pricing() {
       .then(r => r.json())
       .then(d => setPlans(d.plans ?? []))
       .catch(() => {})
+      .finally(() => setLoadingPlans(false))
   }, [])
 
   const handleSelect = async (planId: string) => {
@@ -111,7 +113,23 @@ export default function Pricing() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {plans.map(plan => {
+            {loadingPlans
+              ? Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="glass-card rounded-2xl p-6 flex flex-col animate-pulse">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-9 h-9 rounded-xl bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-3.5 w-24 rounded bg-slate-200 dark:bg-slate-700" />
+                    </div>
+                    <div className="h-7 w-16 rounded bg-slate-200 dark:bg-slate-700 mb-5" />
+                    <div className="space-y-2 flex-1 mb-6">
+                      {Array.from({ length: 4 }).map((_, j) => (
+                        <div key={j} className="h-2.5 rounded bg-slate-200 dark:bg-slate-700" style={{ width: `${70 + (j % 3) * 10}%` }} />
+                      ))}
+                    </div>
+                    <div className="h-9 rounded-xl bg-slate-200 dark:bg-slate-700" />
+                  </div>
+                ))
+              : plans.map(plan => {
               const details = PLAN_DETAILS[plan.plan_id]
               const Icon = details?.icon ?? Zap
               const isHighlighted = plan.plan_id === highlightPlan
