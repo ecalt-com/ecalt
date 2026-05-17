@@ -47,7 +47,7 @@ export default function Learn() {
       />
       <div className="h-screen bg-[var(--bg-primary)] flex flex-col overflow-hidden">
         {/* Top bar */}
-        <header className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-white/5">
+        <header className="shrink-0 flex items-center justify-between px-5 py-3 border-b border-slate-200 dark:border-white/5 bg-[var(--bg-primary)]">
           <button
             onClick={() => navigate('/')}
             className="text-sm font-bold gradient-text"
@@ -57,27 +57,27 @@ export default function Learn() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/pricing')}
-              className="text-xs text-slate-400 hover:text-slate-300 transition-colors"
+              className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
             >
               Pricing
             </button>
             <button
               onClick={() => navigate('/mind-signature')}
-              className="text-xs text-slate-400 hover:text-slate-300 transition-colors"
+              className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
             >
               Mind Signature
             </button>
             {isAdmin && (
               <button
                 onClick={() => navigate('/admin')}
-                className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                className="text-xs text-violet-600 hover:text-violet-500 dark:text-violet-400 dark:hover:text-violet-300 transition-colors"
               >
                 Admin
               </button>
             )}
             <button
               onClick={() => navigate('/passport')}
-              className="text-xs text-slate-400 hover:text-slate-300 transition-colors"
+              className="text-xs text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
             >
               Passport
             </button>
@@ -85,7 +85,7 @@ export default function Learn() {
               <img
                 src={user.photoURL}
                 alt={user.displayName ?? 'User'}
-                className="w-7 h-7 rounded-full ring-1 ring-white/10"
+                className="w-7 h-7 rounded-full ring-1 ring-slate-200 dark:ring-white/10"
               />
             )}
           </div>
@@ -94,7 +94,7 @@ export default function Learn() {
         {/* 3-panel layout */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left panel — Today's spark (hidden on mobile) */}
-          <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-white/5 bg-[var(--bg-secondary)]">
+          <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-slate-200 dark:border-white/5 bg-[var(--bg-secondary)]">
             <TodaysSpark onSelect={handleSparkSelect} />
           </aside>
 
@@ -108,7 +108,7 @@ export default function Learn() {
           </main>
 
           {/* Right panel — Knowledge Universe (hidden on mobile) */}
-          <aside className="hidden lg:flex w-60 shrink-0 flex-col border-l border-white/5 bg-[var(--bg-secondary)]">
+          <aside className="hidden lg:flex w-60 shrink-0 flex-col border-l border-slate-200 dark:border-white/5 bg-[var(--bg-secondary)]">
             <KnowledgeUniverse refreshTrigger={knowledgeRefresh} />
           </aside>
         </div>
