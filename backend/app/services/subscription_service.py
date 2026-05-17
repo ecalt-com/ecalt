@@ -9,40 +9,24 @@ _COST_PER_TOKEN: dict[str, dict[str, float]] = {
 }
 
 
-_FREE_TRIAL_FALLBACK = {
-    "plan_id": "free_trial",
-    "name": "Free Trial",
-    "base_price_cents": 0,
-    "token_budget_cents": 2,
-    "lifetime_message_limit": 6,
-    "max_seats": 1,
-    "is_active": True,
-    "stripe_price_id": None,
-}
-
-
 def get_user_plan(uid: str) -> dict:
     """Return plan_configs row for user. Defaults to free_trial."""
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT pc.* FROM subscriptions s
-                    JOIN plan_configs pc ON s.plan_id = pc.plan_id
-                    WHERE s.uid = %s AND s.status IN ('active', 'trialing')
-                    LIMIT 1
-                    """,
-                    (uid,),
-                )
-                row = cur.fetchone()
-                if row:
-                    return dict(row)
-                cur.execute("SELECT * FROM plan_configs WHERE plan_id = 'free_trial'")
-                row = cur.fetchone()
-                return dict(row) if row else _FREE_TRIAL_FALLBACK
-    except Exception:
-        return _FREE_TRIAL_FALLBACK
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT pc.* FROM subscriptions s
+                JOIN plan_configs pc ON s.plan_id = pc.plan_id
+                WHERE s.uid = %s AND s.status IN ('active', 'trialing')
+                LIMIT 1
+                """,
+                (uid,),
+            )
+            row = cur.fetchone()
+            if row:
+                return dict(row)
+            cur.execute("SELECT * FROM plan_configs WHERE plan_id = 'free_trial'")
+            return dict(cur.fetchone())
 
 
 def get_current_usage(uid: str) -> dict:
@@ -68,21 +52,17 @@ def get_current_usage(uid: str) -> dict:
 
 
 def count_lifetime_messages(uid: str) -> int:
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT COUNT(*) FROM conversation_messages
-                    WHERE conversation_id IN (SELECT id FROM conversations WHERE uid = %s)
-                      AND role = 'user'
-                    """,
-                    (uid,),
-                )
-                row = cur.fetchone()
-                return row[0] if row else 0
-    except Exception:
-        return 0
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT COUNT(*) FROM conversation_messages
+                WHERE conversation_id IN (SELECT id FROM conversations WHERE uid = %s)
+                  AND role = 'user'
+                """,
+                (uid,),
+            )
+            return cur.fetchone()[0]
 
 
 def check_budget(uid: str) -> tuple[bool, str]:

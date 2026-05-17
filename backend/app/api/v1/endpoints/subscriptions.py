@@ -25,14 +25,11 @@ async def get_my_subscription(uid: str = Depends(get_required_user)):
     lifetime_count = count_lifetime_messages(uid) if is_free else None
     lifetime_limit = plan.get("lifetime_message_limit") if is_free else None
 
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute("SELECT is_admin FROM users WHERE uid = %s", (uid,))
-                row = cur.fetchone()
-                is_admin = bool(row["is_admin"]) if row else False
-    except Exception:
-        is_admin = False
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT is_admin FROM users WHERE uid = %s", (uid,))
+            row = cur.fetchone()
+            is_admin = bool(row["is_admin"]) if row else False
 
     return {
         "plan": plan,
