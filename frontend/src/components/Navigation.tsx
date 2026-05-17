@@ -6,10 +6,13 @@ import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../lib/AuthContext'
 import { useSubscription } from '../lib/SubscriptionContext'
 
-const NAV_LINKS = [
+const PUBLIC_LINKS = [
   { to: '/explore', label: 'Explore' },
   { to: '/journeys', label: 'Journeys' },
   { to: '/pricing', label: 'Pricing' },
+]
+
+const AUTH_LINKS = [
   { to: '/passport', label: 'Passport' },
   { to: '/mind-signature', label: 'Mind Signature' },
 ]
@@ -31,7 +34,8 @@ export default function Navigation() {
   const { user, loading, signIn, signOut } = useAuth()
   const { isAdmin } = useSubscription()
   const [open, setOpen] = useState(false)
-  const visibleLinks = isAdmin ? [...NAV_LINKS, { to: '/admin', label: 'Admin' }] : NAV_LINKS
+  const baseLinks = user ? [...PUBLIC_LINKS, ...AUTH_LINKS] : PUBLIC_LINKS
+  const visibleLinks = isAdmin ? [...baseLinks, { to: '/admin', label: 'Admin' }] : baseLinks
 
   return (
     <>
