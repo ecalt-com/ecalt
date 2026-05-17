@@ -11,6 +11,7 @@ const NAV_LINKS = [
   { to: '/journeys', label: 'Journeys' },
   { to: '/pricing', label: 'Pricing' },
   { to: '/passport', label: 'Passport' },
+  { to: '/mind-signature', label: 'Mind Signature' },
 ]
 
 function UserAvatar({ photoURL, displayName }: { photoURL: string | null; displayName: string | null }) {
