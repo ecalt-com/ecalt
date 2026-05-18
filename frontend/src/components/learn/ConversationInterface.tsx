@@ -182,7 +182,7 @@ export default function ConversationInterface({
                       <span>Thinking…</span>
                     </div>
                   ) : (
-                    <div className="text-slate-300">
+                    <div className="text-slate-700 dark:text-slate-300">
                       <MarkdownContent content={msg.content} />
                       {msg.streaming && (
                         <span className="inline-block w-1 h-4 bg-violet-400 animate-pulse ml-0.5 align-middle" />
@@ -203,7 +203,7 @@ export default function ConversationInterface({
       )}
 
       {/* Input bar */}
-      <div className="px-4 pb-4 pt-2 border-t border-white/5">
+      <div className="px-4 pb-4 pt-2 border-t border-slate-200 dark:border-white/5">
         <div className="flex items-end gap-2 glass-card rounded-xl p-2">
           <textarea
             ref={inputRef}
@@ -213,7 +213,7 @@ export default function ConversationInterface({
             onKeyDown={handleKeyDown}
             placeholder="Ask anything…"
             disabled={isStreaming}
-            className="flex-1 bg-transparent text-sm text-slate-200 placeholder-slate-500 resize-none outline-none py-1.5 px-2 max-h-32 leading-relaxed"
+            className="flex-1 bg-transparent text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 resize-none outline-none py-1.5 px-2 max-h-32 leading-relaxed"
             style={{ overflowY: input.split('\n').length > 3 ? 'auto' : 'hidden' }}
           />
           <button
@@ -223,7 +223,7 @@ export default function ConversationInterface({
               'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all',
               input.trim() && !isStreaming
                 ? 'bg-violet-600 text-white hover:bg-violet-500'
-                : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'
+                : 'bg-slate-200 dark:bg-slate-700/50 text-slate-400 dark:text-slate-500 cursor-not-allowed'
             )}
           >
             {isStreaming ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}

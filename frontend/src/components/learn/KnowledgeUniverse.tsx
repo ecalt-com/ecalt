@@ -10,20 +10,20 @@ interface KnowledgeNode {
 }
 
 const DOMAIN_COLORS: Record<string, string> = {
-  biology:     'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-  physics:     'bg-violet-500/20 text-violet-300 border-violet-500/30',
-  chemistry:   'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-  math:        'bg-amber-500/20 text-amber-300 border-amber-500/30',
-  history:     'bg-orange-500/20 text-orange-300 border-orange-500/30',
-  technology:  'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  psychology:  'bg-pink-500/20 text-pink-300 border-pink-500/30',
-  philosophy:  'bg-purple-500/20 text-purple-300 border-purple-500/30',
-  arts:        'bg-rose-500/20 text-rose-300 border-rose-500/30',
-  language:    'bg-teal-500/20 text-teal-300 border-teal-500/30',
-  economics:   'bg-yellow-500/20 text-yellow-300 border-yellow-500/30',
-  engineering: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',
-  astronomy:   'bg-slate-500/20 text-slate-300 border-slate-500/30',
-  medicine:    'bg-green-500/20 text-green-300 border-green-500/30',
+  biology:     'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-500/30',
+  physics:     'bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 border-violet-300 dark:border-violet-500/30',
+  chemistry:   'bg-cyan-100 dark:bg-cyan-500/20 text-cyan-700 dark:text-cyan-300 border-cyan-300 dark:border-cyan-500/30',
+  math:        'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-500/30',
+  history:     'bg-orange-100 dark:bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-300 dark:border-orange-500/30',
+  technology:  'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30',
+  psychology:  'bg-pink-100 dark:bg-pink-500/20 text-pink-700 dark:text-pink-300 border-pink-300 dark:border-pink-500/30',
+  philosophy:  'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-500/30',
+  arts:        'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-500/30',
+  language:    'bg-teal-100 dark:bg-teal-500/20 text-teal-700 dark:text-teal-300 border-teal-300 dark:border-teal-500/30',
+  economics:   'bg-yellow-100 dark:bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 border-yellow-300 dark:border-yellow-500/30',
+  engineering: 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border-indigo-300 dark:border-indigo-500/30',
+  astronomy:   'bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-500/30',
+  medicine:    'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300 border-green-300 dark:border-green-500/30',
 }
 
 function nodeSize(strength: number): string {
@@ -70,15 +70,15 @@ export default function KnowledgeUniverse({ refreshTrigger }: KnowledgeUniverseP
   return (
     <div className="h-full flex flex-col p-4">
       <div className="flex items-center gap-2 mb-4">
-        <Network size={14} className="text-cyan-400" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+        <Network size={14} className="text-cyan-600 dark:text-cyan-400" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           Knowledge universe
         </span>
       </div>
 
       {nodes.length === 0 ? (
         <div className="flex-1 flex items-center justify-center">
-          <p className="text-xs text-slate-600 text-center leading-relaxed">
+          <p className="text-xs text-slate-500 dark:text-slate-600 text-center leading-relaxed">
             Start a conversation to discover your knowledge universe
           </p>
         </div>
@@ -86,7 +86,7 @@ export default function KnowledgeUniverse({ refreshTrigger }: KnowledgeUniverseP
         <div className="flex-1 overflow-y-auto">
           <div className="flex flex-wrap gap-1.5">
             {nodes.map((node) => {
-              const colorClass = DOMAIN_COLORS[node.domain] ?? 'bg-slate-500/20 text-slate-300 border-slate-500/30'
+              const colorClass = DOMAIN_COLORS[node.domain] ?? 'bg-slate-100 dark:bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-500/30'
               return (
                 <span
                   key={node.concept}
@@ -101,7 +101,7 @@ export default function KnowledgeUniverse({ refreshTrigger }: KnowledgeUniverseP
 
           <div className="mt-4 flex items-center justify-between">
             {nodes.length >= 5 && (
-              <p className="text-[10px] text-slate-500 dark:text-slate-600">
+              <p className="text-[10px] text-slate-400 dark:text-slate-600">
                 {nodes.length} concept{nodes.length !== 1 ? 's' : ''} discovered
               </p>
             )}
