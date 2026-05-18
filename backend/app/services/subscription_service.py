@@ -1,12 +1,7 @@
 from datetime import date
 
 from app.core.database import get_db
-
-# API cost in cents per token
-_COST_PER_TOKEN: dict[str, dict[str, float]] = {
-    "claude-haiku-4-5-20251001": {"input": 0.000080, "output": 0.000400},
-    "claude-sonnet-4-6":         {"input": 0.000300, "output": 0.001500},
-}
+from app.services.provider_service import cost_for_tokens
 
 
 def get_user_plan(uid: str) -> dict:
@@ -85,8 +80,7 @@ def check_budget(uid: str) -> tuple[bool, str]:
 
 def record_usage(uid: str, input_tokens: int, output_tokens: int, model: str) -> None:
     """Upsert token_usage for the current billing month."""
-    costs = _COST_PER_TOKEN.get(model, _COST_PER_TOKEN["claude-haiku-4-5-20251001"])
-    cost_cents = (input_tokens * costs["input"]) + (output_tokens * costs["output"])
+    cost_cents = cost_for_tokens(model, input_tokens, output_tokens)
     period_start = date.today().replace(day=1)
     try:
         with get_db() as conn:

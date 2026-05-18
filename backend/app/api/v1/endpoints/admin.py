@@ -5,6 +5,9 @@ from typing import Optional
 from app.core.auth import get_required_user
 from app.core.database import get_db
 from app.services.subscription_service import get_admin_stats
+from app.services.provider_service import (
+    AVAILABLE_MODELS, get_all_configs, set_config
+)
 
 router = APIRouter()
 
@@ -114,6 +117,77 @@ async def list_users(_uid: str = Depends(get_admin_user)):
                 """
             )
             return {"users": [dict(r) for r in cur.fetchall()]}
+
+
+@router.get("/ai-config")
+async def get_ai_config(_uid: str = Depends(get_admin_user)):
+    """Return current provider/model config for each interaction type."""
+    return {
+        "configs": get_all_configs(),
+        "available_models": AVAILABLE_MODELS,
+    }
+
+
+class AIConfigUpdate(BaseModel):
+    interaction_type: str
+    provider: str
+    model: str
+
+
+@router.patch("/ai-config")
+async def update_ai_config(body: AIConfigUpdate, _uid: str = Depends(get_admin_user)):
+    valid_providers = list(AVAILABLE_MODELS.keys())
+    if body.provider not in valid_providers:
+        raise HTTPException(status_code=400, detail=f"Provider must be one of: {valid_providers}")
+    valid_models = [m["id"] for m in AVAILABLE_MODELS.get(body.provider, [])]
+    if body.model not in valid_models:
+        raise HTTPException(status_code=400, detail=f"Model not available for provider {body.provider}")
+    set_config(body.interaction_type, body.provider, body.model)
+    return {"ok": True}
+
+
+@router.get("/usage")
+async def get_usage_breakdown(_uid: str = Depends(get_admin_user)):
+    """Token usage and cost breakdown by model for current billing month."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    cm.model_used,
+                    COUNT(*) AS message_count,
+                    COALESCE(SUM(tu.input_tokens), 0) AS total_input,
+                    COALESCE(SUM(tu.output_tokens), 0) AS total_output,
+                    COALESCE(SUM(tu.estimated_cost_cents), 0) AS total_cost_cents
+                FROM conversation_messages cm
+                LEFT JOIN token_usage tu ON tu.uid = (
+                    SELECT uid FROM conversations WHERE id = cm.conversation_id LIMIT 1
+                )
+                WHERE cm.created_at >= date_trunc('month', now())
+                  AND cm.role = 'assistant'
+                  AND cm.model_used IS NOT NULL
+                GROUP BY cm.model_used
+                ORDER BY total_cost_cents DESC
+                """
+            )
+            by_model = [dict(r) for r in cur.fetchall()]
+
+            # Daily message volume for last 14 days
+            cur.execute(
+                """
+                SELECT
+                    DATE(created_at) AS day,
+                    COUNT(*) AS messages
+                FROM conversation_messages
+                WHERE created_at >= now() - interval '14 days'
+                  AND role = 'user'
+                GROUP BY day
+                ORDER BY day
+                """
+            )
+            daily = [{"day": str(r["day"]), "messages": r["messages"]} for r in cur.fetchall()]
+
+    return {"by_model": by_model, "daily": daily}
 
 
 @router.patch("/users/{target_uid}/toggle-admin")

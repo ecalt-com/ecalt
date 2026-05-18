@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings, ArrowLeft, Save, Loader2, ShieldCheck, ShieldOff, Check, Zap, Users, GraduationCap, Building2, Search } from 'lucide-react'
+import { Settings, ArrowLeft, Save, Loader2, ShieldCheck, ShieldOff, Check, Zap, Users, GraduationCap, Building2, Search, Cpu } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../lib/AuthContext'
 import PageMeta from '../components/PageMeta'
@@ -32,13 +32,31 @@ interface UserRow {
   created_at: string
 }
 
+interface AIConfig {
+  interaction_type: string
+  provider: string
+  model: string
+}
+
+interface ModelOption {
+  id: string
+  label: string
+}
+
+interface UsageByModel {
+  model_used: string
+  message_count: number
+  total_cost_cents: number
+}
+
+interface DailyUsage {
+  day: string
+  messages: number
+}
+
 const PLAN_ICONS: Record<string, React.ElementType> = {
-  free_trial: Zap,
-  individual: Zap,
-  student: GraduationCap,
-  family: Users,
-  university: Building2,
-  enterprise: Building2,
+  free_trial: Zap, individual: Zap, student: GraduationCap,
+  family: Users, university: Building2, enterprise: Building2,
 }
 
 const PLAN_FEATURES: Record<string, string[]> = {
@@ -50,16 +68,32 @@ const PLAN_FEATURES: Record<string, string[]> = {
   enterprise: ['Custom seat count', 'Custom model routing', 'SLA & priority support', 'Custom integrations'],
 }
 
+const INTERACTION_LABELS: Record<string, string> = {
+  daily_chat: 'Daily Chat',
+  nudge: 'Nudge',
+  onboarding: 'Onboarding',
+  fingerprint: 'Fingerprint',
+  mind_signature: 'Mind Signature',
+}
+
 export default function Admin() {
   const navigate = useNavigate()
   const { getToken, user } = useAuth()
+
   const [plans, setPlans] = useState<PlanRow[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
   const [users, setUsers] = useState<UserRow[]>([])
+  const [aiConfigs, setAiConfigs] = useState<AIConfig[]>([])
+  const [availableModels, setAvailableModels] = useState<Record<string, ModelOption[]>>({})
+  const [usageByModel, setUsageByModel] = useState<UsageByModel[]>([])
+  const [dailyUsage, setDailyUsage] = useState<DailyUsage[]>([])
+
   const [saving, setSaving] = useState<string | null>(null)
+  const [savingAI, setSavingAI] = useState<string | null>(null)
   const [edits, setEdits] = useState<Record<string, Partial<PlanRow>>>({})
+  const [aiEdits, setAiEdits] = useState<Record<string, AIConfig>>({})
   const [togglingUid, setTogglingUid] = useState<string | null>(null)
-  const [tab, setTab] = useState<'overview' | 'plans' | 'users'>('overview')
+  const [tab, setTab] = useState<'overview' | 'plans' | 'ai' | 'users'>('overview')
   const [userSearch, setUserSearch] = useState('')
 
   const filteredUsers = useMemo(() => {
@@ -79,16 +113,28 @@ export default function Admin() {
       const token = await getToken()
       if (!token) return
 
-      const [pRes, sRes, uRes] = await Promise.all([
-        fetch('/api/v1/admin/plans', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/stats', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/users', { headers: { Authorization: `Bearer ${token}` } }),
+      const [pRes, sRes, uRes, aiRes, usageRes] = await Promise.all([
+        fetch('/api/v1/admin/plans',     { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/stats',     { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/users',     { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/ai-config', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/usage',     { headers: { Authorization: `Bearer ${token}` } }),
       ])
 
       if (pRes.status === 403) { navigate('/'); return }
-      if (!cancelled && pRes.ok) setPlans(await pRes.json().then(d => d.plans ?? []))
+      if (!cancelled && pRes.ok) setPlans(await pRes.json().then((d: any) => d.plans ?? []))
       if (!cancelled && sRes.ok) setStats(await sRes.json())
-      if (!cancelled && uRes.ok) setUsers(await uRes.json().then(d => d.users ?? []))
+      if (!cancelled && uRes.ok) setUsers(await uRes.json().then((d: any) => d.users ?? []))
+      if (!cancelled && aiRes.ok) {
+        const d = await aiRes.json()
+        setAiConfigs(d.configs ?? [])
+        setAvailableModels(d.available_models ?? {})
+      }
+      if (!cancelled && usageRes.ok) {
+        const d = await usageRes.json()
+        setUsageByModel(d.by_model ?? [])
+        setDailyUsage(d.daily ?? [])
+      }
     }
     load().catch(() => navigate('/'))
     return () => { cancelled = true }
@@ -110,9 +156,23 @@ export default function Admin() {
         setPlans(prev => prev.map(p => p.plan_id === planId ? { ...p, ...data.plan } : p))
         setEdits(prev => { const next = { ...prev }; delete next[planId]; return next })
       }
-    } finally {
-      setSaving(null)
-    }
+    } finally { setSaving(null) }
+  }
+
+  const handleSaveAI = async (interactionType: string) => {
+    const cfg = aiEdits[interactionType]
+    if (!cfg) return
+    setSavingAI(interactionType)
+    try {
+      const token = await getToken()
+      await fetch('/api/v1/admin/ai-config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(cfg),
+      })
+      setAiConfigs(prev => prev.map(c => c.interaction_type === interactionType ? { ...c, ...cfg } : c))
+      setAiEdits(prev => { const next = { ...prev }; delete next[interactionType]; return next })
+    } finally { setSavingAI(null) }
   }
 
   const handleToggleAdmin = async (uid: string) => {
@@ -127,22 +187,37 @@ export default function Admin() {
         const data = await res.json()
         setUsers(prev => prev.map(u => u.uid === uid ? { ...u, is_admin: data.user.is_admin } : u))
       }
-    } finally {
-      setTogglingUid(null)
-    }
+    } finally { setTogglingUid(null) }
   }
 
   const setEdit = (planId: string, field: string, value: string | number | boolean) => {
     setEdits(prev => ({ ...prev, [planId]: { ...prev[planId], [field]: value } }))
   }
 
+  const setAiEdit = (interactionType: string, field: 'provider' | 'model', value: string) => {
+    setAiEdits(prev => {
+      const base = prev[interactionType] ?? aiConfigs.find(c => c.interaction_type === interactionType) ?? { interaction_type: interactionType, provider: 'anthropic', model: '' }
+      const updated = { ...base, [field]: value }
+      // Reset model when provider changes
+      if (field === 'provider') {
+        const models = availableModels[value] ?? []
+        updated.model = models[0]?.id ?? ''
+      }
+      return { ...prev, [interactionType]: updated }
+    })
+  }
+
   const TABS = [
     { id: 'overview', label: 'Overview' },
-    { id: 'plans', label: 'Pricing Plans' },
-    { id: 'users', label: 'Users' },
+    { id: 'plans',    label: 'Pricing Plans' },
+    { id: 'ai',       label: 'AI Providers' },
+    { id: 'users',    label: 'Users' },
   ] as const
 
   const inputCls = 'mt-1 w-full bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs px-2 py-1.5 rounded-lg outline-none border border-slate-200 dark:border-slate-700 focus:border-violet-400 dark:focus:border-violet-500/50'
+  const selectCls = 'bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs px-2 py-1.5 rounded-lg outline-none border border-slate-200 dark:border-slate-700 focus:border-violet-400 dark:focus:border-violet-500/50'
+
+  const totalMonthlyCost = usageByModel.reduce((s, r) => s + r.total_cost_cents, 0)
 
   return (
     <>
@@ -162,7 +237,7 @@ export default function Admin() {
           </div>
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-8 p-1 glass-card rounded-xl w-fit">
+          <div className="flex gap-1 mb-8 p-1 glass-card rounded-xl w-fit flex-wrap">
             {TABS.map(t => (
               <button
                 key={t.id}
@@ -185,9 +260,9 @@ export default function Admin() {
               {stats ? (
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
                   {[
-                    { label: 'Total users', value: stats.total_users },
-                    { label: 'DAU', value: stats.dau },
-                    { label: 'Messages today', value: stats.messages_today },
+                    { label: 'Total users',     value: stats.total_users },
+                    { label: 'DAU',             value: stats.dau },
+                    { label: 'Messages today',  value: stats.messages_today },
                     { label: 'Monthly API cost', value: `$${(stats.monthly_api_cost_cents / 100).toFixed(2)}` },
                   ].map(({ label, value }) => (
                     <div key={label} className="glass-card rounded-xl p-4">
@@ -261,7 +336,6 @@ export default function Admin() {
                 {plans.map(plan => {
                   const edit = edits[plan.plan_id] ?? {}
                   const isDirty = Object.keys(edit).length > 0
-
                   return (
                     <div key={plan.plan_id} className="glass-card rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
@@ -283,7 +357,6 @@ export default function Admin() {
                           </button>
                         )}
                       </div>
-
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <label className="text-xs text-slate-500">
                           Price (cents)
@@ -301,6 +374,151 @@ export default function Admin() {
                           Max seats
                           <input type="number" defaultValue={plan.max_seats} onChange={e => setEdit(plan.plan_id, 'max_seats', parseInt(e.target.value))} className={inputCls} />
                         </label>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )}
+
+          {/* AI Providers tab */}
+          {tab === 'ai' && (
+            <>
+              {/* Usage breakdown */}
+              <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">Usage This Month</h2>
+              {usageByModel.length > 0 ? (
+                <div className="glass-card rounded-xl overflow-hidden mb-8">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 dark:border-slate-700">
+                        <th className="text-left px-4 py-2.5 text-slate-500 font-semibold">Model</th>
+                        <th className="text-right px-4 py-2.5 text-slate-500 font-semibold">Messages</th>
+                        <th className="text-right px-4 py-2.5 text-slate-500 font-semibold">Est. Cost</th>
+                        <th className="text-right px-4 py-2.5 text-slate-500 font-semibold">Share</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {usageByModel.map(r => (
+                        <tr key={r.model_used} className="border-b border-slate-100 dark:border-slate-800 last:border-0">
+                          <td className="px-4 py-2.5">
+                            <div className="flex items-center gap-2">
+                              <Cpu size={11} className="text-slate-400 shrink-0" />
+                              <span className="font-mono text-slate-700 dark:text-slate-300">{r.model_used}</span>
+                              {r.model_used.startsWith('gpt') || r.model_used.startsWith('o1')
+                                ? <span className="text-[9px] bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-full">OpenAI</span>
+                                : <span className="text-[9px] bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400 px-1.5 py-0.5 rounded-full">Anthropic</span>
+                              }
+                            </div>
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-slate-600 dark:text-slate-400">{r.message_count.toLocaleString()}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-600 dark:text-slate-400">${(r.total_cost_cents / 100).toFixed(4)}</td>
+                          <td className="px-4 py-2.5 text-right text-slate-500">
+                            {totalMonthlyCost > 0 ? `${Math.round((r.total_cost_cents / totalMonthlyCost) * 100)}%` : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-50 dark:bg-slate-800/50">
+                        <td className="px-4 py-2.5 text-slate-600 dark:text-slate-300 font-semibold">Total</td>
+                        <td className="px-4 py-2.5 text-right text-slate-600 dark:text-slate-300 font-semibold">
+                          {usageByModel.reduce((s, r) => s + r.message_count, 0).toLocaleString()}
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-slate-600 dark:text-slate-300 font-semibold">
+                          ${(totalMonthlyCost / 100).toFixed(4)}
+                        </td>
+                        <td />
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-xs text-slate-400 mb-8">No usage data yet this month.</p>
+              )}
+
+              {/* Daily chart — simple bar */}
+              {dailyUsage.length > 0 && (
+                <div className="glass-card rounded-xl p-4 mb-8">
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-300 mb-3">Daily Messages (last 14 days)</p>
+                  <div className="flex items-end gap-1 h-16">
+                    {dailyUsage.map(d => {
+                      const max = Math.max(...dailyUsage.map(x => x.messages), 1)
+                      const pct = Math.round((d.messages / max) * 100)
+                      return (
+                        <div key={d.day} className="flex-1 flex flex-col items-center gap-1" title={`${d.day}: ${d.messages}`}>
+                          <div className="w-full bg-violet-500/70 dark:bg-violet-500/50 rounded-t" style={{ height: `${Math.max(pct, 4)}%` }} />
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-[9px] text-slate-400">{dailyUsage[0]?.day}</span>
+                    <span className="text-[9px] text-slate-400">{dailyUsage[dailyUsage.length - 1]?.day}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Provider / model config per interaction type */}
+              <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">Model Routing</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
+                Set which provider and model handles each interaction type. Changes take effect immediately for new conversations.
+              </p>
+              <div className="space-y-3">
+                {aiConfigs.map(cfg => {
+                  const pending = aiEdits[cfg.interaction_type] ?? cfg
+                  const isDirty = !!aiEdits[cfg.interaction_type]
+                  const models = availableModels[pending.provider] ?? []
+
+                  return (
+                    <div key={cfg.interaction_type} className="glass-card rounded-xl p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                            {INTERACTION_LABELS[cfg.interaction_type] ?? cfg.interaction_type}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono">{cfg.interaction_type}</p>
+                        </div>
+                        {isDirty && (
+                          <button
+                            onClick={() => handleSaveAI(cfg.interaction_type)}
+                            disabled={savingAI === cfg.interaction_type}
+                            className="flex items-center gap-1.5 text-xs bg-violet-600 hover:bg-violet-500 text-white px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            {savingAI === cfg.interaction_type ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                            Save
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex gap-3 flex-wrap">
+                        <label className="text-xs text-slate-500">
+                          Provider
+                          <select
+                            value={pending.provider}
+                            onChange={e => setAiEdit(cfg.interaction_type, 'provider', e.target.value)}
+                            className={`block mt-1 ${selectCls}`}
+                          >
+                            {Object.keys(availableModels).map(p => (
+                              <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="text-xs text-slate-500 flex-1 min-w-[180px]">
+                          Model
+                          <select
+                            value={pending.model}
+                            onChange={e => setAiEdit(cfg.interaction_type, 'model', e.target.value)}
+                            className={`block mt-1 w-full ${selectCls}`}
+                          >
+                            {models.map(m => (
+                              <option key={m.id} value={m.id}>{m.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="text-xs text-slate-400 self-end pb-1.5">
+                          {pending.provider === 'anthropic' ? '🟣 Anthropic' : '🟢 OpenAI'}
+                        </div>
                       </div>
                     </div>
                   )

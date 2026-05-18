@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     ANTHROPIC_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
     ALLOWED_ORIGINS: str = "http://localhost:3000"
     ENVIRONMENT: str = "development"
     FIREBASE_PROJECT_ID: str = ""

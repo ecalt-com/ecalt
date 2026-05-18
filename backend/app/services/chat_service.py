@@ -3,34 +3,8 @@ import json
 import uuid
 from typing import AsyncGenerator
 
-import anthropic
-
-from app.core.config import settings
 from app.core.database import get_db
-
-_client: anthropic.AsyncAnthropic | None = None
-
-
-def _get_client() -> anthropic.AsyncAnthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
-    return _client
-
-
-# ── Model routing ─────────────────────────────────────────────────────────────
-
-INTERACTION_MODELS: dict[str, str] = {
-    "daily_chat":     "claude-haiku-4-5-20251001",
-    "nudge":          "claude-haiku-4-5-20251001",
-    "onboarding":     "claude-sonnet-4-6",
-    "fingerprint":    "claude-sonnet-4-6",
-    "mind_signature": "claude-sonnet-4-6",
-}
-
-
-def route_model(interaction_type: str = "daily_chat") -> str:
-    return INTERACTION_MODELS.get(interaction_type, "claude-haiku-4-5-20251001")
+from app.services.provider_service import get_config, stream_completion
 
 
 # ── Injection defense ─────────────────────────────────────────────────────────
@@ -109,16 +83,16 @@ def _load_conversation(uid: str, conversation_id: str | None) -> tuple[str, list
                 return new_id, []
 
 
-def _persist_messages(conv_id: str, user_message: str, assistant_response: str) -> None:
+def _persist_messages(conv_id: str, user_message: str, assistant_response: str, model: str = "") -> None:
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO conversation_messages (conversation_id, role, content)
-                    VALUES (%s, 'user', %s), (%s, 'assistant', %s)
+                    INSERT INTO conversation_messages (conversation_id, role, content, model_used)
+                    VALUES (%s, 'user', %s, NULL), (%s, 'assistant', %s, %s)
                     """,
-                    (conv_id, user_message, conv_id, assistant_response),
+                    (conv_id, user_message, conv_id, assistant_response, model or None),
                 )
                 # Auto-title from first user message
                 cur.execute(
@@ -144,7 +118,8 @@ async def stream_chat(
     interaction_type: str = "daily_chat",
 ) -> AsyncGenerator[str, None]:
     """Async generator yielding SSE-formatted strings for a chat turn."""
-    model = route_model(interaction_type)
+    cfg = get_config(interaction_type)
+    provider, model = cfg["provider"], cfg["model"]
     user_message = user_message[:2000]
 
     try:
@@ -169,24 +144,20 @@ async def stream_chat(
     input_tokens = 0
     output_tokens = 0
     try:
-        async with _get_client().messages.stream(
-            model=model,
-            max_tokens=1024,
-            system=_CHAT_SYSTEM,
-            messages=messages,
-        ) as stream:
-            async for text in stream.text_stream:
+        async for text, in_tok, out_tok in stream_completion(provider, model, _CHAT_SYSTEM, messages):
+            if text:
                 full_response += text
                 yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
-            final = await stream.get_final_message()
-            input_tokens = final.usage.input_tokens
-            output_tokens = final.usage.output_tokens
-    except Exception:
+            if in_tok:
+                input_tokens = in_tok
+            if out_tok:
+                output_tokens = out_tok
+    except Exception as e:
         yield f"data: {json.dumps({'type': 'error', 'message': 'Could not generate response. Please try again.'})}\n\n"
         return
 
     validated = validate_output(full_response)
-    _persist_messages(conv_id, user_message, validated)
+    _persist_messages(conv_id, user_message, validated, model)
 
     yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
 
