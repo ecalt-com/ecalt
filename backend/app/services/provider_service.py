@@ -62,14 +62,14 @@ _openai_client: openai_lib.AsyncOpenAI | None = None
 def _get_anthropic() -> anthropic.AsyncAnthropic:
     global _anthropic_client
     if _anthropic_client is None:
-        _anthropic_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+        _anthropic_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY or None)
     return _anthropic_client
 
 
 def _get_openai() -> openai_lib.AsyncOpenAI:
     global _openai_client
     if _openai_client is None:
-        _openai_client = openai_lib.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        _openai_client = openai_lib.AsyncOpenAI(api_key=settings.OPENAI_API_KEY or None)
     return _openai_client
 
 
