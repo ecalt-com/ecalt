@@ -1,6 +1,8 @@
 import logging
 import time
 import uuid
+from contextlib import asynccontextmanager
+
 import sentry_sdk
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +14,15 @@ from app.core.limiter import limiter
 from app.core.logging_config import setup_logging
 from app.api.v1.router import api_router
 
+# Called once at module load — may be overwritten by uvicorn's dictConfig
 setup_logging(settings.LOG_LEVEL, settings.ENVIRONMENT)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # Re-apply AFTER uvicorn finishes its own logging setup
+    setup_logging(settings.LOG_LEVEL, settings.ENVIRONMENT)
+    yield
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
@@ -63,6 +73,7 @@ _TAGS_METADATA = [
 ]
 
 app = FastAPI(
+    lifespan=lifespan,
     title="ECALT API",
     description=_DESCRIPTION,
     version="0.1.0",
