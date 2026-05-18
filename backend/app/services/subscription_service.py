@@ -60,20 +60,53 @@ def count_lifetime_messages(uid: str) -> int:
             return cur.fetchone()["n"]
 
 
-def check_budget(uid: str) -> tuple[bool, str]:
-    """Returns (allowed, reason). reason is 'ok', 'free_trial_exhausted', or 'budget_exhausted'."""
-    plan = get_user_plan(uid)
+def get_coupon_extras(uid: str) -> dict:
+    """Return summed active coupon benefits for a user: extra_credits_cents, bonus_messages."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT
+                        COALESCE(SUM(credit_applied_cents), 0) AS extra_credits,
+                        COALESCE(SUM(bonus_messages_applied), 0) AS bonus_messages
+                    FROM coupon_redemptions
+                    WHERE uid = %s
+                      AND (credit_expires_at IS NULL OR credit_expires_at > now())
+                    """,
+                    (uid,),
+                )
+                row = cur.fetchone()
+                return {
+                    "extra_credits_cents": float(row["extra_credits"]),
+                    "bonus_messages": int(row["bonus_messages"]),
+                }
+    except Exception:
+        return {"extra_credits_cents": 0.0, "bonus_messages": 0}
 
-    if plan["plan_id"] == "free_trial":
-        limit = plan.get("lifetime_message_limit") or 6
+
+def check_budget(uid: str, context: str = "ai") -> tuple[bool, str]:
+    """
+    Returns (allowed, reason).
+    context='chat'  → free trial uses message count gate; paid uses token budget.
+    context='ai'    → all plans use token budget (step content, explore, etc.).
+    """
+    plan = get_user_plan(uid)
+    extras = get_coupon_extras(uid)
+
+    if plan["plan_id"] == "free_trial" and context == "chat":
+        base_limit = plan.get("lifetime_message_limit") or 6
+        total_limit = base_limit + extras["bonus_messages"]
         used = count_lifetime_messages(uid)
-        if used >= limit:
+        if used >= total_limit:
             return False, "free_trial_exhausted"
         return True, "ok"
 
+    # Token budget gate (free trial non-chat + all paid plans)
     usage = get_current_usage(uid)
-    budget = plan.get("token_budget_cents") or 99999
-    if usage["estimated_cost_cents"] >= budget:
+    base_budget = float(plan.get("token_budget_cents") or 20.0)
+    total_budget = base_budget + extras["extra_credits_cents"]
+    if usage["estimated_cost_cents"] >= total_budget:
         return False, "budget_exhausted"
     return True, "ok"
 

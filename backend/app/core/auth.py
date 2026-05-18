@@ -57,3 +57,20 @@ def get_required_user(uid: Optional[str] = Depends(get_optional_user)) -> str:
     if not uid:
         raise HTTPException(status_code=401, detail="Authentication required")
     return uid
+
+
+def get_admin_user(uid: str = Depends(get_required_user)) -> str:
+    """Raises 403 if user is not an admin."""
+    from app.core.database import get_db
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT is_admin FROM users WHERE uid = %s", (uid,))
+                row = cur.fetchone()
+                if not row or not row["is_admin"]:
+                    raise HTTPException(status_code=403, detail="Admin access required")
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return uid

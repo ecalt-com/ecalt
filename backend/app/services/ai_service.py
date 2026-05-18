@@ -78,19 +78,21 @@ async def generate_step_content(
     journey_title: str,
     journey_question: str,
     age_group: str = "all",
-) -> str:
+) -> tuple[str, int, int]:
+    """Returns (content, estimated_input_tokens, estimated_output_tokens)."""
+    user_content = (
+        f"Journey: {journey_title}\n"
+        f"Original question: {journey_question}\n"
+        f"Step title: {step_title}\n"
+        f"Step description: {step_description}\n"
+        f"Step type: {step_type}\n"
+        f"Age group: {age_group}\n\n"
+        "Generate the lesson content JSON."
+    )
     raw = await complete_text(
         interaction_type="step_content",
         system=STEP_CONTENT_SYSTEM,
-        user_content=(
-            f"Journey: {journey_title}\n"
-            f"Original question: {journey_question}\n"
-            f"Step title: {step_title}\n"
-            f"Step description: {step_description}\n"
-            f"Step type: {step_type}\n"
-            f"Age group: {age_group}\n\n"
-            "Generate the lesson content JSON."
-        ),
+        user_content=user_content,
         max_tokens=1500,
     )
     start = raw.find("{")
@@ -98,12 +100,26 @@ async def generate_step_content(
     if start == -1 or end == 0:
         raise ValueError("AI did not return valid content JSON")
     data = json.loads(raw[start:end])
-    return data["content"]
+    content = data["content"]
+    in_tok = (len(STEP_CONTENT_SYSTEM) + len(user_content)) // 4
+    out_tok = len(raw) // 4
+    return content, in_tok, out_tok
 
 
-async def warm_journey_steps(journey_id: str, steps: list[JourneyStep], journey_title: str, journey_question: str, age_group: str = "all") -> None:
+async def warm_journey_steps(
+    journey_id: str,
+    steps: list[JourneyStep],
+    journey_title: str,
+    journey_question: str,
+    age_group: str = "all",
+    uid: str | None = None,
+) -> None:
     """Background task: pre-generate and cache content for all steps in a journey."""
     from app.core.database import get_db
+    from app.services.subscription_service import record_usage
+    from app.services.provider_service import get_config
+    model = get_config("step_content")["model"]
+
     for step in steps:
         try:
             with get_db() as conn:
@@ -114,7 +130,7 @@ async def warm_journey_steps(journey_id: str, steps: list[JourneyStep], journey_
                     )
                     if cur.fetchone():
                         continue
-            content = await generate_step_content(
+            content, in_tok, out_tok = await generate_step_content(
                 step_title=step.title,
                 step_description=step.description,
                 step_type=step.type,
@@ -132,19 +148,22 @@ async def warm_journey_steps(journey_id: str, steps: list[JourneyStep], journey_
                         """,
                         (journey_id, step.id, content),
                     )
+            if uid:
+                record_usage(uid, in_tok, out_tok, model)
         except Exception:
             pass
 
 
-async def generate_journey(question: str, age_group: str = "all") -> Journey:
+async def generate_journey(question: str, age_group: str = "all") -> tuple[Journey, int, int]:
+    """Returns (journey, estimated_input_tokens, estimated_output_tokens)."""
+    user_content = f"Question: {question}\nTarget age group: {age_group}\n\nGenerate the learning journey JSON."
     raw = await complete_text(
         interaction_type="journey",
         system=SYSTEM_PROMPT,
-        user_content=f"Question: {question}\nTarget age group: {age_group}\n\nGenerate the learning journey JSON.",
+        user_content=user_content,
         max_tokens=2048,
     )
 
-    # Extract JSON robustly
     start = raw.find("{")
     end = raw.rfind("}") + 1
     if start == -1 or end == 0:
@@ -163,7 +182,7 @@ async def generate_journey(question: str, age_group: str = "all") -> Journey:
         for step in data["steps"]
     ]
 
-    return Journey(
+    journey = Journey(
         id=str(uuid.uuid4()),
         question=question,
         title=data["title"],
@@ -176,3 +195,6 @@ async def generate_journey(question: str, age_group: str = "all") -> Journey:
         icon=data.get("icon", "📚"),
         created_at=datetime.now(timezone.utc).isoformat(),
     )
+    in_tok = (len(SYSTEM_PROMPT) + len(user_content)) // 4
+    out_tok = len(raw) // 4
+    return journey, in_tok, out_tok

@@ -6,6 +6,8 @@ from app.models.schemas import Journey, JourneyStep, JourneysResponse, StepConte
 from app.core.auth import get_optional_user, get_required_user
 from app.core.database import get_db
 from app.services.ai_service import generate_step_content
+from app.services.subscription_service import check_budget, record_usage
+from app.services.provider_service import get_config
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -216,6 +218,11 @@ async def get_step_content(
     except Exception:
         pass
 
+    # Cache miss — check budget before spending tokens
+    allowed, reason = check_budget(uid)
+    if not allowed:
+        raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
+
     # Resolve journey + step for generation context
     journey = _db_journey(journey_id) or _journey_map.get(journey_id)
     if not journey:
@@ -225,7 +232,7 @@ async def get_step_content(
         raise HTTPException(status_code=404, detail="Step not found")
 
     try:
-        content = await generate_step_content(
+        content, in_tok, out_tok = await generate_step_content(
             step_title=step.title,
             step_description=step.description,
             step_type=step.type,
@@ -239,6 +246,8 @@ async def get_step_content(
     except Exception:
         logger.exception("step content generation failed", extra={"journey_id": journey_id, "step_id": step_id})
         raise HTTPException(status_code=500, detail="Failed to generate step content.")
+
+    record_usage(uid, in_tok, out_tok, get_config("step_content")["model"])
 
     # Cache result
     try:

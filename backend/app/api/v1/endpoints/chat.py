@@ -6,7 +6,7 @@ from typing import Optional
 from app.core.auth import get_required_user
 from app.core.database import get_db
 from app.services.chat_service import stream_chat
-from app.services.subscription_service import check_budget
+from app.services.subscription_service import check_budget, record_usage
 
 router = APIRouter()
 
@@ -19,7 +19,7 @@ class ChatRequest(BaseModel):
 
 @router.post("/stream")
 async def chat_stream(body: ChatRequest, uid: str = Depends(get_required_user)):
-    allowed, reason = check_budget(uid)
+    allowed, reason = check_budget(uid, context="chat")
     if not allowed:
         raise HTTPException(
             status_code=402,

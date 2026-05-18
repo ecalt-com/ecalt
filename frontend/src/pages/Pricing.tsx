@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Check, Zap, Users, GraduationCap, Building2, ArrowLeft } from 'lucide-react'
+import { Check, Zap, Users, GraduationCap, Building2, ArrowLeft, Ticket } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../lib/AuthContext'
 import { useSubscription } from '../lib/SubscriptionContext'
@@ -212,8 +212,76 @@ export default function Pricing() {
           <p className="text-center text-xs text-slate-400 dark:text-slate-600 mt-10">
             All prices in USD · Cancel anytime · Powered by Stripe
           </p>
+
+          <CouponApply />
         </div>
       </div>
     </>
+  )
+}
+
+function CouponApply() {
+  const { user, getToken } = useAuth()
+  const { refresh } = useSubscription()
+  const [code, setCode] = useState('')
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [message, setMessage] = useState('')
+
+  if (!user) return null
+
+  const apply = async () => {
+    if (!code.trim()) return
+    setStatus('loading')
+    try {
+      const token = await getToken()
+      const res = await fetch('/api/v1/coupons/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ code: code.trim().toUpperCase() }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setMessage(typeof data.detail === 'string' ? data.detail : 'Invalid coupon.')
+        setStatus('error')
+        return
+      }
+      refresh()
+      setMessage(`✓ ${data.description ?? 'Coupon applied!'}`)
+      setStatus('success')
+      setCode('')
+    } catch {
+      setMessage('Something went wrong. Try again.')
+      setStatus('error')
+    }
+  }
+
+  return (
+    <div className="mt-10 flex flex-col items-center gap-3">
+      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <Ticket size={12} />
+        Have a promo code?
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={code}
+          onChange={e => { setCode(e.target.value.toUpperCase()); setStatus('idle') }}
+          onKeyDown={e => e.key === 'Enter' && apply()}
+          placeholder="ENTER CODE"
+          className="px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs outline-none focus:border-violet-400 dark:focus:border-violet-500/50 w-40 font-mono tracking-wider"
+        />
+        <button
+          onClick={apply}
+          disabled={status === 'loading' || !code.trim()}
+          className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+        >
+          {status === 'loading' ? '…' : 'Apply'}
+        </button>
+      </div>
+      {message && (
+        <p className={`text-xs ${status === 'success' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500'}`}>
+          {message}
+        </p>
+      )}
+    </div>
   )
 }

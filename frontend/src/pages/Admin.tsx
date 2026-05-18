@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings, ArrowLeft, Save, Loader2, ShieldCheck, ShieldOff, Check, Zap, Users, GraduationCap, Building2, Search, Cpu } from 'lucide-react'
+import { Settings, ArrowLeft, Save, Loader2, ShieldCheck, ShieldOff, Check, Zap, Users, GraduationCap, Building2, Search, Cpu, Ticket, Plus, X, ToggleLeft, ToggleRight } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../lib/AuthContext'
 import PageMeta from '../components/PageMeta'
@@ -93,8 +93,19 @@ export default function Admin() {
   const [edits, setEdits] = useState<Record<string, Partial<PlanRow>>>({})
   const [aiEdits, setAiEdits] = useState<Record<string, AIConfig>>({})
   const [togglingUid, setTogglingUid] = useState<string | null>(null)
-  const [tab, setTab] = useState<'overview' | 'plans' | 'ai' | 'users'>('overview')
+  const [tab, setTab] = useState<'overview' | 'plans' | 'ai' | 'users' | 'coupons'>('overview')
   const [userSearch, setUserSearch] = useState('')
+
+  // Coupon state
+  interface CouponRow {
+    code: string; description: string; credit_cents: number; bonus_messages: number;
+    plan_override: string | null; duration_days: number | null; max_redemptions: number | null;
+    redemption_count: number; expires_at: string | null; is_active: boolean; created_at: string;
+  }
+  const [coupons, setCoupons] = useState<CouponRow[]>([])
+  const [couponForm, setCouponForm] = useState({ code: '', description: '', credit_cents: '', bonus_messages: '', duration_days: '', max_redemptions: '', expires_at: '' })
+  const [creatingCoupon, setCreatingCoupon] = useState(false)
+  const [couponError, setCouponError] = useState<string | null>(null)
 
   const filteredUsers = useMemo(() => {
     const q = userSearch.toLowerCase().trim()
@@ -113,12 +124,13 @@ export default function Admin() {
       const token = await getToken()
       if (!token) return
 
-      const [pRes, sRes, uRes, aiRes, usageRes] = await Promise.all([
+      const [pRes, sRes, uRes, aiRes, usageRes, cRes] = await Promise.all([
         fetch('/api/v1/admin/plans',     { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/v1/admin/stats',     { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/v1/admin/users',     { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/v1/admin/ai-config', { headers: { Authorization: `Bearer ${token}` } }),
         fetch('/api/v1/admin/usage',     { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/coupons/admin',   { headers: { Authorization: `Bearer ${token}` } }),
       ])
 
       if (pRes.status === 403) { navigate('/'); return }
@@ -135,6 +147,7 @@ export default function Admin() {
         setUsageByModel(d.by_model ?? [])
         setDailyUsage(d.daily ?? [])
       }
+      if (!cancelled && cRes.ok) setCoupons(await cRes.json().then((d: any) => d.coupons ?? []))
     }
     load().catch(() => navigate('/'))
     return () => { cancelled = true }
@@ -207,11 +220,59 @@ export default function Admin() {
     })
   }
 
+  const handleCreateCoupon = async () => {
+    setCouponError(null)
+    if (!couponForm.code.trim() || !couponForm.description.trim()) {
+      setCouponError('Code and description are required.')
+      return
+    }
+    setCreatingCoupon(true)
+    try {
+      const token = await getToken()
+      const res = await fetch('/api/v1/coupons/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          code: couponForm.code.toUpperCase(),
+          description: couponForm.description,
+          credit_cents: parseFloat(couponForm.credit_cents || '0'),
+          bonus_messages: parseInt(couponForm.bonus_messages || '0', 10),
+          duration_days: couponForm.duration_days ? parseInt(couponForm.duration_days, 10) : null,
+          max_redemptions: couponForm.max_redemptions ? parseInt(couponForm.max_redemptions, 10) : null,
+          expires_at: couponForm.expires_at || null,
+        }),
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setCouponError(d.detail ?? 'Failed to create coupon.')
+        return
+      }
+      const created = await res.json()
+      setCoupons(prev => [created, ...prev])
+      setCouponForm({ code: '', description: '', credit_cents: '', bonus_messages: '', duration_days: '', max_redemptions: '', expires_at: '' })
+    } finally {
+      setCreatingCoupon(false)
+    }
+  }
+
+  const handleToggleCoupon = async (code: string, active: boolean) => {
+    const token = await getToken()
+    const res = await fetch(`/api/v1/coupons/admin/${code}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ is_active: active }),
+    })
+    if (res.ok) {
+      setCoupons(prev => prev.map(c => c.code === code ? { ...c, is_active: active } : c))
+    }
+  }
+
   const TABS = [
     { id: 'overview', label: 'Overview' },
     { id: 'plans',    label: 'Pricing Plans' },
     { id: 'ai',       label: 'AI Providers' },
     { id: 'users',    label: 'Users' },
+    { id: 'coupons',  label: 'Coupons' },
   ] as const
 
   const inputCls = 'mt-1 w-full bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs px-2 py-1.5 rounded-lg outline-none border border-slate-200 dark:border-slate-700 focus:border-violet-400 dark:focus:border-violet-500/50'
@@ -580,6 +641,151 @@ export default function Admin() {
                     </button>
                   </div>
                 ))}
+              </div>
+            </>
+          )}
+
+          {/* Coupons tab */}
+          {tab === 'coupons' && (
+            <>
+              <div className="glass-card rounded-2xl p-6 mb-6">
+                <div className="flex items-center gap-2 mb-5">
+                  <Ticket size={14} className="text-violet-500 dark:text-violet-400" />
+                  <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Create Coupon</h2>
+                </div>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">Code *</label>
+                    <input
+                      value={couponForm.code}
+                      onChange={e => setCouponForm(f => ({ ...f, code: e.target.value.toUpperCase() }))}
+                      placeholder="LAUNCH50"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">Description *</label>
+                    <input
+                      value={couponForm.description}
+                      onChange={e => setCouponForm(f => ({ ...f, description: e.target.value }))}
+                      placeholder="Launch promo — 50 cents AI credit"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">AI Credit (cents)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={couponForm.credit_cents}
+                      onChange={e => setCouponForm(f => ({ ...f, credit_cents: e.target.value }))}
+                      placeholder="50 = $0.50 extra budget"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">Bonus Chat Messages</label>
+                    <input
+                      type="number"
+                      min="0"
+                      value={couponForm.bonus_messages}
+                      onChange={e => setCouponForm(f => ({ ...f, bonus_messages: e.target.value }))}
+                      placeholder="0 = none"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">Credit valid for (days)</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={couponForm.duration_days}
+                      onChange={e => setCouponForm(f => ({ ...f, duration_days: e.target.value }))}
+                      placeholder="Leave blank = permanent"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">Max redemptions</label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={couponForm.max_redemptions}
+                      onChange={e => setCouponForm(f => ({ ...f, max_redemptions: e.target.value }))}
+                      placeholder="Leave blank = unlimited"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500 dark:text-slate-400">Expires at</label>
+                    <input
+                      type="datetime-local"
+                      value={couponForm.expires_at}
+                      onChange={e => setCouponForm(f => ({ ...f, expires_at: e.target.value }))}
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+                {couponError && <p className="text-xs text-rose-500 mb-2">{couponError}</p>}
+                <button
+                  onClick={handleCreateCoupon}
+                  disabled={creatingCoupon}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+                >
+                  {creatingCoupon ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                  Create Coupon
+                </button>
+              </div>
+
+              <div className="glass-card rounded-2xl p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Ticket size={14} className="text-violet-500 dark:text-violet-400" />
+                  <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                    All Coupons ({coupons.length})
+                  </h2>
+                </div>
+                {coupons.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-4 text-center">No coupons yet. Create one above.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {coupons.map(c => (
+                      <div key={c.code} className={clsx(
+                        'flex items-start gap-3 p-3 rounded-xl border',
+                        c.is_active
+                          ? 'border-slate-200 dark:border-slate-700/50 bg-white dark:bg-slate-800/30'
+                          : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/20 opacity-60'
+                      )}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                            <code className="text-xs font-bold text-violet-700 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10 px-1.5 py-0.5 rounded">{c.code}</code>
+                            {c.credit_cents > 0 && (
+                              <span className="text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 rounded">+{c.credit_cents}¢ credit</span>
+                            )}
+                            {c.bonus_messages > 0 && (
+                              <span className="text-[10px] text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 px-1.5 py-0.5 rounded">+{c.bonus_messages} messages</span>
+                            )}
+                            {c.duration_days && (
+                              <span className="text-[10px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-1.5 py-0.5 rounded">{c.duration_days}d validity</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-600 dark:text-slate-400">{c.description}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            {c.redemption_count}{c.max_redemptions ? `/${c.max_redemptions}` : ''} uses
+                            {c.expires_at ? ` · expires ${new Date(c.expires_at).toLocaleDateString()}` : ''}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => handleToggleCoupon(c.code, !c.is_active)}
+                          className="shrink-0 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+                          title={c.is_active ? 'Deactivate' : 'Activate'}
+                        >
+                          {c.is_active ? <ToggleRight size={18} className="text-violet-500" /> : <ToggleLeft size={18} />}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </>
           )}

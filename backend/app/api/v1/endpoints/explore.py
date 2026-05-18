@@ -5,6 +5,8 @@ from app.models.schemas import ExploreRequest, ExploreResponse
 from app.services.ai_service import generate_journey, warm_journey_steps
 from app.core.auth import get_required_user
 from app.core.database import get_db
+from app.services.subscription_service import check_budget, record_usage
+from app.services.provider_service import get_config
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -29,8 +31,12 @@ async def explore(
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
 
+    allowed, reason = check_budget(uid)
+    if not allowed:
+        raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
+
     try:
-        journey = await generate_journey(
+        journey, in_tok, out_tok = await generate_journey(
             question=request.question.strip(),
             age_group=request.age_group or "all",
         )
@@ -40,6 +46,8 @@ async def explore(
     except Exception:
         logger.exception("explore generation failed", extra={"question": request.question[:120]})
         raise HTTPException(status_code=500, detail="Failed to generate journey. Please try again.")
+
+    record_usage(uid, in_tok, out_tok, get_config("journey")["model"])
 
     # Persist to DB (non-fatal if it fails)
     try:
@@ -72,6 +80,8 @@ async def explore(
         journey.steps,
         journey.title,
         journey.question,
+        journey.age_group,
+        uid,
     )
 
     return ExploreResponse(journey=journey)

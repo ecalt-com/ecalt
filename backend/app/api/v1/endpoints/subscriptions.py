@@ -10,6 +10,7 @@ from app.services.subscription_service import (
     get_user_plan,
     get_current_usage,
     count_lifetime_messages,
+    get_coupon_extras,
     upsert_subscription_from_stripe,
 )
 
@@ -20,10 +21,15 @@ router = APIRouter()
 async def get_my_subscription(uid: str = Depends(get_required_user)):
     plan = get_user_plan(uid)
     usage = get_current_usage(uid)
+    extras = get_coupon_extras(uid)
 
     is_free = plan["plan_id"] == "free_trial"
     lifetime_count = count_lifetime_messages(uid) if is_free else None
-    lifetime_limit = plan.get("lifetime_message_limit") if is_free else None
+    base_limit = plan.get("lifetime_message_limit") or 6
+    lifetime_limit = (base_limit + extras["bonus_messages"]) if is_free else None
+
+    base_budget = float(plan.get("token_budget_cents") or 20.0)
+    total_budget = base_budget + extras["extra_credits_cents"]
 
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -34,11 +40,14 @@ async def get_my_subscription(uid: str = Depends(get_required_user)):
     return {
         "plan": plan,
         "usage": usage,
+        "coupon_extras": extras,
+        "total_budget_cents": total_budget,
         "lifetime_message_count": lifetime_count,
+        "lifetime_message_limit": lifetime_limit,
         "is_admin": is_admin,
         "is_limited": (
             (is_free and (lifetime_count or 0) >= (lifetime_limit or 6))
-            or (not is_free and usage["estimated_cost_cents"] >= (plan.get("token_budget_cents") or 0))
+            or usage["estimated_cost_cents"] >= total_budget
         ),
     }
 

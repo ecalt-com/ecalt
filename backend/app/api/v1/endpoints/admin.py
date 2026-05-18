@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 
-from app.core.auth import get_required_user
+from app.core.auth import get_required_user, get_admin_user
 from app.core.database import get_db
 from app.services.subscription_service import get_admin_stats
 from app.services.provider_service import (

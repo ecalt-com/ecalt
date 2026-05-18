@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2 } from 'lucide-react'
 import type { JourneyStep } from '../lib/types'
@@ -28,6 +29,7 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
   const [content, setContent] = useState<string | null>(null)
   const [loadingContent, setLoadingContent] = useState(false)
   const [contentError, setContentError] = useState<string | null>(null)
+  const [budgetExceeded, setBudgetExceeded] = useState(false)
 
   const handleExpand = async () => {
     const next = !expanded
@@ -39,8 +41,12 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
         const token = await getToken()
         const res = await getStepContent(journeyId, step.id, token ?? undefined)
         setContent(res.content)
-      } catch {
-        setContentError('Could not load lesson content. Try again.')
+      } catch (e: any) {
+        if (e?.status === 402) {
+          setBudgetExceeded(true)
+        } else {
+          setContentError('Could not load lesson content. Try again.')
+        }
       } finally {
         setLoadingContent(false)
       }
@@ -105,7 +111,15 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
                   Generating lesson…
                 </div>
               )}
-              {contentError && !loadingContent && (
+              {budgetExceeded && !loadingContent && (
+                <div className="py-5 text-center space-y-2">
+                  <p className="text-xs text-slate-600 dark:text-slate-400">You've used your AI budget for this period.</p>
+                  <Link to="/pricing" className="text-xs text-violet-600 dark:text-violet-400 hover:underline font-medium">
+                    Upgrade or apply a promo code →
+                  </Link>
+                </div>
+              )}
+              {contentError && !loadingContent && !budgetExceeded && (
                 <div className="py-4 text-center">
                   <p className="text-xs text-rose-500 mb-2">{contentError}</p>
                   <button
