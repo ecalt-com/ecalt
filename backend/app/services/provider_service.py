@@ -19,10 +19,12 @@ AVAILABLE_MODELS: dict[str, list[dict]] = {
         {"id": "claude-opus-4-7",            "label": "Claude Opus 4.7 (powerful)"},
     ],
     "openai": [
-        {"id": "gpt-4o-mini", "label": "GPT-4o Mini (fast, cheap)"},
-        {"id": "gpt-4o",      "label": "GPT-4o (balanced)"},
-        {"id": "gpt-4-turbo", "label": "GPT-4 Turbo (powerful)"},
-        {"id": "o1-mini",     "label": "o1 Mini (reasoning)"},
+        {"id": "gpt-4.1-nano", "label": "GPT-4.1 Nano (fastest, cheapest)"},
+        {"id": "gpt-4o-mini",  "label": "GPT-4o Mini (fast, cheap)"},
+        {"id": "gpt-4.1-mini", "label": "GPT-4.1 Mini (balanced, efficient)"},
+        {"id": "gpt-4o",       "label": "GPT-4o (capable)"},
+        {"id": "gpt-4.1",      "label": "GPT-4.1 (powerful)"},
+        {"id": "o1-mini",      "label": "o1 Mini (reasoning)"},
     ],
 }
 
@@ -42,8 +44,11 @@ COST_PER_TOKEN: dict[str, dict[str, float]] = {
     "claude-sonnet-4-6":         {"input": 0.000300, "output": 0.001500},
     "claude-opus-4-7":           {"input": 0.001500, "output": 0.007500},
     # OpenAI
+    "gpt-4.1-nano":              {"input": 0.000010, "output": 0.000040},
     "gpt-4o-mini":               {"input": 0.000015, "output": 0.000060},
+    "gpt-4.1-mini":              {"input": 0.000040, "output": 0.000160},
     "gpt-4o":                    {"input": 0.000250, "output": 0.001000},
+    "gpt-4.1":                   {"input": 0.000200, "output": 0.000800},
     "gpt-4-turbo":               {"input": 0.001000, "output": 0.003000},
     "o1-mini":                   {"input": 0.000300, "output": 0.001200},
 }
