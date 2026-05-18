@@ -48,11 +48,11 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
     try:
         answer, mission = await generate_spark(body.question.strip())
     except ValueError as e:
-        logger.warning("spark upstream error", extra={"question": body.question[:120], "error": str(e)})
+        logger.error("spark parse error [%s]: %s", body.question[:80], e, exc_info=True)
         raise HTTPException(status_code=502, detail=str(e))
-    except Exception:
-        logger.exception("spark generation failed", extra={"question": body.question[:120]})
-        raise HTTPException(status_code=500, detail="Spark generation failed — please try again.")
+    except Exception as e:
+        logger.error("spark generation failed [%s]: %s", body.question[:80], e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Spark generation failed: {e}")
 
     return SparkResponse(
         answer=answer,

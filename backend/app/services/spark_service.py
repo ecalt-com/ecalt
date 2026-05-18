@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -7,6 +8,8 @@ import anthropic
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.schemas import Mission, MissionStep
+
+logger = logging.getLogger(__name__)
 
 # ── Lazy client ───────────────────────────────────────────────────────────────
 
@@ -131,8 +134,8 @@ async def generate_daily_spark(uid: str) -> str:
                 row = cur.fetchone()
                 if row:
                     return row["prompt"]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("daily_sparks cache read failed: %s", e, exc_info=True)
 
     topics: list[str] = []
     try:
@@ -142,8 +145,8 @@ async def generate_daily_spark(uid: str) -> str:
                 row = cur.fetchone()
                 if row and row["topics"]:
                     topics = row["topics"]
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("user_interests read failed: %s", e, exc_info=True)
 
     topic_hint = ", ".join(topics[:3]) if topics else "science, history, or technology"
 
@@ -170,8 +173,8 @@ async def generate_daily_spark(uid: str) -> str:
                     """,
                     (uid, spark, today, spark, today),
                 )
-    except Exception:
-        pass
+    except Exception as e:
+        logger.error("daily_sparks cache write failed: %s", e, exc_info=True)
 
     return spark
 
