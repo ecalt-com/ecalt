@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends, Response
 from typing import Optional
 from app.models.schemas import Journey, JourneyStep, JourneysResponse, StepContentResponse
-from app.core.auth import get_optional_user
+from app.core.auth import get_optional_user, get_required_user
 from app.core.database import get_db
 from app.services.ai_service import generate_step_content
 
@@ -196,7 +196,7 @@ async def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional
 async def get_step_content(
     journey_id: str,
     step_id: str,
-    uid: Optional[str] = Depends(get_optional_user),
+    uid: str = Depends(get_required_user),
 ):
     """Returns AI-generated lesson content for a step. Checks cache first."""
     # Check cache
