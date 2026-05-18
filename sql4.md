@@ -11,11 +11,16 @@ CREATE TABLE IF NOT EXISTS ai_provider_config (
 
 -- Seed with current defaults (safe to re-run)
 INSERT INTO ai_provider_config (interaction_type, provider, model) VALUES
-  ('daily_chat',     'anthropic', 'claude-haiku-4-5-20251001'),
-  ('nudge',          'anthropic', 'claude-haiku-4-5-20251001'),
-  ('onboarding',     'anthropic', 'claude-sonnet-4-6'),
-  ('fingerprint',    'anthropic', 'claude-sonnet-4-6'),
-  ('mind_signature', 'anthropic', 'claude-sonnet-4-6')
+  ('daily_chat',           'openai', 'gpt-4.1-nano'),
+  ('nudge',                'openai', 'gpt-4.1-nano'),
+  ('onboarding',           'openai', 'gpt-4o-mini'),
+  ('fingerprint',          'openai', 'gpt-4o-mini'),
+  ('mind_signature',       'openai', 'gpt-4o-mini'),
+  ('spark',                'openai', 'gpt-4.1-nano'),
+  ('daily_spark',          'openai', 'gpt-4.1-nano'),
+  ('knowledge_extraction', 'openai', 'gpt-4.1-nano'),
+  ('journey',              'openai', 'gpt-4o-mini'),
+  ('step_content',         'openai', 'gpt-4o-mini')
 ON CONFLICT (interaction_type) DO NOTHING;
 
 -- Add model_used column to conversation_messages (tracks which model answered)

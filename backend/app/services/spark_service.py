@@ -3,24 +3,11 @@ import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-import anthropic
-
-from app.core.config import settings
 from app.core.database import get_db
 from app.models.schemas import Mission, MissionStep
+from app.services.provider_service import complete_text
 
 logger = logging.getLogger(__name__)
-
-# ── Lazy client ───────────────────────────────────────────────────────────────
-
-_client: anthropic.AsyncAnthropic | None = None
-
-
-def _get_client() -> anthropic.AsyncAnthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY or None)
-    return _client
 
 
 # ── DB-backed spark store ─────────────────────────────────────────────────────
@@ -150,17 +137,16 @@ async def generate_daily_spark(uid: str) -> str:
 
     topic_hint = ", ".join(topics[:3]) if topics else "science, history, or technology"
 
-    response = await _get_client().messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=120,
+    spark = await complete_text(
+        interaction_type="daily_spark",
         system=(
             "Generate a single fascinating curiosity question that would make someone want to learn immediately. "
             "Return ONLY the question — nothing else, no quotes, no preamble."
         ),
-        messages=[{"role": "user", "content": f"Topics the learner loves: {topic_hint}"}],
+        user_content=f"Topics the learner loves: {topic_hint}",
+        max_tokens=120,
     )
-
-    spark = response.content[0].text.strip().strip('"').strip("'")
+    spark = spark.strip('"').strip("'")
 
     try:
         with get_db() as conn:
@@ -180,14 +166,12 @@ async def generate_daily_spark(uid: str) -> str:
 
 
 async def generate_spark(question: str) -> tuple[str, Mission]:
-    response = await _get_client().messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=750,
+    raw = await complete_text(
+        interaction_type="spark",
         system=_SYSTEM,
-        messages=[{"role": "user", "content": f"Question: {question}"}],
+        user_content=f"Question: {question}",
+        max_tokens=750,
     )
-
-    raw = response.content[0].text.strip()
     start = raw.find("{")
     end = raw.rfind("}") + 1
     if start == -1 or end == 0:

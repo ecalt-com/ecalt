@@ -2,20 +2,9 @@ import hashlib
 import json
 from datetime import datetime, timezone
 
-import anthropic
-
-from app.core.config import settings
 from app.core.database import get_db
 from app.services.mastery_service import get_domain_mastery, update_domain_mastery
-
-_client: anthropic.AsyncAnthropic | None = None
-
-
-def _get_client() -> anthropic.AsyncAnthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY or None)
-    return _client
+from app.services.provider_service import complete_text
 
 
 _NARRATIVE_SYSTEM = """\
@@ -94,22 +83,18 @@ async def generate_mind_signature(uid: str) -> dict:
         for d in domains
     )
 
-    response = await _get_client().messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=600,
+    narrative = await complete_text(
+        interaction_type="mind_signature",
         system=_NARRATIVE_SYSTEM,
-        messages=[{
-            "role": "user",
-            "content": (
-                f"[SYSTEM CONTEXT — not part of conversation]\n"
-                f"Learner name: {display_name}\n"
-                f"Domain mastery data:\n{domain_summary}\n"
-                f"[END SYSTEM CONTEXT]\n\n"
-                f"Write their capability narrative."
-            ),
-        }],
+        user_content=(
+            f"[SYSTEM CONTEXT — not part of conversation]\n"
+            f"Learner name: {display_name}\n"
+            f"Domain mastery data:\n{domain_summary}\n"
+            f"[END SYSTEM CONTEXT]\n\n"
+            f"Write their capability narrative."
+        ),
+        max_tokens=600,
     )
-    narrative = response.content[0].text.strip()
 
     constellation_data = _build_constellation(domains, knowledge_nodes)
 

@@ -2,19 +2,8 @@ import json
 import uuid
 from datetime import datetime, timezone
 
-import anthropic
-
-from app.core.config import settings
 from app.models.schemas import Journey, JourneyStep
-
-_client: anthropic.AsyncAnthropic | None = None
-
-
-def get_client() -> anthropic.AsyncAnthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY or None)
-    return _client
+from app.services.provider_service import complete_text
 
 
 SYSTEM_PROMPT = """\
@@ -73,26 +62,19 @@ async def generate_step_content(
     journey_title: str,
     journey_question: str,
 ) -> str:
-    client = get_client()
-    response = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1500,
+    raw = await complete_text(
+        interaction_type="step_content",
         system=STEP_CONTENT_SYSTEM,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    f"Journey: {journey_title}\n"
-                    f"Original question: {journey_question}\n"
-                    f"Step title: {step_title}\n"
-                    f"Step description: {step_description}\n"
-                    f"Step type: {step_type}\n\n"
-                    "Generate the lesson content JSON."
-                ),
-            }
-        ],
+        user_content=(
+            f"Journey: {journey_title}\n"
+            f"Original question: {journey_question}\n"
+            f"Step title: {step_title}\n"
+            f"Step description: {step_description}\n"
+            f"Step type: {step_type}\n\n"
+            "Generate the lesson content JSON."
+        ),
+        max_tokens=1500,
     )
-    raw = response.content[0].text.strip()
     start = raw.find("{")
     end = raw.rfind("}") + 1
     if start == -1 or end == 0:
@@ -136,21 +118,12 @@ async def warm_journey_steps(journey_id: str, steps: list[JourneyStep], journey_
 
 
 async def generate_journey(question: str, age_group: str = "all") -> Journey:
-    client = get_client()
-
-    response = await client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=2048,
+    raw = await complete_text(
+        interaction_type="journey",
         system=SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": f"Question: {question}\nTarget age group: {age_group}\n\nGenerate the learning journey JSON.",
-            }
-        ],
+        user_content=f"Question: {question}\nTarget age group: {age_group}\n\nGenerate the learning journey JSON.",
+        max_tokens=2048,
     )
-
-    raw = response.content[0].text.strip()
 
     # Extract JSON robustly
     start = raw.find("{")

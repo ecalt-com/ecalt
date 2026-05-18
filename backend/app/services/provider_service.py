@@ -30,11 +30,16 @@ AVAILABLE_MODELS: dict[str, list[dict]] = {
 
 # Default config used when DB has no row for an interaction type
 DEFAULT_CONFIG: dict[str, dict] = {
-    "daily_chat":     {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
-    "nudge":          {"provider": "anthropic", "model": "claude-haiku-4-5-20251001"},
-    "onboarding":     {"provider": "anthropic", "model": "claude-sonnet-4-6"},
-    "fingerprint":    {"provider": "anthropic", "model": "claude-sonnet-4-6"},
-    "mind_signature": {"provider": "anthropic", "model": "claude-sonnet-4-6"},
+    "daily_chat":           {"provider": "openai", "model": "gpt-4.1-nano"},
+    "nudge":                {"provider": "openai", "model": "gpt-4.1-nano"},
+    "onboarding":           {"provider": "openai", "model": "gpt-4o-mini"},
+    "fingerprint":          {"provider": "openai", "model": "gpt-4o-mini"},
+    "mind_signature":       {"provider": "openai", "model": "gpt-4o-mini"},
+    "spark":                {"provider": "openai", "model": "gpt-4.1-nano"},
+    "daily_spark":          {"provider": "openai", "model": "gpt-4.1-nano"},
+    "knowledge_extraction": {"provider": "openai", "model": "gpt-4.1-nano"},
+    "journey":              {"provider": "openai", "model": "gpt-4o-mini"},
+    "step_content":         {"provider": "openai", "model": "gpt-4o-mini"},
 }
 
 # Cost per token in cents (input, output)
@@ -133,6 +138,39 @@ def cost_for_tokens(model: str, input_tokens: int, output_tokens: int) -> float:
     """Return estimated cost in cents."""
     rates = COST_PER_TOKEN.get(model, {"input": 0.000080, "output": 0.000400})
     return (input_tokens * rates["input"]) + (output_tokens * rates["output"])
+
+
+# ── Non-streaming completion ──────────────────────────────────────────────────
+
+async def complete_text(
+    interaction_type: str,
+    system: str,
+    user_content: str,
+    max_tokens: int = 1024,
+) -> str:
+    """Single-turn, non-streaming completion. Reads provider/model from DB config."""
+    cfg = get_config(interaction_type)
+    provider, model = cfg["provider"], cfg["model"]
+
+    messages = [{"role": "user", "content": user_content}]
+
+    if provider == "openai":
+        oai_messages = [{"role": "system", "content": system}] + messages
+        if model.startswith("o1"):
+            oai_messages = [m for m in oai_messages if m["role"] != "system"]
+            resp = await _get_openai().chat.completions.create(
+                model=model, messages=oai_messages, max_completion_tokens=max_tokens,
+            )
+        else:
+            resp = await _get_openai().chat.completions.create(
+                model=model, messages=oai_messages, max_tokens=max_tokens,
+            )
+        return (resp.choices[0].message.content or "").strip()
+    else:
+        resp = await _get_anthropic().messages.create(
+            model=model, max_tokens=max_tokens, system=system, messages=messages,
+        )
+        return resp.content[0].text.strip()
 
 
 # ── Streaming abstraction ─────────────────────────────────────────────────────

@@ -1,18 +1,7 @@
 import json
 
-import anthropic
-
-from app.core.config import settings
 from app.core.database import get_db
-
-_client: anthropic.AsyncAnthropic | None = None
-
-
-def _get_client() -> anthropic.AsyncAnthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY or None)
-    return _client
+from app.services.provider_service import complete_text
 
 
 _EXTRACT_SYSTEM = """\
@@ -41,14 +30,12 @@ async def extract_knowledge_nodes(uid: str, user_message: str, assistant_respons
     """Extract concept-domain pairs from a conversation turn and upsert into knowledge_nodes."""
     excerpt = f"Learner: {user_message[:300]}\nResponse: {assistant_response[:400]}"
 
-    response = await _get_client().messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=300,
+    raw = await complete_text(
+        interaction_type="knowledge_extraction",
         system=_EXTRACT_SYSTEM,
-        messages=[{"role": "user", "content": f"[CONVERSATION]:\n{excerpt}"}],
+        user_content=f"[CONVERSATION]:\n{excerpt}",
+        max_tokens=300,
     )
-
-    raw = response.content[0].text.strip()
     start = raw.find("[")
     end = raw.rfind("]") + 1
     if start == -1 or end == 0:
