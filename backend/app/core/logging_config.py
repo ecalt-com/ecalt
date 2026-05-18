@@ -17,7 +17,7 @@ class _JsonFormatter(logging.Formatter):
             "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S"),
             "level": record.levelname,
             "logger": record.name,
-            "msg": record.message,
+            "message": record.message,
         }
         if record.exc_info:
             log["traceback"] = self.formatException(record.exc_info)
@@ -27,16 +27,43 @@ class _JsonFormatter(logging.Formatter):
         return json.dumps(log, default=str)
 
 
-def setup_logging(level: str = "INFO") -> None:
+class _DevFormatter(logging.Formatter):
+    COLORS = {
+        "DEBUG":    "\033[36m",   # cyan
+        "INFO":     "\033[32m",   # green
+        "WARNING":  "\033[33m",   # yellow
+        "ERROR":    "\033[31m",   # red
+        "CRITICAL": "\033[35m",   # magenta
+    }
+    RESET = "\033[0m"
+
+    def format(self, record: logging.LogRecord) -> str:
+        color = self.COLORS.get(record.levelname, "")
+        prefix = f"{color}{record.levelname:<8}{self.RESET}"
+        name = f"\033[2m{record.name}\033[0m"
+        msg = record.getMessage()
+        line = f"{prefix} {name}: {msg}"
+        if record.exc_info:
+            line += "\n" + self.formatException(record.exc_info)
+        return line
+
+
+def setup_logging(level: str = "INFO", environment: str = "development") -> None:
     handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(_JsonFormatter())
+
+    is_dev = environment == "development"
+    handler.setFormatter(_DevFormatter() if is_dev else _JsonFormatter())
 
     root = logging.getLogger()
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(getattr(logging, level.upper(), logging.INFO))
 
-    # Suppress uvicorn's own access log — our middleware emits the same data
-    uv_access = logging.getLogger("uvicorn.access")
-    uv_access.handlers.clear()
-    uv_access.propagate = False
+    if is_dev:
+        # In dev: let uvicorn access logs through so each request is visible
+        logging.getLogger("uvicorn.access").propagate = True
+    else:
+        # In prod: suppress uvicorn access log — middleware emits equivalent JSON
+        uv_access = logging.getLogger("uvicorn.access")
+        uv_access.handlers.clear()
+        uv_access.propagate = False

@@ -12,7 +12,7 @@ from app.core.limiter import limiter
 from app.core.logging_config import setup_logging
 from app.api.v1.router import api_router
 
-setup_logging(settings.LOG_LEVEL)
+setup_logging(settings.LOG_LEVEL, settings.ENVIRONMENT)
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(
