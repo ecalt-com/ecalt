@@ -10,7 +10,9 @@ import { SubscriptionProvider } from './lib/SubscriptionContext'
 import OnboardingModal from './components/OnboardingModal'
 import ErrorBoundary from './components/ErrorBoundary'
 
-const Home          = lazy(() => import('./pages/Home'))
+// LANDING PAGE TOGGLE — swap these two lines to revert to old home:
+const Home          = lazy(() => import('./pages/HomeCosmic'))
+// const Home       = lazy(() => import('./pages/Home'))
 const Learn         = lazy(() => import('./pages/Learn'))
 const Pricing       = lazy(() => import('./pages/Pricing'))
 const Admin         = lazy(() => import('./pages/Admin'))
