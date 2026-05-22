@@ -182,3 +182,64 @@ async def _post_stream_bg(
         await extract_knowledge_nodes(uid, user_message, assistant_response)
     except Exception:
         pass
+    try:
+        await _queue_cliffhanger(uid, user_message)
+    except Exception:
+        pass
+
+
+async def _queue_cliffhanger(uid: str, user_message: str) -> None:
+    """After every chat turn, cancel the old cliffhanger and queue a fresh one for 2h later.
+
+    Only the last message in a session fires — each new turn cancels the previous pending queue row.
+    This means if the user keeps chatting, no cliffhanger is ever sent mid-session.
+    """
+    import json
+    from app.core.database import get_db
+
+    # Extract a clean topic from the user's raw message
+    topic = user_message.strip()
+    # Strip the injection-defence wrapper added by stream_chat
+    if ":\n" in topic:
+        topic = topic.split(":\n", 1)[-1].strip()
+    # Trim to first sentence (question mark preferred)
+    for sep in ("?", ".", "!"):
+        idx = topic.find(sep)
+        if 0 < idx < 120:
+            topic = topic[: idx + 1]
+            break
+    topic = topic[:120].strip()
+    if len(topic) < 8:
+        return  # too short to make a meaningful cliffhanger
+
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                # Get user's preferred channel (default whatsapp for cliffhangers — more immediate)
+                cur.execute(
+                    "SELECT COALESCE(preferred_channel, 'whatsapp') AS ch FROM notification_preferences WHERE uid = %s",
+                    (uid,),
+                )
+                row = cur.fetchone()
+                channel = row["ch"] if row else "whatsapp"
+
+                # Cancel any existing pending cliffhanger for this user
+                cur.execute(
+                    """
+                    UPDATE notification_queue
+                       SET status = 'cancelled'
+                     WHERE uid = %s AND notification_type = 'cliffhanger_return' AND status = 'pending'
+                    """,
+                    (uid,),
+                )
+                # Queue a fresh one 2 hours from now
+                cur.execute(
+                    """
+                    INSERT INTO notification_queue
+                        (uid, notification_type, channel, scheduled_for, payload)
+                    VALUES (%s, 'cliffhanger_return', %s, now() + interval '2 hours', %s)
+                    """,
+                    (uid, channel, json.dumps({"topic": topic})),
+                )
+    except Exception:
+        pass

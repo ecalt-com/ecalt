@@ -22,6 +22,17 @@ class Settings(BaseSettings):
     STRIPE_PUBLISHABLE_KEY: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # Notification channels
+    SENDGRID_API_KEY: str = ""
+    SENDGRID_FROM_EMAIL: str = "noreply@ecalt.app"
+    TWILIO_ACCOUNT_SID: str = ""
+    TWILIO_AUTH_TOKEN: str = ""
+    TWILIO_WHATSAPP_FROM: str = "whatsapp:+14155238886"
+    NOTIFICATION_SIGNING_SECRET: str = "ecalt-unsub-secret-change-in-prod"
+    # Set to false to disable a channel globally (overrides per-user prefs)
+    NOTIFICATIONS_EMAIL_ENABLED: bool = True
+    NOTIFICATIONS_WHATSAPP_ENABLED: bool = True
+
     @property
     def allowed_origins(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]

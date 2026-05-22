@@ -39,7 +39,8 @@
       "Bash(python *)",
       "Bash(venv/bin/pip install *)",
       "Bash(/Users/biswambarpradhan/PycharmProjects/election-tracker/venv/bin/pip show *)",
-      "Bash(venv/bin/pytest tests/ -v)"
+      "Bash(venv/bin/pytest tests/ -v)",
+      "WebFetch(domain:claude.ai)"
     ]
   }
 }

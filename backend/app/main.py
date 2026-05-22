@@ -20,9 +20,12 @@ setup_logging(settings.LOG_LEVEL, settings.ENVIRONMENT)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # Re-apply AFTER uvicorn finishes its own logging setup
     setup_logging(settings.LOG_LEVEL, settings.ENVIRONMENT)
+    from app.services.scheduler import setup_scheduler
+    sched = setup_scheduler()
+    sched.start()
     yield
+    sched.shutdown(wait=False)
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(

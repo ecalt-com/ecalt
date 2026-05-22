@@ -80,7 +80,54 @@ export interface UserProfile {
   photo_url?: string
   onboarding_done: boolean
   streak_days: number
+  whatsapp_opted_in?: boolean
+  has_notification_prefs?: boolean
 }
+
+// ── Notification preferences ──────────────────────────────────────────────────
+
+export interface NotificationPreferences {
+  email_enabled: boolean
+  whatsapp_enabled: boolean
+  whatsapp_opted_in: boolean
+  whatsapp_phone: string | null
+  whatsapp_declined_onboarding: boolean
+  whatsapp_nudge_last_dismissed: string | null
+  quiet_hours_start: number
+  quiet_hours_end: number
+  timezone: string
+  preferred_channel: 'email' | 'whatsapp'
+}
+
+export interface NotificationPreferencesPatch {
+  email_enabled?: boolean
+  whatsapp_enabled?: boolean
+  whatsapp_phone?: string | null
+  whatsapp_declined_onboarding?: boolean
+  whatsapp_nudge_dismissed?: boolean
+  quiet_hours_start?: number
+  quiet_hours_end?: number
+  timezone?: string
+  preferred_channel?: 'email' | 'whatsapp'
+}
+
+export const getNotificationPrefs = (token: string): Promise<NotificationPreferences> =>
+  request('/api/v1/notifications/preferences', undefined, token)
+
+export const saveNotificationPrefs = (
+  patch: NotificationPreferencesPatch,
+  token: string,
+): Promise<NotificationPreferences> =>
+  request('/api/v1/notifications/preferences', { method: 'PATCH', body: JSON.stringify(patch) }, token)
+
+export const optInWhatsApp = (phone: string, token: string): Promise<NotificationPreferences> =>
+  request('/api/v1/notifications/whatsapp/opt-in', { method: 'POST', body: JSON.stringify({ phone }) }, token)
+
+export const confirmWhatsApp = (phone: string, token: string): Promise<NotificationPreferences> =>
+  request('/api/v1/notifications/whatsapp/confirm', { method: 'POST', body: JSON.stringify({ phone }) }, token)
+
+export const optOutWhatsApp = (token: string): Promise<NotificationPreferences> =>
+  request('/api/v1/notifications/preferences/whatsapp', { method: 'DELETE' }, token)
 
 export const getUserProfile = (token: string): Promise<UserProfile> =>
   request('/api/v1/users/me', undefined, token)

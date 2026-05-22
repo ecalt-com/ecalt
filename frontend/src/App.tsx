@@ -22,6 +22,7 @@ const Explore       = lazy(() => import('./pages/Explore'))
 const Journeys      = lazy(() => import('./pages/Journeys'))
 const Journey       = lazy(() => import('./pages/Journey'))
 const Passport      = lazy(() => import('./pages/Passport'))
+const Profile       = lazy(() => import('./pages/Profile'))
 const ComingSoon    = lazy(() => import('./pages/ComingSoon'))
 
 function PageSkeleton() {
@@ -48,6 +49,7 @@ function AppShell() {
           <Route path="/journeys" element={<ErrorBoundary><Journeys /></ErrorBoundary>} />
           <Route path="/journey/:id" element={<ErrorBoundary><Journey /></ErrorBoundary>} />
           <Route path="/passport" element={<ErrorBoundary><Passport /></ErrorBoundary>} />
+          <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
           <Route
             path="/sign-in"
             element={<ComingSoon title="Sign In — Coming Soon" description="User accounts are on the way. Drop your email and we'll notify you." />}

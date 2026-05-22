@@ -14,6 +14,8 @@ class UserProfile(BaseModel):
     photo_url: Optional[str] = None
     onboarding_done: bool = False
     streak_days: int = 0
+    whatsapp_opted_in: bool = False
+    has_notification_prefs: bool = False
 
 
 class UserUpsertRequest(BaseModel):
@@ -47,7 +49,17 @@ async def upsert_user(body: UserUpsertRequest, uid: str = Depends(get_required_u
 async def get_me(uid: str = Depends(get_required_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM users WHERE uid = %s", (uid,))
+            cur.execute(
+                """
+                SELECT u.*,
+                       COALESCE(np.whatsapp_opted_in, FALSE) AS whatsapp_opted_in,
+                       (np.uid IS NOT NULL)                  AS has_notification_prefs
+                  FROM users u
+             LEFT JOIN notification_preferences np ON np.uid = u.uid
+                 WHERE u.uid = %s
+                """,
+                (uid,),
+            )
             row = cur.fetchone()
     if not row:
         return UserProfile(uid=uid)

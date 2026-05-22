@@ -5,6 +5,7 @@ import { useSubscription } from '../lib/SubscriptionContext'
 import TodaysSpark from '../components/learn/TodaysSpark'
 import ConversationInterface from '../components/learn/ConversationInterface'
 import KnowledgeUniverse from '../components/learn/KnowledgeUniverse'
+import WhatsAppNudgeBanner from '../components/learn/WhatsAppNudgeBanner'
 import PageMeta from '../components/PageMeta'
 
 export default function Learn() {
@@ -105,6 +106,7 @@ export default function Learn() {
               onSparkConsumed={handleSparkConsumed}
               onMessageComplete={handleMessageComplete}
             />
+            <WhatsAppNudgeBanner messageCount={knowledgeRefresh} />
           </main>
 
           {/* Right panel — Knowledge Universe (hidden on mobile) */}

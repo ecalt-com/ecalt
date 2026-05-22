@@ -16,6 +16,7 @@ const AUTH_LINKS = [
   { to: '/learn', label: 'Learn' },
   { to: '/passport', label: 'Passport' },
   { to: '/mind-signature', label: 'Mind Signature' },
+  { to: '/profile', label: 'Profile' },
 ]
 
 function UserAvatar({ photoURL, displayName }: { photoURL: string | null; displayName: string | null }) {
