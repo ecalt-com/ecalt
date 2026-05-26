@@ -1,10 +1,18 @@
 import hashlib
 import hmac
 import logging
+import time
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _idempotency_key(*parts: str) -> str:
+    """Deterministic key scoped to a 10-minute window — retries within the window hit the same object."""
+    window = int(time.time()) // 600
+    raw = ":".join(parts) + f":{window}"
+    return hashlib.sha256(raw.encode()).hexdigest()[:32]
 
 
 def provision_razorpay_plan(plan_id: str, name: str, amount_paise: int) -> str:
@@ -52,11 +60,14 @@ def create_razorpay_subscription(razorpay_plan_id: str, uid: str, plan_id: str) 
     Returns the full subscription dict (id is "sub_XXXX").
     """
     client = get_razorpay_client()
-    subscription = client.subscription.create({
-        "plan_id": razorpay_plan_id,
-        "total_count": 12,
-        "notes": {"uid": uid, "plan_id": plan_id},
-    })
+    subscription = client.subscription.create(
+        {
+            "plan_id": razorpay_plan_id,
+            "total_count": 12,
+            "notes": {"uid": uid, "plan_id": plan_id},
+        },
+        headers={"X-Razorpay-Idempotency-Key": _idempotency_key(uid, plan_id)},
+    )
     logger.info(
         "razorpay.subscription: created %s for uid=%s plan=%s",
         subscription["id"], uid, plan_id,
@@ -72,18 +83,30 @@ def get_razorpay_client():
 def create_razorpay_order(amount_paise: int, plan_id: str, uid: str) -> dict:
     """Create a Razorpay order. Returns order dict with id, amount, currency."""
     client = get_razorpay_client()
-    order = client.order.create({
-        "amount": amount_paise,
-        "currency": "INR",
-        "receipt": f"ecalt_{plan_id}_{uid[:8]}",
-        "notes": {"uid": uid, "plan_id": plan_id},
-    })
+    order = client.order.create(
+        {
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": f"ecalt_{plan_id}_{uid[:8]}",
+            "notes": {"uid": uid, "plan_id": plan_id},
+        },
+        headers={"X-Razorpay-Idempotency-Key": _idempotency_key(uid, plan_id, str(amount_paise))},
+    )
     return order
 
 
-def verify_razorpay_signature(order_id: str, payment_id: str, signature: str) -> bool:
-    """Verify Razorpay payment signature (client-side flow)."""
-    message = f"{order_id}|{payment_id}"
+def verify_razorpay_signature(ref_id: str, payment_id: str, signature: str) -> bool:
+    """Verify Razorpay payment signature.
+
+    Message format differs by flow (per Razorpay SDK utility.py):
+      order flow:        "{order_id}|{payment_id}"
+      subscription flow: "{payment_id}|{subscription_id}"  ← reversed
+    """
+    if ref_id.startswith("sub_"):
+        message = f"{payment_id}|{ref_id}"
+    else:
+        message = f"{ref_id}|{payment_id}"
+
     expected = hmac.new(
         settings.RAZORPAY_KEY_SECRET.encode(),
         message.encode(),

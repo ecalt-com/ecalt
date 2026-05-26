@@ -76,10 +76,11 @@ export default function Welcome() {
       try {
         const token = await getToken()
         if (!token) return
-        const url = sessionId
-          ? `/api/v1/subscriptions/sync?session_id=${encodeURIComponent(sessionId)}`
-          : '/api/v1/subscriptions/sync'
-        const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+        const res = await fetch('/api/v1/subscriptions/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ session_id: sessionId || null }),
+        })
         if (res.ok) {
           const data = await res.json()
           setPlanName((data.plan?.name as string) ?? null)

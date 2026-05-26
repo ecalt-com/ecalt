@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     STRIPE_PUBLISHABLE_KEY: str = ""
     FRONTEND_URL: str = "http://localhost:3000"
 
+    GEO_DEFAULT_COUNTRY: str = "IN"
+
     RAZORPAY_KEY_ID: str = ""
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""
@@ -37,7 +39,7 @@ class Settings(BaseSettings):
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""
     TWILIO_WHATSAPP_FROM: str = "whatsapp:+14155238886"
-    NOTIFICATION_SIGNING_SECRET: str = "ecalt-unsub-secret-change-in-prod"
+    NOTIFICATION_SIGNING_SECRET: str = ""
     # Set to false to disable a channel globally (overrides per-user prefs)
     NOTIFICATIONS_EMAIL_ENABLED: bool = True
     NOTIFICATIONS_WHATSAPP_ENABLED: bool = True

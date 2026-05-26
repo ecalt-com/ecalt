@@ -7,6 +7,7 @@ import PageMeta from '../components/PageMeta'
 import { useAuth } from '../lib/AuthContext'
 import { useToast } from '../lib/ToastContext'
 import { useSubscription } from '../lib/SubscriptionContext'
+import { useGeo, isIndia } from '../lib/GeoContext'
 import {
   getNotificationPrefs,
   saveNotificationPrefs,
@@ -53,6 +54,7 @@ export default function Profile() {
   const { user, loading: authLoading, getToken, signOut } = useAuth()
   const { addToast } = useToast()
   const { plan, couponExtras, loading: subLoading } = useSubscription()
+  const { country, loading: geoLoading } = useGeo()
   const navigate = useNavigate()
 
   // Notification prefs
@@ -254,7 +256,13 @@ export default function Profile() {
                     )}
                   </div>
                   <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                    {plan.base_price_cents === 0 ? 'Free' : `$${(plan.base_price_cents / 100).toFixed(0)}/mo`}
+                    {plan.base_price_cents === 0
+                      ? 'Free'
+                      : geoLoading
+                        ? '—'
+                        : isIndia(country) && plan.base_price_inr_paise
+                          ? `₹${(plan.base_price_inr_paise / 100).toFixed(0)}/mo`
+                          : `$${(plan.base_price_cents / 100).toFixed(0)}/mo`}
                   </span>
                 </div>
 

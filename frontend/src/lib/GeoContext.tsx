@@ -5,16 +5,16 @@ interface GeoState {
   loading: boolean
 }
 
-const GeoContext = createContext<GeoState>({ country: 'US', loading: true })
+const GeoContext = createContext<GeoState>({ country: '', loading: true })
 
 export function GeoProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<GeoState>({ country: 'US', loading: true })
+  const [state, setState] = useState<GeoState>({ country: '', loading: true })
 
   useEffect(() => {
     fetch('/api/v1/geo/country')
       .then(r => r.json())
-      .then(d => setState({ country: d.country ?? 'US', loading: false }))
-      .catch(() => setState({ country: 'US', loading: false }))
+      .then(d => setState({ country: d.country ?? '', loading: false }))
+      .catch(() => setState({ country: '', loading: false }))
   }, [])
 
   return <GeoContext.Provider value={state}>{children}</GeoContext.Provider>

@@ -26,12 +26,12 @@ const MESSAGES = {
 export default function UpgradePrompt({ reason, onDismiss }: UpgradePromptProps) {
   const navigate = useNavigate()
   const { plan, plans } = useSubscription()
-  const { country } = useGeo()
+  const { country, loading: geoLoading } = useGeo()
   const msg = MESSAGES[reason as keyof typeof MESSAGES] ?? MESSAGES.default
   const individualPlan = plans.find(p => p.plan_id === 'individual')
 
   let individualPrice: string | null = null
-  if (individualPlan) {
+  if (individualPlan && !geoLoading) {
     if (isIndia(country) && individualPlan.base_price_inr_paise) {
       individualPrice = `₹${(individualPlan.base_price_inr_paise / 100).toFixed(0)}/mo`
     } else {

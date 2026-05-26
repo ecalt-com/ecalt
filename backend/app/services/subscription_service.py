@@ -268,7 +268,8 @@ def upsert_subscription_from_stripe(
     period_start=None,
     period_end=None,
     payment_gateway: str = "stripe",
-    razorpay_payment_id: str = None,
+    razorpay_subscription_id: str = None,
+    razorpay_last_payment_id: str = None,
 ) -> None:
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -277,8 +278,8 @@ def upsert_subscription_from_stripe(
                 INSERT INTO subscriptions
                   (uid, plan_id, stripe_subscription_id, stripe_customer_id, status,
                    current_period_start, current_period_end, payment_gateway,
-                   razorpay_subscription_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   razorpay_subscription_id, razorpay_last_payment_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (uid) DO UPDATE SET
                     plan_id                  = EXCLUDED.plan_id,
                     stripe_subscription_id   = COALESCE(EXCLUDED.stripe_subscription_id, subscriptions.stripe_subscription_id),
@@ -287,10 +288,12 @@ def upsert_subscription_from_stripe(
                     current_period_start     = EXCLUDED.current_period_start,
                     current_period_end       = EXCLUDED.current_period_end,
                     payment_gateway          = EXCLUDED.payment_gateway,
-                    razorpay_subscription_id = COALESCE(EXCLUDED.razorpay_subscription_id, subscriptions.razorpay_subscription_id)
+                    razorpay_subscription_id = COALESCE(EXCLUDED.razorpay_subscription_id, subscriptions.razorpay_subscription_id),
+                    razorpay_last_payment_id = COALESCE(EXCLUDED.razorpay_last_payment_id, subscriptions.razorpay_last_payment_id)
                 """,
                 (uid, plan_id, stripe_subscription_id, stripe_customer_id, status,
-                 period_start, period_end, payment_gateway, razorpay_payment_id),
+                 period_start, period_end, payment_gateway, razorpay_subscription_id,
+                 razorpay_last_payment_id),
             )
 
 

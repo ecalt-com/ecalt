@@ -22,6 +22,8 @@ setup_logging(settings.LOG_LEVEL, settings.ENVIRONMENT)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     setup_logging(settings.LOG_LEVEL, settings.ENVIRONMENT)
+    if settings.ENVIRONMENT != "development" and not settings.NOTIFICATION_SIGNING_SECRET:
+        raise RuntimeError("NOTIFICATION_SIGNING_SECRET must be set in production")
     from app.core.database import _get_pool, warm_pool
     try:
         _get_pool()

@@ -6,7 +6,7 @@ import { useAuth } from '../lib/AuthContext'
 import { useSubscription } from '../lib/SubscriptionContext'
 import { useGeo, isIndia } from '../lib/GeoContext'
 import { usePaymentConfig } from '../lib/PaymentConfig'
-import { loadRazorpayScript, RazorpayResponse } from '../lib/razorpay'
+import { loadRazorpayScript, RazorpayOrderResponse } from '../lib/razorpay'
 import PageMeta from '../components/PageMeta'
 
 interface Plan {
@@ -50,8 +50,9 @@ const PLAN_DETAILS: Record<string, { icon: React.ElementType; features: string[]
   },
 }
 
-function formatPrice(plan: Plan, country: string): string {
+function formatPrice(plan: Plan, country: string, loading: boolean): string {
   if (plan.base_price_cents === 0) return 'Free'
+  if (loading) return '—'
   if (isIndia(country) && plan.base_price_inr_paise) {
     return `₹${(plan.base_price_inr_paise / 100).toFixed(0)}`
   }
@@ -63,7 +64,7 @@ export default function Pricing() {
   const [searchParams] = useSearchParams()
   const { user, getToken } = useAuth()
   const { plan: currentPlan, plans, loading: loadingPlans } = useSubscription()
-  const { country } = useGeo()
+  const { country, loading: loadingGeo } = useGeo()
   const { razorpayKeyId } = usePaymentConfig()
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
 
@@ -94,10 +95,27 @@ export default function Pricing() {
 
       if (data.checkout_type === 'subscription') {
         options.subscription_id = data.subscription_id
-        options.handler = async () => { navigate('/learn?upgraded=true'); resolve() }
+        options.handler = async (response: { razorpay_payment_id: string; razorpay_subscription_id: string; razorpay_signature: string }) => {
+          try {
+            const verifyRes = await fetch('/api/v1/subscriptions/razorpay/verify', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              body: JSON.stringify({
+                razorpay_subscription_id: response.razorpay_subscription_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                plan_id: planId,
+              }),
+            })
+            if (verifyRes.ok) navigate('/welcome')
+            else alert('Payment verification failed. Contact support with your payment ID.')
+          } finally {
+            resolve()
+          }
+        }
       } else {
         options.order_id = data.order_id
-        options.handler = async (response: RazorpayResponse) => {
+        options.handler = async (response: RazorpayOrderResponse) => {
           const verifyRes = await fetch('/api/v1/subscriptions/razorpay/verify', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -108,7 +126,7 @@ export default function Pricing() {
               plan_id: planId,
             }),
           })
-          if (verifyRes.ok) navigate('/learn?upgraded=true')
+          if (verifyRes.ok) navigate('/welcome')
           else alert('Payment verification failed. Contact support with your payment ID.')
           resolve()
         }
@@ -142,6 +160,10 @@ export default function Pricing() {
       } else {
         // stripe (default) — redirect to hosted checkout
         if (data.checkout_url) {
+          if (!data.checkout_url.startsWith('https://checkout.stripe.com/')) {
+            alert('Unexpected payment redirect. Contact support.')
+            return
+          }
           window.location.href = data.checkout_url
         } else {
           alert(data.detail ?? 'Billing not configured yet.')
@@ -231,7 +253,7 @@ export default function Pricing() {
 
                   <div className="mb-5">
                     <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                      {formatPrice(plan, country)}
+                      {formatPrice(plan, country, loadingGeo)}
                     </span>
                     {plan.base_price_cents > 0 && (
                       <span className="text-xs text-slate-400 dark:text-slate-500">/month</span>
@@ -267,9 +289,11 @@ export default function Pricing() {
           </div>
 
           <p className="text-center text-xs text-slate-400 dark:text-slate-600 mt-10">
-            {isIndia(country)
-              ? 'All prices in INR · Cancel anytime · Powered by Razorpay'
-              : 'All prices in USD · Cancel anytime · Powered by Stripe'}
+            {loadingGeo
+              ? ' '
+              : isIndia(country)
+                ? 'All prices in INR · Cancel anytime · Powered by Razorpay'
+                : 'All prices in USD · Cancel anytime · Powered by Stripe'}
           </p>
 
           <CouponApply />

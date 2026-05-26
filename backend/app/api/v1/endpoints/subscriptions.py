@@ -2,8 +2,10 @@ import datetime
 import json
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
+
+from app.core.limiter import limiter
 
 from app.core.auth import get_required_user
 from app.core.logging_config import get_logger
@@ -120,16 +122,21 @@ def get_payment_config():
     }
 
 
+class SyncRequest(BaseModel):
+    session_id: str | None = None
+
+
 @router.post("/sync")
 def sync_subscription(
-    session_id: str | None = None,
     uid: str = Depends(get_required_user),
+    body: SyncRequest = Body(default=SyncRequest()),
 ):
     """
     Called by the frontend immediately after a Stripe redirect (before the webhook
     fires) to pull the subscription state directly from Stripe.  Returns the same
     shape as GET /me so the caller can refresh in one round-trip.
     """
+    session_id = body.session_id
     if session_id and settings.STRIPE_SECRET_KEY:
         import stripe
         stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -179,11 +186,23 @@ def sync_subscription(
 
 class CheckoutRequest(BaseModel):
     plan_id: str
-    country: str = "US"
+    country: str = "US"  # kept for API compatibility; server-side detection takes precedence
+
+
+def _detect_country(request: Request) -> str:
+    """Resolve user country server-side. Cloudflare header is authoritative; falls back to config."""
+    cf = request.headers.get("cf-ipcountry", "")
+    if cf and cf not in ("XX", "T1"):  # XX = unknown, T1 = Tor
+        return cf
+    return settings.GEO_DEFAULT_COUNTRY
 
 
 @router.post("/checkout")
-def create_checkout(body: CheckoutRequest, uid: str = Depends(get_required_user)):
+@limiter.limit("5/minute")
+def create_checkout(request: Request, body: CheckoutRequest, uid: str = Depends(get_required_user)):
+    # Use server-side geo — client-supplied country is ignored to prevent price manipulation.
+    country = _detect_country(request)
+
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -196,7 +215,7 @@ def create_checkout(body: CheckoutRequest, uid: str = Depends(get_required_user)
     if not row:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    if body.country == "IN":
+    if country == "IN":
         return _razorpay_checkout(uid, body.plan_id, row)
     return _stripe_checkout(uid, body.plan_id, row)
 
@@ -267,10 +286,12 @@ def _razorpay_checkout(uid: str, plan_id: str, row) -> dict:
 
 
 class RazorpayVerifyRequest(BaseModel):
-    razorpay_order_id: str
     razorpay_payment_id: str
     razorpay_signature: str
     plan_id: str
+    # Subscription flow sends subscription_id; order/fallback flow sends order_id
+    razorpay_subscription_id: str | None = None
+    razorpay_order_id: str | None = None
 
 
 @router.post("/razorpay/verify")
@@ -278,16 +299,51 @@ def verify_razorpay_payment(
     body: RazorpayVerifyRequest,
     uid: str = Depends(get_required_user),
 ):
-    from app.services.razorpay_service import verify_razorpay_signature
-    if not verify_razorpay_signature(
-        body.razorpay_order_id, body.razorpay_payment_id, body.razorpay_signature
-    ):
+    ref_id = body.razorpay_subscription_id or body.razorpay_order_id
+    if not ref_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Provide razorpay_subscription_id (subscription flow) or razorpay_order_id (order flow)",
+        )
+
+    from app.services.razorpay_service import verify_razorpay_signature, get_razorpay_client
+    if not verify_razorpay_signature(ref_id, body.razorpay_payment_id, body.razorpay_signature):
         raise HTTPException(status_code=400, detail="Invalid payment signature")
+
+    # Replay prevention: reject a payment_id that was already activated
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM subscriptions WHERE razorpay_last_payment_id = %s",
+                (body.razorpay_payment_id,),
+            )
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail="Payment already processed")
+
+    # Order flow: confirm the payment is actually captured with Razorpay before granting access.
+    # Signature alone only proves the response came from Razorpay checkout — not that money settled.
+    if body.razorpay_order_id and not body.razorpay_subscription_id:
+        try:
+            client = get_razorpay_client()
+            payment = client.payment.fetch(body.razorpay_payment_id)
+            if payment.get("status") != "captured":
+                raise HTTPException(status_code=402, detail="Payment not yet captured")
+            if payment.get("order_id") != body.razorpay_order_id:
+                raise HTTPException(status_code=400, detail="Payment and order ID mismatch")
+        except HTTPException:
+            raise
+        except Exception:
+            logger.error(
+                "razorpay.verify.fetch_failed",
+                extra={"uid": uid, "payment_id": body.razorpay_payment_id},
+            )
+            raise HTTPException(status_code=503, detail="Could not verify payment status with Razorpay")
 
     upsert_subscription_from_stripe(
         uid=uid,
         plan_id=body.plan_id,
-        razorpay_payment_id=body.razorpay_payment_id,
+        razorpay_subscription_id=body.razorpay_subscription_id,
+        razorpay_last_payment_id=body.razorpay_payment_id,
         payment_gateway="razorpay",
     )
     return {"success": True}
@@ -305,49 +361,65 @@ async def razorpay_webhook(request: Request):
     if not verify_webhook_signature(payload, sig):
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
-    event = json.loads(payload)
+    try:
+        event = json.loads(payload)
+    except json.JSONDecodeError:
+        logger.warning("razorpay.webhook.bad_json")
+        return {"received": True}
+
     event_type = event.get("event")
 
-    if event_type == "payment.captured":
-        payment = event["payload"]["payment"]["entity"]
-        notes = payment.get("notes", {})
-        uid = notes.get("uid")
-        plan_id = notes.get("plan_id")
-        if uid and plan_id:
-            upsert_subscription_from_stripe(
-                uid=uid,
-                plan_id=plan_id,
-                payment_gateway="razorpay",
-                razorpay_payment_id=payment["id"],
-            )
+    try:
+        if event_type == "payment.captured":
+            # Order flow (one-time): notes carry uid/plan_id set at order creation
+            payment = event["payload"]["payment"]["entity"]
+            notes = payment.get("notes") or {}
+            if not isinstance(notes, dict):
+                notes = {}
+            uid = notes.get("uid")
+            plan_id = notes.get("plan_id")
+            if uid and plan_id:
+                upsert_subscription_from_stripe(
+                    uid=uid,
+                    plan_id=plan_id,
+                    payment_gateway="razorpay",
+                )
 
-    elif event_type == "subscription.charged":
-        # Fires on every successful renewal for Razorpay Subscriptions
-        subscription = event["payload"]["subscription"]["entity"]
-        notes = subscription.get("notes", {})
-        uid = notes.get("uid")
-        plan_id = notes.get("plan_id")
-        payment = event["payload"].get("payment", {}).get("entity", {})
-        if uid and plan_id:
-            upsert_subscription_from_stripe(
-                uid=uid,
-                plan_id=plan_id,
-                payment_gateway="razorpay",
-                razorpay_payment_id=payment.get("id"),
-            )
+        elif event_type == "subscription.charged":
+            # Fires on every successful renewal for Razorpay Subscriptions
+            subscription = event["payload"]["subscription"]["entity"]
+            notes = subscription.get("notes") or {}
+            if not isinstance(notes, dict):
+                notes = {}
+            uid = notes.get("uid")
+            plan_id = notes.get("plan_id")
+            if uid and plan_id:
+                upsert_subscription_from_stripe(
+                    uid=uid,
+                    plan_id=plan_id,
+                    payment_gateway="razorpay",
+                    razorpay_subscription_id=subscription["id"],
+                )
 
-    elif event_type == "subscription.cancelled":
-        subscription = event["payload"]["subscription"]["entity"]
-        notes = subscription.get("notes", {})
-        uid = notes.get("uid")
-        if uid:
-            from app.core.database import get_db
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE subscriptions SET status = 'cancelled' WHERE uid = %s AND payment_gateway = 'razorpay'",
-                        (uid,),
-                    )
+        elif event_type == "subscription.cancelled":
+            subscription = event["payload"]["subscription"]["entity"]
+            notes = subscription.get("notes") or {}
+            if not isinstance(notes, dict):
+                notes = {}
+            uid = notes.get("uid")
+            if uid:
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE subscriptions SET status = 'cancelled' WHERE uid = %s AND payment_gateway = 'razorpay'",
+                            (uid,),
+                        )
+                        if cur.rowcount == 0:
+                            logger.warning("razorpay.webhook.cancel_no_row uid=%s", uid)
+
+    except (KeyError, TypeError, AttributeError) as exc:
+        logger.error("razorpay.webhook.parse_error event=%s error=%s", event_type, exc)
+        return {"received": True}
 
     # payment.failed: no subscription change needed, just log for support
     return {"received": True}
@@ -403,27 +475,40 @@ async def stripe_webhook(request: Request):
 
     elif event["type"] == "customer.subscription.updated":
         sub = event["data"]["object"]
-        u_item = sub.items.data[0]
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    UPDATE subscriptions
-                    SET status = %s,
-                        current_period_start = %s,
-                        current_period_end   = %s
-                    WHERE stripe_subscription_id = %s
-                    """,
-                    (
-                        sub.status,
-                        datetime.datetime.fromtimestamp(u_item.current_period_start),
-                        datetime.datetime.fromtimestamp(u_item.current_period_end),
-                        sub.id,
-                    ),
-                )
+        try:
+            uid = sub.metadata["uid"]
+        except (KeyError, TypeError, AttributeError):
+            uid = None
+        item = sub.items.data[0]
+        plan_id = _stripe_price_to_plan(item.price.id)
+        try:
+            period_start = datetime.datetime.fromtimestamp(item.current_period_start)
+            period_end = datetime.datetime.fromtimestamp(item.current_period_end)
+        except (AttributeError, TypeError, OSError):
+            period_start = period_end = None
+        if uid:
+            # Upsert so a race where updated arrives before created never loses data
+            upsert_subscription_from_stripe(
+                uid=uid,
+                plan_id=plan_id,
+                stripe_subscription_id=sub.id,
+                stripe_customer_id=sub.customer,
+                status=sub.status,
+                period_start=period_start,
+                period_end=period_end,
+            )
+        else:
+            # uid not in metadata (old sessions before subscription_data.metadata was set)
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE subscriptions SET status = %s, current_period_start = %s, current_period_end = %s "
+                        "WHERE stripe_subscription_id = %s",
+                        (sub.status, period_start, period_end, sub.id),
+                    )
         logger.info(
             "stripe.webhook.subscription_updated",
-            extra={"sub_id": sub.id, "status": sub.status},
+            extra={"sub_id": sub.id, "status": sub.status, "uid": uid},
         )
 
     elif event["type"] == "customer.subscription.deleted":
@@ -431,8 +516,8 @@ async def stripe_webhook(request: Request):
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "UPDATE subscriptions SET status = %s WHERE stripe_subscription_id = %s",
-                    (sub.status, sub.id),
+                    "UPDATE subscriptions SET status = 'cancelled' WHERE stripe_subscription_id = %s",
+                    (sub.id,),
                 )
         logger.info(
             "stripe.webhook.subscription_deleted",
