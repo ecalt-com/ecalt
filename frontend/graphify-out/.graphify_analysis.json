@@ -1,0 +1,678 @@
+{
+  "communities": {
+    "0": [
+      "claude_md_optimistic_update_pattern",
+      "components_journeycard_difficultystyle",
+      "components_journeycard_journeycard",
+      "components_journeycard_journeycardprops",
+      "components_stepnode_stepnodeprops",
+      "components_stepnode_typeconfig",
+      "explore_page_explorecontent",
+      "explore_page_explorepage",
+      "id_page_journeypage",
+      "journeys_page_filters",
+      "journeys_page_journeyspage",
+      "lib_api_askspark",
+      "lib_api_chatmessage",
+      "lib_api_confirmwhatsapp",
+      "lib_api_conversation",
+      "lib_api_deleteconversation",
+      "lib_api_explorequestion",
+      "lib_api_getconversation",
+      "lib_api_getconversations",
+      "lib_api_getdailyspark",
+      "lib_api_getjourney",
+      "lib_api_getjourneys",
+      "lib_api_getknowledgenodes",
+      "lib_api_getnotificationprefs",
+      "lib_api_getpassport",
+      "lib_api_getprogress",
+      "lib_api_getsessionstatus",
+      "lib_api_getstepcontent",
+      "lib_api_markstepcomplete",
+      "lib_api_markstepincomplete",
+      "lib_api_notificationpreferences",
+      "lib_api_notificationpreferencespatch",
+      "lib_api_optoutwhatsapp",
+      "lib_api_request",
+      "lib_api_stepcontent",
+      "lib_types_agegroup",
+      "lib_types_capabilityentry",
+      "lib_types_difficulty",
+      "lib_types_explorerequest",
+      "lib_types_journey",
+      "lib_types_journeysresponse",
+      "lib_types_journeystep",
+      "lib_types_sessionstatus",
+      "lib_types_sparkrequest",
+      "lib_types_sparkresponse",
+      "pages_explore_togglestep",
+      "pages_journey_completionoverlay",
+      "pages_journey_journey",
+      "pages_journey_related_journeys",
+      "pages_journey_togglestep",
+      "pages_journeys_filters",
+      "pages_journeys_journeys",
+      "src_app_explore_page_tsx",
+      "src_app_journey_id_page_tsx",
+      "src_app_journeys_page_tsx",
+      "src_components_journeycard_tsx",
+      "src_components_stepnode_tsx",
+      "src_lib_api_ts",
+      "src_lib_types_ts",
+      "src_pages_explore_tsx",
+      "src_pages_journey_tsx",
+      "src_pages_journeys_tsx"
+    ],
+    "1": [
+      "components_gatemodal_gatemodal",
+      "components_gatemodal_gatemodalprops",
+      "components_googlesigninbutton_googlesigninbutton",
+      "components_googlesigninbutton_googlesigninbuttonprops",
+      "components_stepnode_stepnode",
+      "components_upgradeprompt_messages",
+      "components_upgradeprompt_upgradeprompt",
+      "components_upgradeprompt_upgradepromptprops",
+      "concept_auth_gate",
+      "concept_budget_exhaustion",
+      "concept_gettoken_stable",
+      "concept_optimistic_update",
+      "concept_sse_streaming",
+      "learn_conversationinterface_conversationinterface",
+      "learn_conversationinterface_conversationinterfaceprops",
+      "learn_conversationinterface_message",
+      "learn_knowledgeuniverse_domain_colors",
+      "learn_knowledgeuniverse_knowledgenode",
+      "learn_knowledgeuniverse_knowledgeuniverse",
+      "learn_knowledgeuniverse_knowledgeuniverseprops",
+      "learn_knowledgeuniverse_nodesize",
+      "learn_todaysspark_todaysspark",
+      "learn_todaysspark_todayssparkprops",
+      "learn_warmthindicator_warmthindicator",
+      "learn_warmthindicator_warmthindicatorprops",
+      "lib_api_knowledgenode",
+      "lib_authcontext_authcontext",
+      "lib_authcontext_authcontextvalue",
+      "lib_authcontext_authprovider",
+      "lib_authcontext_useauth",
+      "lib_firebase_app",
+      "lib_firebase_firebaseauth",
+      "lib_firebase_googleprovider",
+      "lib_subscriptioncontext_default",
+      "lib_subscriptioncontext_planconfig",
+      "lib_subscriptioncontext_subscriptioncontext",
+      "lib_subscriptioncontext_subscriptionprovider",
+      "lib_subscriptioncontext_subscriptionstate",
+      "lib_subscriptioncontext_usesubscription",
+      "pages_learn_knowledgerefresh",
+      "pages_learn_learn",
+      "pages_pricing_couponapply",
+      "pages_pricing_plan",
+      "pages_pricing_pricing",
+      "src_components_gatemodal_tsx",
+      "src_components_googlesigninbutton_tsx",
+      "src_components_learn_conversationinterface_tsx",
+      "src_components_learn_knowledgeuniverse_tsx",
+      "src_components_learn_todaysspark_tsx",
+      "src_components_learn_warmthindicator_tsx",
+      "src_components_upgradeprompt_tsx",
+      "src_lib_authcontext_tsx",
+      "src_lib_firebase_ts",
+      "src_lib_subscriptioncontext_tsx",
+      "src_pages_learn_tsx",
+      "src_pages_pricing_tsx"
+    ],
+    "2": [
+      "claude_md_auth_gating_pattern",
+      "claude_md_session_id_pattern",
+      "components_missioncard_difficulty_color",
+      "components_missioncard_missioncard",
+      "components_missioncard_missioncardprops",
+      "components_missioncard_type_config",
+      "concept_capability_passport",
+      "concept_spark_rate_limiting",
+      "frontend_package_dependencies_clsx",
+      "lib_api_passportdata",
+      "lib_types_mission",
+      "lib_types_missionstep",
+      "lib_types_steptype",
+      "lib_usepagetitle_usepagetitle",
+      "pages_explore_explore",
+      "pages_explore_fetchjourney",
+      "pages_home_askbox",
+      "pages_home_askboxprops",
+      "pages_home_chips",
+      "pages_home_diff_color",
+      "pages_home_emailcapture",
+      "pages_home_featurecard",
+      "pages_home_featurecardprops",
+      "pages_home_features",
+      "pages_home_getsessionid",
+      "pages_home_handlespark",
+      "pages_home_home",
+      "pages_home_lightloadingskeleton",
+      "pages_home_lightresultprops",
+      "pages_home_lightsparkresult",
+      "pages_home_passportteaser",
+      "pages_home_phase",
+      "pages_home_phase_statemachine",
+      "pages_home_recentjourney",
+      "pages_home_sparkdots",
+      "pages_home_step_type",
+      "pages_home_trustrow",
+      "pages_passport_passport",
+      "src_components_missioncard_tsx",
+      "src_lib_usepagetitle_ts",
+      "src_pages_home_tsx",
+      "src_pages_passport_tsx"
+    ],
+    "3": [
+      "frontend_package_dependencies",
+      "frontend_package_dependencies_d3",
+      "frontend_package_dependencies_firebase",
+      "frontend_package_dependencies_lucide_react",
+      "frontend_package_dependencies_react",
+      "frontend_package_dependencies_react_dom",
+      "frontend_package_dependencies_react_helmet_async",
+      "frontend_package_dependencies_react_router_dom",
+      "frontend_package_dependencies_sentry_react",
+      "frontend_package_dependencies_types_d3",
+      "frontend_package_dependencies_vercel_analytics",
+      "frontend_package_dependencies_vercel_speed_insights",
+      "frontend_package_devdependencies",
+      "frontend_package_devdependencies_autoprefixer",
+      "frontend_package_devdependencies_postcss",
+      "frontend_package_devdependencies_tailwindcss",
+      "frontend_package_devdependencies_types_react",
+      "frontend_package_devdependencies_types_react_dom",
+      "frontend_package_devdependencies_typescript",
+      "frontend_package_devdependencies_vite",
+      "frontend_package_devdependencies_vitejs_plugin_react",
+      "frontend_package_name",
+      "frontend_package_private",
+      "frontend_package_scripts",
+      "frontend_package_scripts_build",
+      "frontend_package_scripts_dev",
+      "frontend_package_scripts_lint",
+      "frontend_package_scripts_preview",
+      "frontend_package_type",
+      "frontend_package_version",
+      "package_json"
+    ],
+    "4": [
+      "components_onboardingmodal_country_codes",
+      "components_onboardingmodal_guessdefaultcode",
+      "components_onboardingmodal_onboardingmodal",
+      "components_onboardingmodal_topics",
+      "concept_whatsapp_optin",
+      "learn_whatsappnudgebanner_country_codes",
+      "learn_whatsappnudgebanner_guesscode",
+      "learn_whatsappnudgebanner_whatsappnudgebanner",
+      "lib_api_completeonboarding",
+      "lib_api_getuserprofile",
+      "lib_api_optinwhatsapp",
+      "lib_api_savenotificationprefs",
+      "lib_api_userprofile",
+      "lib_toastcontext_toast",
+      "lib_toastcontext_toastcontext",
+      "lib_toastcontext_toastcontextvalue",
+      "lib_toastcontext_toastprovider",
+      "lib_toastcontext_toasttype",
+      "lib_toastcontext_usetoast",
+      "pages_profile_browsertimezone",
+      "pages_profile_country_codes",
+      "pages_profile_hours",
+      "pages_profile_hourselect",
+      "pages_profile_profile",
+      "pages_profile_splitphone",
+      "pages_profile_togglerow",
+      "src_components_learn_whatsappnudgebanner_tsx",
+      "src_components_onboardingmodal_tsx",
+      "src_lib_toastcontext_tsx",
+      "src_pages_profile_tsx"
+    ],
+    "5": [
+      "components_errorboundary_errorboundary",
+      "components_errorboundary_errorboundary_getderivedstatefromerror",
+      "components_errorboundary_errorboundary_render",
+      "components_errorboundary_state",
+      "concept_appshell",
+      "concept_lazy_routes",
+      "concept_provider_tree",
+      "concept_scroll_restoration",
+      "concept_sentry_init",
+      "src_app_admin",
+      "src_app_app",
+      "src_app_appshell",
+      "src_app_comingsoon",
+      "src_app_explore",
+      "src_app_home",
+      "src_app_journey",
+      "src_app_journeys",
+      "src_app_learn",
+      "src_app_mindsignature",
+      "src_app_pageskeleton",
+      "src_app_passport",
+      "src_app_pricing",
+      "src_app_profile",
+      "src_app_tsx",
+      "src_app_verify",
+      "src_components_errorboundary_tsx",
+      "src_main_tsx"
+    ],
+    "6": [
+      "app_page_featured",
+      "app_page_homepage",
+      "app_page_how_it_works",
+      "components_curiosityinput_curiosityinput",
+      "components_curiosityinput_curiosityinputprops",
+      "components_curiosityinput_placeholders",
+      "components_curiosityinput_quick_picks",
+      "components_navigation_auth_links",
+      "components_navigation_navigation",
+      "components_navigation_public_links",
+      "components_navigation_useravatar",
+      "components_themetoggle_themetoggle",
+      "lib_themecontext_theme",
+      "lib_themecontext_themecontext",
+      "lib_themecontext_themecontextvalue",
+      "lib_themecontext_themeprovider",
+      "lib_themecontext_usetheme",
+      "src_app_page_tsx",
+      "src_components_curiosityinput_tsx",
+      "src_components_navigation_tsx",
+      "src_components_themetoggle_tsx",
+      "src_lib_themecontext_tsx"
+    ],
+    "7": [
+      "frontend_tsconfig_compileroptions",
+      "frontend_tsconfig_compileroptions_allowimportingtsextensions",
+      "frontend_tsconfig_compileroptions_isolatedmodules",
+      "frontend_tsconfig_compileroptions_jsx",
+      "frontend_tsconfig_compileroptions_lib",
+      "frontend_tsconfig_compileroptions_module",
+      "frontend_tsconfig_compileroptions_moduleresolution",
+      "frontend_tsconfig_compileroptions_noemit",
+      "frontend_tsconfig_compileroptions_nofallthroughcasesinswitch",
+      "frontend_tsconfig_compileroptions_nounusedlocals",
+      "frontend_tsconfig_compileroptions_nounusedparameters",
+      "frontend_tsconfig_compileroptions_paths",
+      "frontend_tsconfig_compileroptions_resolvejsonmodule",
+      "frontend_tsconfig_compileroptions_skiplibcheck",
+      "frontend_tsconfig_compileroptions_strict",
+      "frontend_tsconfig_compileroptions_target",
+      "frontend_tsconfig_compileroptions_usedefineforclassfields",
+      "frontend_tsconfig_include",
+      "frontend_tsconfig_paths",
+      "frontend_tsconfig_references",
+      "tsconfig_json"
+    ],
+    "8": [
+      "components_pagemeta_pagemeta",
+      "components_pagemeta_pagemetaprops",
+      "concept_mind_signature",
+      "constellation_constellationmap_constellationdata",
+      "constellation_constellationmap_constellationlink",
+      "constellation_constellationmap_constellationmap",
+      "constellation_constellationmap_constellationnode",
+      "constellation_constellationmap_domain_colors",
+      "constellation_constellationmap_props",
+      "pages_mindsignature_domain",
+      "pages_mindsignature_fetchsignature",
+      "pages_mindsignature_handlegenerate",
+      "pages_mindsignature_mindsignature",
+      "pages_mindsignature_signature",
+      "pages_verify_domain",
+      "pages_verify_signature",
+      "pages_verify_verify",
+      "src_components_constellation_constellationmap_tsx",
+      "src_components_pagemeta_tsx",
+      "src_pages_mindsignature_tsx",
+      "src_pages_verify_tsx"
+    ],
+    "9": [
+      "concept_light_delay_narrative",
+      "index_html_font_preconnect",
+      "index_html_og_meta",
+      "index_html_root",
+      "pages_homecosmic_customcursor",
+      "pages_homecosmic_field_data",
+      "pages_homecosmic_field_tags",
+      "pages_homecosmic_getsessionid",
+      "pages_homecosmic_homecosmic",
+      "pages_homecosmic_normalisefield",
+      "pages_homecosmic_phase",
+      "pages_homecosmic_potentialindicatorcanvas",
+      "pages_homecosmic_recentjourney",
+      "pages_homecosmic_starfield",
+      "pages_homecosmic_teventdata",
+      "pages_homecosmic_timeline_events",
+      "pages_homecosmic_timelineevent",
+      "pages_homecosmic_usereveal",
+      "src_pages_homecosmic_tsx"
+    ],
+    "10": [
+      "claude_md_hardcoded_plan_features",
+      "pages_admin_admin",
+      "pages_admin_aiconfig",
+      "pages_admin_dailyusage",
+      "pages_admin_interaction_labels",
+      "pages_admin_modeloption",
+      "pages_admin_plan_features",
+      "pages_admin_plan_icons",
+      "pages_admin_planrow",
+      "pages_admin_stats",
+      "pages_admin_usagebymodel",
+      "pages_admin_userrow",
+      "pages_pricing_plan_details",
+      "src_pages_admin_tsx"
+    ],
+    "11": [
+      "components_pagemeta_tsx",
+      "concept_next_nextjs_coexistence",
+      "concept_next_proxy",
+      "concept_vercel_rewrites",
+      "concept_vercel_security_headers",
+      "concept_vite_proxy",
+      "frontend_next_config",
+      "frontend_package_json",
+      "frontend_tsconfig_json",
+      "frontend_vercel_json",
+      "frontend_vite_config",
+      "tsconfig_node"
+    ],
+    "12": [
+      "app_explore_page_tsx",
+      "app_journey_id_page_tsx",
+      "app_layout_tsx",
+      "app_page_tsx",
+      "components_curiosityinput_tsx",
+      "components_gatemodal_tsx",
+      "concept_curiosity_placeholders",
+      "concept_featured_journeys_static",
+      "concept_gatemodal_autoclose",
+      "concept_optimistic_step_toggle"
+    ],
+    "13": [
+      "frontend_tsconfig_node_compileroptions",
+      "frontend_tsconfig_node_compileroptions_allowsyntheticdefaultimports",
+      "frontend_tsconfig_node_compileroptions_composite",
+      "frontend_tsconfig_node_compileroptions_module",
+      "frontend_tsconfig_node_compileroptions_moduleresolution",
+      "frontend_tsconfig_node_compileroptions_skiplibcheck",
+      "frontend_tsconfig_node_compileroptions_strict",
+      "frontend_tsconfig_node_include",
+      "tsconfig_node_json"
+    ],
+    "14": [
+      "frontend_vercel_buildcommand",
+      "frontend_vercel_headers",
+      "frontend_vercel_installcommand",
+      "frontend_vercel_outputdirectory",
+      "frontend_vercel_rewrites",
+      "vercel_json"
+    ],
+    "15": [
+      "app_layout_inter",
+      "app_layout_metadata",
+      "app_layout_rootlayout",
+      "app_layout_viewport",
+      "src_app_layout_tsx"
+    ],
+    "16": [
+      "concept_css_var_theme",
+      "concept_dark_mode_class",
+      "frontend_postcss_config",
+      "frontend_tailwind_config"
+    ],
+    "17": [
+      "components_sparkanswer_sparkanswer",
+      "components_sparkanswer_sparkanswerprops",
+      "src_components_sparkanswer_tsx"
+    ],
+    "18": [
+      "pages_comingsoon_comingsoon",
+      "pages_comingsoon_comingsoonprops",
+      "src_pages_comingsoon_tsx"
+    ],
+    "19": [
+      "components_markdowncontent_markdowncontent",
+      "components_markdowncontent_renderinline",
+      "src_components_markdowncontent_tsx"
+    ],
+    "20": [
+      "components_sparkmeter_sparkmeter",
+      "components_sparkmeter_sparkmeterprops",
+      "src_components_sparkmeter_tsx"
+    ],
+    "21": [
+      "claude_md_frontend_reference",
+      "public_robots_robots"
+    ],
+    "22": [
+      "components_markdowncontent_tsx",
+      "concept_markdown_renderer"
+    ],
+    "23": [
+      "components_sparkmeter_tsx",
+      "concept_spark_meter_dots"
+    ],
+    "24": [
+      "app_journeys_page_tsx",
+      "concept_journey_filter_search"
+    ],
+    "25": [
+      "frontend_next_config_nextconfig",
+      "next_config_mjs"
+    ],
+    "26": [
+      "frontend_postcss_config_config",
+      "postcss_config_mjs"
+    ],
+    "27": [
+      "frontend_tailwind_config_config",
+      "tailwind_config_ts"
+    ],
+    "28": [
+      "frontend_vite_config_env",
+      "vite_config_ts"
+    ],
+    "29": [
+      "next_env_d_ts"
+    ],
+    "30": [
+      "src_vite_env_d_ts"
+    ],
+    "31": [
+      "frontend_next_env_dts"
+    ],
+    "32": [
+      "src_viteenv_dts"
+    ],
+    "33": [
+      "claude_md_budget_exhaustion_pattern"
+    ]
+  },
+  "cohesion": {
+    "0": 0.07297726070861978,
+    "1": 0.06753246753246753,
+    "2": 0.06620209059233449,
+    "3": 0.06451612903225806,
+    "4": 0.10804597701149425,
+    "5": 0.07692307692307693,
+    "6": 0.11688311688311688,
+    "7": 0.09523809523809523,
+    "8": 0.10952380952380952,
+    "9": 0.15789473684210525,
+    "10": 0.16483516483516483,
+    "11": 0.19696969696969696,
+    "12": 0.2,
+    "13": 0.2222222222222222,
+    "14": 0.3333333333333333,
+    "15": 0.4,
+    "16": 0.5,
+    "17": 0.6666666666666666,
+    "18": 0.6666666666666666,
+    "19": 0.6666666666666666,
+    "20": 0.6666666666666666,
+    "21": 1.0,
+    "22": 1.0,
+    "23": 1.0,
+    "24": 1.0,
+    "25": 1.0,
+    "26": 1.0,
+    "27": 1.0,
+    "28": 1.0,
+    "29": 1.0,
+    "30": 1.0,
+    "31": 1.0,
+    "32": 1.0,
+    "33": 1.0
+  },
+  "gods": [
+    {
+      "id": "lib_authcontext_useauth",
+      "label": "useAuth()",
+      "degree": 45
+    },
+    {
+      "id": "lib_api_request",
+      "label": "request()",
+      "degree": 23
+    },
+    {
+      "id": "frontend_tsconfig_compileroptions",
+      "label": "compilerOptions",
+      "degree": 17
+    },
+    {
+      "id": "frontend_package_dependencies_clsx",
+      "label": "clsx",
+      "degree": 13
+    },
+    {
+      "id": "lib_types_journey",
+      "label": "Journey",
+      "degree": 13
+    },
+    {
+      "id": "lib_subscriptioncontext_usesubscription",
+      "label": "useSubscription()",
+      "degree": 13
+    },
+    {
+      "id": "pages_homecosmic_homecosmic",
+      "label": "HomeCosmic()",
+      "degree": 13
+    },
+    {
+      "id": "pages_home_home",
+      "label": "Home()",
+      "degree": 11
+    },
+    {
+      "id": "learn_conversationinterface_conversationinterface",
+      "label": "ConversationInterface()",
+      "degree": 10
+    },
+    {
+      "id": "lib_api_getuserprofile",
+      "label": "getUserProfile()",
+      "degree": 9
+    }
+  ],
+  "surprises": [
+    {
+      "source": "Email Capture (UI-only)",
+      "target": "Hardcoded Plan Features (Known Quirk)",
+      "source_files": [
+        "src/pages/Home.tsx",
+        "CLAUDE.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "semantically_similar_to",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (code ↔ doc); connects across different repos/directories; bridges separate communities; semantically similar concepts with no structural link"
+    },
+    {
+      "source": "CompletionOverlay()",
+      "target": "Capability Passport Concept",
+      "source_files": [
+        "src/pages/Journey.tsx",
+        "CLAUDE.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "conceptually_related_to",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (code ↔ doc); connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "Font Preconnect (Inter, Garamond, Playfair, SpaceMono)",
+      "target": "HomeCosmic()",
+      "source_files": [
+        "index.html",
+        "src/pages/HomeCosmic.tsx"
+      ],
+      "confidence": "INFERRED",
+      "relation": "conceptually_related_to",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (code ↔ doc); connects across different repos/directories; peripheral node `Font Preconnect (Inter, Garamond, Playfair, SpaceMono)` unexpectedly reaches hub `HomeCosmic()`"
+    },
+    {
+      "source": "Learn()",
+      "target": "Auth-Gating Pattern",
+      "source_files": [
+        "src/pages/Learn.tsx",
+        "CLAUDE.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "implements",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (code ↔ doc); connects across different repos/directories; bridges separate communities"
+    },
+    {
+      "source": "Profile()",
+      "target": "Auth-Gating Pattern",
+      "source_files": [
+        "src/pages/Profile.tsx",
+        "CLAUDE.md"
+      ],
+      "confidence": "INFERRED",
+      "relation": "implements",
+      "why": "inferred connection - not explicitly stated in source; crosses file types (code ↔ doc); connects across different repos/directories; bridges separate communities"
+    }
+  ],
+  "questions": [
+    {
+      "type": "ambiguous_edge",
+      "question": "What is the exact relationship between `usePageTitle()` and `Journeys()`?",
+      "why": "Edge tagged AMBIGUOUS (relation: calls) - confidence is low."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `useAuth()` connect `Community 1` to `Community 0`, `Community 2`, `Community 4`, `Community 5`, `Community 6`, `Community 8`, `Community 9`, `Community 10`?",
+      "why": "High betweenness centrality (0.210) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `clsx` connect `Community 2` to `Community 0`, `Community 1`, `Community 3`, `Community 4`?",
+      "why": "High betweenness centrality (0.110) - this node is a cross-community bridge."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `dependencies` connect `Community 3` to `Community 2`?",
+      "why": "High betweenness centrality (0.102) - this node is a cross-community bridge."
+    },
+    {
+      "type": "verify_inferred",
+      "question": "Are the 12 inferred relationships involving `clsx` (e.g. with `JourneyCard()` and `OnboardingModal()`) actually correct?",
+      "why": "`clsx` has 12 INFERRED edges - model-reasoned connections that need verification."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `composite`, `skipLibCheck`, `module` to the rest of the system?",
+      "why": "195 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `Community 0` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.07297726070861978 - nodes in this community are weakly interconnected."
+    }
+  ]
+}
