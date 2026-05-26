@@ -7,6 +7,11 @@ from app.services.mastery_service import get_domain_mastery, update_domain_maste
 from app.services.provider_service import complete_text
 
 
+LEGAL_DISCLAIMER = (
+    "AI-generated capability indicator based on demonstrated learning engagement "
+    "— not an accredited educational credential."
+)
+
 _NARRATIVE_SYSTEM = """\
 You are writing a capability narrative for a learner's Mind Signature — a verified record of their demonstrated intellectual range.
 
@@ -83,7 +88,7 @@ async def generate_mind_signature(uid: str) -> dict:
         for d in domains
     )
 
-    narrative = await complete_text(
+    narrative, _, _, _ = await complete_text(
         interaction_type="mind_signature",
         system=_NARRATIVE_SYSTEM,
         user_content=(
@@ -128,6 +133,7 @@ async def generate_mind_signature(uid: str) -> dict:
         "domains": domains,
         "constellation_data": constellation_data,
         "generated_at": row["generated_at"].isoformat(),
+        "legal_disclaimer": LEGAL_DISCLAIMER,
     }
 
 
@@ -154,6 +160,7 @@ def get_latest_signature(uid: str) -> dict | None:
             d["constellation_data"] = d["constellation_data"] if isinstance(d["constellation_data"], dict) else json.loads(d["constellation_data"])
             d["id"] = str(d["id"])
             d["generated_at"] = d["generated_at"].isoformat() if hasattr(d["generated_at"], "isoformat") else d["generated_at"]
+            d["legal_disclaimer"] = LEGAL_DISCLAIMER
             return d
 
 
@@ -181,4 +188,5 @@ def get_signature_by_hash(verification_hash: str) -> dict | None:
             d["generated_at"] = d["generated_at"].isoformat() if hasattr(d["generated_at"], "isoformat") else d["generated_at"]
             # Don't expose uid in public endpoint
             d.pop("uid", None)
+            d["legal_disclaimer"] = LEGAL_DISCLAIMER
             return d

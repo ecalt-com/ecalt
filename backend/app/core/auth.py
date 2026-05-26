@@ -59,6 +59,29 @@ def get_required_user(uid: Optional[str] = Depends(get_optional_user)) -> str:
     return uid
 
 
+def get_active_user(uid: str = Depends(get_required_user)) -> str:
+    """Like get_required_user but raises 403 if account_status is parental_consent_pending."""
+    from app.core.database import get_db
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT account_status FROM users WHERE uid = %s", (uid,))
+                row = cur.fetchone()
+                if row and row.get("account_status") == "parental_consent_pending":
+                    raise HTTPException(
+                        status_code=403,
+                        detail={
+                            "error": "consent_pending",
+                            "message": "Your account is waiting for parental approval. Check your parent's inbox.",
+                        },
+                    )
+    except HTTPException:
+        raise
+    except Exception:
+        pass  # fail open — DB check must never block a valid user
+    return uid
+
+
 def get_admin_user(uid: str = Depends(get_required_user)) -> str:
     """Raises 403 if user is not an admin."""
     from app.core.database import get_db

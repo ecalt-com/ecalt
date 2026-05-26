@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Settings, ArrowLeft, Save, Loader2, ShieldCheck, ShieldOff, Check, Zap, Users, GraduationCap, Building2, Search, Cpu, Ticket, Plus, ToggleLeft, ToggleRight } from 'lucide-react'
+import { Settings, ArrowLeft, Save, Loader2, ShieldCheck, ShieldOff, Check, Zap, Users, GraduationCap, Building2, Search, Cpu, Ticket, Plus, ToggleLeft, ToggleRight, AlertTriangle } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../lib/AuthContext'
 import PageMeta from '../components/PageMeta'
@@ -9,11 +9,22 @@ interface PlanRow {
   plan_id: string
   name: string
   base_price_cents: number
+  base_price_inr_paise: number | null
   token_budget_cents: number
   lifetime_message_limit: number | null
   max_seats: number
   is_active: boolean
   stripe_price_id: string | null
+  razorpay_plan_id: string | null
+}
+
+interface NewPlanForm {
+  plan_id: string
+  name: string
+  base_price_cents: string
+  base_price_inr_paise: string
+  token_budget_cents: string
+  max_seats: string
 }
 
 interface Stats {
@@ -106,6 +117,12 @@ export default function Admin() {
   const [couponForm, setCouponForm] = useState({ code: '', description: '', credit_cents: '', bonus_messages: '', duration_days: '', max_redemptions: '', expires_at: '' })
   const [creatingCoupon, setCreatingCoupon] = useState(false)
   const [couponError, setCouponError] = useState<string | null>(null)
+  const [provisioning, setProvisioning] = useState<Record<string, string | null>>({})
+  const [newPlanForm, setNewPlanForm] = useState<NewPlanForm>({
+    plan_id: '', name: '', base_price_cents: '', base_price_inr_paise: '',
+    token_budget_cents: '', max_seats: '1',
+  })
+  const [creatingPlan, setCreatingPlan] = useState(false)
 
   const filteredUsers = useMemo(() => {
     const q = userSearch.toLowerCase().trim()
@@ -203,7 +220,7 @@ export default function Admin() {
     } finally { setTogglingUid(null) }
   }
 
-  const setEdit = (planId: string, field: string, value: string | number | boolean) => {
+  const setEdit = (planId: string, field: string, value: string | number | boolean | null) => {
     setEdits(prev => ({ ...prev, [planId]: { ...prev[planId], [field]: value } }))
   }
 
@@ -264,6 +281,64 @@ export default function Admin() {
     })
     if (res.ok) {
       setCoupons(prev => prev.map(c => c.code === code ? { ...c, is_active: active } : c))
+    }
+  }
+
+  const handleProvision = async (planId: string, gateway: 'stripe' | 'razorpay' | 'both') => {
+    setProvisioning(prev => ({ ...prev, [planId]: gateway }))
+    try {
+      const token = await getToken()
+      const res = await fetch(`/api/v1/admin/plans/${planId}/provision`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ gateway }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setPlans(prev => prev.map(p => {
+          if (p.plan_id !== planId) return p
+          const stripe = data.provisioned?.stripe ?? {}
+          const razorpay = data.provisioned?.razorpay ?? {}
+          return {
+            ...p,
+            stripe_price_id: stripe.stripe_price_id ?? p.stripe_price_id,
+            razorpay_plan_id: razorpay.razorpay_plan_id ?? p.razorpay_plan_id,
+          }
+        }))
+      } else {
+        alert(data.detail ?? 'Provisioning failed.')
+      }
+    } finally {
+      setProvisioning(prev => ({ ...prev, [planId]: null }))
+    }
+  }
+
+  const handleCreatePlan = async () => {
+    if (!newPlanForm.plan_id || !newPlanForm.name) return
+    setCreatingPlan(true)
+    try {
+      const token = await getToken()
+      const res = await fetch('/api/v1/admin/plans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          plan_id: newPlanForm.plan_id.toLowerCase().replace(/\s+/g, '_'),
+          name: newPlanForm.name,
+          base_price_cents: parseInt(newPlanForm.base_price_cents) || 0,
+          base_price_inr_paise: parseInt(newPlanForm.base_price_inr_paise) || null,
+          token_budget_cents: parseInt(newPlanForm.token_budget_cents) || 0,
+          max_seats: parseInt(newPlanForm.max_seats) || 1,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setPlans(prev => [...prev, data.plan])
+        setNewPlanForm({ plan_id: '', name: '', base_price_cents: '', base_price_inr_paise: '', token_budget_cents: '', max_seats: '1' })
+      } else {
+        alert(data.detail ?? 'Failed to create plan.')
+      }
+    } finally {
+      setCreatingPlan(false)
     }
   }
 
@@ -392,11 +467,54 @@ export default function Admin() {
                 })}
               </div>
 
+              {/* Create New Plan */}
+              <div className="glass-card rounded-2xl p-5 mb-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <Plus size={14} className="text-violet-500 dark:text-violet-400" />
+                  <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-200">Create New Plan</h2>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
+                  <div>
+                    <label className="text-xs text-slate-500">Plan ID slug</label>
+                    <input value={newPlanForm.plan_id} onChange={e => setNewPlanForm(f => ({ ...f, plan_id: e.target.value }))} placeholder="individual" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Display Name</label>
+                    <input value={newPlanForm.name} onChange={e => setNewPlanForm(f => ({ ...f, name: e.target.value }))} placeholder="Individual" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">USD $/mo (cents)</label>
+                    <input type="number" min="0" value={newPlanForm.base_price_cents} onChange={e => setNewPlanForm(f => ({ ...f, base_price_cents: e.target.value }))} placeholder="999" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">INR ₹/mo (paise)</label>
+                    <input type="number" min="0" value={newPlanForm.base_price_inr_paise} onChange={e => setNewPlanForm(f => ({ ...f, base_price_inr_paise: e.target.value }))} placeholder="79900" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Token budget (cents)</label>
+                    <input type="number" min="0" value={newPlanForm.token_budget_cents} onChange={e => setNewPlanForm(f => ({ ...f, token_budget_cents: e.target.value }))} placeholder="5000" className={inputCls} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-slate-500">Max seats</label>
+                    <input type="number" min="1" value={newPlanForm.max_seats} onChange={e => setNewPlanForm(f => ({ ...f, max_seats: e.target.value }))} className={inputCls} />
+                  </div>
+                </div>
+                <button
+                  onClick={handleCreatePlan}
+                  disabled={creatingPlan || !newPlanForm.plan_id || !newPlanForm.name}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+                >
+                  {creatingPlan ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                  Create Plan
+                </button>
+              </div>
+
               <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-4">Edit Plan Configuration</h2>
               <div className="space-y-3">
                 {plans.map(plan => {
                   const edit = edits[plan.plan_id] ?? {}
                   const isDirty = Object.keys(edit).length > 0
+                  const currentTokenBudget = (edit.token_budget_cents as number | undefined) ?? plan.token_budget_cents
                   return (
                     <div key={plan.plan_id} className="glass-card rounded-xl p-4">
                       <div className="flex items-center justify-between mb-3">
@@ -418,24 +536,90 @@ export default function Admin() {
                           </button>
                         )}
                       </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         <label className="text-xs text-slate-500">
-                          Price (cents)
+                          USD Price (¢)
                           <input type="number" defaultValue={plan.base_price_cents} onChange={e => setEdit(plan.plan_id, 'base_price_cents', parseInt(e.target.value))} className={inputCls} />
                         </label>
+                        {plan.base_price_cents > 0 && (
+                          <label className="text-xs text-slate-500">
+                            INR Price (paise)
+                            <input type="number" defaultValue={plan.base_price_inr_paise ?? ''} placeholder="e.g. 79900" onChange={e => setEdit(plan.plan_id, 'base_price_inr_paise', parseInt(e.target.value) || null)} className={inputCls} />
+                          </label>
+                        )}
                         <label className="text-xs text-slate-500">
                           Token budget (cents)
                           <input type="number" defaultValue={plan.token_budget_cents} onChange={e => setEdit(plan.plan_id, 'token_budget_cents', parseInt(e.target.value))} className={inputCls} />
-                        </label>
-                        <label className="text-xs text-slate-500">
-                          Stripe price ID
-                          <input type="text" defaultValue={plan.stripe_price_id ?? ''} placeholder="price_..." onChange={e => setEdit(plan.plan_id, 'stripe_price_id', e.target.value)} className={inputCls} />
+                          {currentTokenBudget > 0 && (
+                            <span className="text-[10px] text-slate-400 mt-0.5 block">≈ ${(currentTokenBudget / 10000).toFixed(2)} of AI spend / month</span>
+                          )}
                         </label>
                         <label className="text-xs text-slate-500">
                           Max seats
                           <input type="number" defaultValue={plan.max_seats} onChange={e => setEdit(plan.plan_id, 'max_seats', parseInt(e.target.value))} className={inputCls} />
                         </label>
+                        <label className="text-xs text-slate-500 flex items-center gap-2 self-end pb-1.5">
+                          <input type="checkbox" defaultChecked={plan.is_active} onChange={e => setEdit(plan.plan_id, 'is_active', e.target.checked)} />
+                          Active
+                        </label>
                       </div>
+
+                      {/* Gateway Configuration */}
+                      {plan.base_price_cents > 0 && (
+                        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700/50">
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-2">Gateway Configuration</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
+                            {/* Stripe */}
+                            <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {plan.stripe_price_id
+                                  ? <Check size={11} className="text-emerald-500 shrink-0" />
+                                  : <AlertTriangle size={11} className="text-amber-500 shrink-0" />
+                                }
+                                <span className="text-[10px] font-mono text-slate-600 dark:text-slate-400 truncate">
+                                  {plan.stripe_price_id ? `Stripe ${plan.stripe_price_id}` : 'Stripe: Not provisioned'}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => handleProvision(plan.plan_id, 'stripe')}
+                                disabled={!!provisioning[plan.plan_id]}
+                                className="text-[10px] shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-500/25 transition-colors disabled:opacity-50"
+                              >
+                                {provisioning[plan.plan_id] === 'stripe' && <Loader2 size={9} className="animate-spin" />}
+                                {plan.stripe_price_id ? 'Re-provision' : 'Provision'}
+                              </button>
+                            </div>
+                            {/* Razorpay */}
+                            <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                {plan.razorpay_plan_id
+                                  ? <Check size={11} className="text-emerald-500 shrink-0" />
+                                  : <AlertTriangle size={11} className="text-amber-500 shrink-0" />
+                                }
+                                <span className="text-[10px] font-mono text-slate-600 dark:text-slate-400 truncate">
+                                  {plan.razorpay_plan_id ? `Razorpay ${plan.razorpay_plan_id}` : 'Razorpay: Not provisioned'}
+                                </span>
+                              </div>
+                              <button
+                                onClick={() => handleProvision(plan.plan_id, 'razorpay')}
+                                disabled={!!provisioning[plan.plan_id]}
+                                className="text-[10px] shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-500/25 transition-colors disabled:opacity-50"
+                              >
+                                {provisioning[plan.plan_id] === 'razorpay' && <Loader2 size={9} className="animate-spin" />}
+                                {plan.razorpay_plan_id ? 'Re-provision' : 'Provision'}
+                              </button>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleProvision(plan.plan_id, 'both')}
+                            disabled={!!provisioning[plan.plan_id]}
+                            className="w-full text-[10px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:border-violet-400 dark:hover:border-violet-500/50 transition-colors disabled:opacity-50"
+                          >
+                            {provisioning[plan.plan_id] === 'both' && <Loader2 size={9} className="animate-spin" />}
+                            Provision Both Gateways
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )
                 })}

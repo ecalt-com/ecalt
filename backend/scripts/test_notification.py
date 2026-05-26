@@ -364,6 +364,8 @@ async def main() -> int:
                         help="Run every notification type. Combine with --preview to skip sending.")
     parser.add_argument("--no-real-context", action="store_true",
                         help="Use hardcoded default contexts instead of live DB data.")
+    parser.add_argument("--setup-whatsapp", metavar="PHONE",
+                        help="Seed/update WhatsApp opt-in for --email with the given E.164 number and exit.")
     parser.add_argument("--status", action="store_true",
                         help="Show channel enable/disable status and exit.")
     parser.add_argument("--user-state", action="store_true",
@@ -373,6 +375,36 @@ async def main() -> int:
     args = parser.parse_args()
 
     # ── Info-only flags ───────────────────────────────────────────────────────
+
+    if args.setup_whatsapp:
+        if not args.email:
+            parser.error("--email is required with --setup-whatsapp")
+        user = get_user_by_email(args.email)
+        if not user:
+            print(f"✗ No user found with email '{args.email}'.")
+            return 1
+        phone = args.setup_whatsapp.strip()
+        from app.core.database import get_db
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO notification_preferences
+                        (uid, whatsapp_phone, whatsapp_opted_in, whatsapp_enabled, preferred_channel)
+                    VALUES (%s, %s, TRUE, TRUE, 'whatsapp')
+                    ON CONFLICT (uid) DO UPDATE SET
+                        whatsapp_phone    = EXCLUDED.whatsapp_phone,
+                        whatsapp_opted_in = TRUE,
+                        whatsapp_enabled  = TRUE,
+                        preferred_channel = 'whatsapp',
+                        updated_at        = now()
+                    RETURNING uid, whatsapp_phone, whatsapp_opted_in
+                    """,
+                    (str(user["uid"]), phone),
+                )
+                row = cur.fetchone()
+        print(f"✓ WhatsApp opt-in set for {args.email}: phone={row['whatsapp_phone']}, opted_in={row['whatsapp_opted_in']}")
+        return 0
 
     if args.status:
         print_status()

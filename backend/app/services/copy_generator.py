@@ -12,7 +12,7 @@ Write a notification message that feels like it's coming from a brilliant friend
 
 Rules:
 - Address the user by their first name naturally — not robotically
-- WhatsApp short_message must feel conversational, warm, under 160 chars — like a text from a friend
+- WhatsApp short_message must feel conversational, warm, under 130 chars — a link will be appended automatically
 - Put the actual insight or hook IN the message body, not just "click here to find out"
 - Email body_html: 2-3 short paragraphs + a single clear CTA button at the end
 - No exclamation mark overload, no corporate language, no clickbait
@@ -21,7 +21,7 @@ Rules:
 Return a JSON object with exactly these keys:
   subject       — email subject line (max 60 chars)
   body_html     — HTML email body with CTA button
-  short_message — WhatsApp plain text (max 160 chars, conversational, starts with their first name)
+  short_message — WhatsApp plain text (max 130 chars, conversational, starts with their first name, NO URL)
 
 Return ONLY the raw JSON. No markdown fences. No explanation."""
 
@@ -130,7 +130,7 @@ async def generate_copy(notification_type: str, context: dict) -> dict:
         user_prompt = f"User's name: {first}. Generate a {notification_type} notification. Context: {json.dumps(ctx)}"
 
     try:
-        raw = await complete_text(
+        raw, _, _, _ = await complete_text(
             interaction_type="nudge",
             system=system,
             user_content=user_prompt,
@@ -141,14 +141,29 @@ async def generate_copy(notification_type: str, context: dict) -> dict:
             parts = raw.split("```", 2)
             raw = parts[1].lstrip("json").strip() if len(parts) > 1 else raw
         copy = json.loads(raw)
+        short = copy.get("short_message") or _FALLBACK["short_message"]
         return {
             "subject": copy.get("subject") or _FALLBACK["subject"],
             "body_html": copy.get("body_html") or _FALLBACK["body_html"],
-            "short_message": copy.get("short_message") or _FALLBACK["short_message"],
+            "short_message": _append_link(short),
         }
     except Exception as e:
         logger.error("generate_copy failed type=%s: %s", notification_type, e)
         fallback = dict(_FALLBACK)
-        if first != "there":
-            fallback["short_message"] = f"Hey {first}! Something new is waiting for you on ECALT."
+        base = f"Hey {first}! Something new is waiting for you on ECALT." if first != "there" else _FALLBACK["short_message"]
+        fallback["short_message"] = _append_link(base)
         return fallback
+
+
+def _append_link(short: str) -> str:
+    """Guarantee the ECALT /learn URL appears at the end of a WhatsApp short_message."""
+    from app.core.config import settings
+    frontend_url = (getattr(settings, "FRONTEND_URL", None) or "https://ecalt.vercel.app").rstrip("/")
+    link = f"{frontend_url}/learn"
+    if link in short or frontend_url in short:
+        return short
+    separator = " → "
+    max_body = 160 - len(separator) - len(link)
+    if len(short) > max_body:
+        short = short[:max_body].rstrip() + "…"
+    return f"{short}{separator}{link}"

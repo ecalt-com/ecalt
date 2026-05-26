@@ -4,8 +4,9 @@ import uuid
 from contextlib import asynccontextmanager
 
 import sentry_sdk
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import JSONResponse
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -91,6 +92,25 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 _log = logging.getLogger("ecalt.unhandled")
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_log_handler(request: Request, exc: HTTPException):
+    """Log all HTTPExceptions with their detail so 4xx/5xx are visible in logs."""
+    ctx = {
+        "path":   request.url.path,
+        "method": request.method,
+        "status": exc.status_code,
+        "detail": exc.detail,
+    }
+    if exc.status_code >= 500:
+        # exc_info=True prints the chained traceback (e.g. the original
+        # Razorpay / Stripe error that was wrapped into the HTTPException).
+        _log.error("http_error", exc_info=True, extra=ctx)
+    elif exc.status_code >= 400:
+        _log.warning("http_error", extra=ctx)
+    return await http_exception_handler(request, exc)
+
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:

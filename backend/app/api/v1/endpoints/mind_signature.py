@@ -42,7 +42,12 @@ async def force_generate(uid: str = Depends(get_required_user)):
 @router.get("/verify/{verification_hash}")
 async def verify_signature(verification_hash: str):
     """Public — no auth required."""
+    from app.services.mind_signature_service import LEGAL_DISCLAIMER
     sig = get_signature_by_hash(verification_hash)
     if not sig:
         raise HTTPException(status_code=404, detail="Signature not found")
-    return {"verified": True, "signature": sig}
+    return {
+        "verified": True,
+        "legal_disclaimer": LEGAL_DISCLAIMER,
+        "signature": sig,
+    }

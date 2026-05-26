@@ -15,6 +15,18 @@ export default function Learn() {
   const [sparkInput, setSparkInput] = useState<string | undefined>()
   const [knowledgeRefresh, setKnowledgeRefresh] = useState(0)
 
+  const handleSparkSelect = useCallback((prompt: string) => {
+    setSparkInput(prompt)
+  }, [])
+
+  const handleSparkConsumed = useCallback(() => {
+    setSparkInput(undefined)
+  }, [])
+
+  const handleMessageComplete = useCallback(() => {
+    setKnowledgeRefresh(n => n + 1)
+  }, [])
+
   if (!loading && !user) {
     navigate('/', { replace: true })
     return null
@@ -27,18 +39,6 @@ export default function Learn() {
       </div>
     )
   }
-
-  const handleSparkSelect = useCallback((prompt: string) => {
-    setSparkInput(prompt)
-  }, [])
-
-  const handleSparkConsumed = useCallback(() => {
-    setSparkInput(undefined)
-  }, [])
-
-  const handleMessageComplete = useCallback(() => {
-    setKnowledgeRefresh(n => n + 1)
-  }, [])
 
   return (
     <>

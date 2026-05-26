@@ -1,15 +1,19 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Check, Zap, Users, GraduationCap, Building2, ArrowLeft, Ticket } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../lib/AuthContext'
 import { useSubscription } from '../lib/SubscriptionContext'
+import { useGeo, isIndia } from '../lib/GeoContext'
+import { usePaymentConfig } from '../lib/PaymentConfig'
+import { loadRazorpayScript, RazorpayResponse } from '../lib/razorpay'
 import PageMeta from '../components/PageMeta'
 
 interface Plan {
   plan_id: string
   name: string
   base_price_cents: number
+  base_price_inr_paise?: number
   token_budget_cents: number
   lifetime_message_limit: number | null
   max_seats: number
@@ -46,22 +50,73 @@ const PLAN_DETAILS: Record<string, { icon: React.ElementType; features: string[]
   },
 }
 
+function formatPrice(plan: Plan, country: string): string {
+  if (plan.base_price_cents === 0) return 'Free'
+  if (isIndia(country) && plan.base_price_inr_paise) {
+    return `₹${(plan.base_price_inr_paise / 100).toFixed(0)}`
+  }
+  return `$${(plan.base_price_cents / 100).toFixed(0)}`
+}
+
 export default function Pricing() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user, getToken } = useAuth()
-  const { plan: currentPlan } = useSubscription()
-  const [plans, setPlans] = useState<Plan[]>([])
-  const [loadingPlans, setLoadingPlans] = useState(true)
+  const { plan: currentPlan, plans, loading: loadingPlans } = useSubscription()
+  const { country } = useGeo()
+  const { razorpayKeyId } = usePaymentConfig()
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetch('/api/v1/subscriptions/plans')
-      .then(r => r.json())
-      .then(d => setPlans(d.plans ?? []))
-      .catch(() => {})
-      .finally(() => setLoadingPlans(false))
-  }, [])
+  const handleRazorpayCheckout = async (
+    data: {
+      checkout_type: 'subscription' | 'order'
+      subscription_id?: string
+      order_id?: string
+      amount: number
+      currency: string
+    },
+    planId: string,
+    token: string,
+  ) => {
+    const loaded = await loadRazorpayScript()
+    if (!loaded) { alert('Could not load Razorpay. Check your connection.'); return }
+
+    return new Promise<void>((resolve) => {
+      const options: any = {
+        key: razorpayKeyId,
+        amount: data.amount,
+        currency: data.currency,
+        name: 'ecalt',
+        description: `${planId} plan`,
+        prefill: { email: user?.email ?? '' },
+        modal: { ondismiss: () => { setLoadingPlan(null); resolve() } },
+      }
+
+      if (data.checkout_type === 'subscription') {
+        options.subscription_id = data.subscription_id
+        options.handler = async () => { navigate('/learn?upgraded=true'); resolve() }
+      } else {
+        options.order_id = data.order_id
+        options.handler = async (response: RazorpayResponse) => {
+          const verifyRes = await fetch('/api/v1/subscriptions/razorpay/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              plan_id: planId,
+            }),
+          })
+          if (verifyRes.ok) navigate('/learn?upgraded=true')
+          else alert('Payment verification failed. Contact support with your payment ID.')
+          resolve()
+        }
+      }
+
+      new (window as any).Razorpay(options).open()
+    })
+  }
 
   const handleSelect = async (planId: string) => {
     if (!user) { navigate('/'); return }
@@ -78,13 +133,19 @@ export default function Pricing() {
       const res = await fetch('/api/v1/subscriptions/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ plan_id: planId }),
+        body: JSON.stringify({ plan_id: planId, country }),
       })
       const data = await res.json()
-      if (data.checkout_url) {
-        window.location.href = data.checkout_url
+
+      if (data.gateway === 'razorpay') {
+        await handleRazorpayCheckout(data, planId, token!)
       } else {
-        alert(data.detail ?? 'Billing not configured yet.')
+        // stripe (default) — redirect to hosted checkout
+        if (data.checkout_url) {
+          window.location.href = data.checkout_url
+        } else {
+          alert(data.detail ?? 'Billing not configured yet.')
+        }
       }
     } catch {
       alert('Something went wrong. Try again.')
@@ -169,15 +230,11 @@ export default function Pricing() {
                   </div>
 
                   <div className="mb-5">
-                    {plan.base_price_cents === 0 ? (
-                      <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">Free</span>
-                    ) : (
-                      <>
-                        <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">
-                          ${(plan.base_price_cents / 100).toFixed(0)}
-                        </span>
-                        <span className="text-xs text-slate-400 dark:text-slate-500">/month</span>
-                      </>
+                    <span className="text-2xl font-bold text-slate-800 dark:text-slate-100">
+                      {formatPrice(plan, country)}
+                    </span>
+                    {plan.base_price_cents > 0 && (
+                      <span className="text-xs text-slate-400 dark:text-slate-500">/month</span>
                     )}
                   </div>
 
@@ -202,7 +259,7 @@ export default function Pricing() {
                           : 'border border-slate-200 dark:border-slate-600 hover:border-violet-400 dark:hover:border-violet-500/50 text-slate-700 dark:text-slate-300 hover:text-violet-600 dark:hover:text-violet-300',
                     )}
                   >
-                    {isLoading ? 'Redirecting…' : isCurrent ? 'Current plan' : plan.plan_id === 'free_trial' ? 'Free forever' : (details?.cta ?? 'Get started')}
+                    {isLoading ? 'Processing…' : isCurrent ? 'Current plan' : plan.plan_id === 'free_trial' ? 'Free forever' : (details?.cta ?? 'Get started')}
                   </button>
                 </div>
               )
@@ -210,7 +267,9 @@ export default function Pricing() {
           </div>
 
           <p className="text-center text-xs text-slate-400 dark:text-slate-600 mt-10">
-            All prices in USD · Cancel anytime · Powered by Stripe
+            {isIndia(country)
+              ? 'All prices in INR · Cancel anytime · Powered by Razorpay'
+              : 'All prices in USD · Cancel anytime · Powered by Stripe'}
           </p>
 
           <CouponApply />

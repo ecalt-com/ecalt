@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, MessageCircle, Mail, Clock, Globe2 } from 'lucide-react'
+import { Loader2, MessageCircle, Mail, Clock, Globe2, Download, Trash2, AlertTriangle, X, CreditCard, Ticket } from 'lucide-react'
 import clsx from 'clsx'
 import Navigation from '../components/Navigation'
 import PageMeta from '../components/PageMeta'
 import { useAuth } from '../lib/AuthContext'
 import { useToast } from '../lib/ToastContext'
+import { useSubscription } from '../lib/SubscriptionContext'
 import {
   getNotificationPrefs,
   saveNotificationPrefs,
@@ -43,10 +44,18 @@ function browserTimezone(): string {
   catch { return 'UTC' }
 }
 
+interface UserProfile {
+  consent_given_at?: string | null
+  consent_status?: string | null
+}
+
 export default function Profile() {
-  const { user, loading: authLoading, getToken } = useAuth()
+  const { user, loading: authLoading, getToken, signOut } = useAuth()
   const { addToast } = useToast()
+  const { plan, couponExtras, loading: subLoading } = useSubscription()
   const navigate = useNavigate()
+
+  // Notification prefs
   const [loading, setLoading] = useState(true)
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null)
   const [countryCode, setCountryCode] = useState('+91')
@@ -55,11 +64,30 @@ export default function Profile() {
   const [savingPrefs, setSavingPrefs] = useState(false)
   const [phoneError, setPhoneError] = useState<string | null>(null)
 
+  // Privacy & data
+  const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleteInput, setDeleteInput] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
   useEffect(() => {
     if (!authLoading && !user) {
       navigate('/', { replace: true })
     }
   }, [authLoading, user, navigate])
+
+  useEffect(() => {
+    if (!user) return
+    getToken().then(token => {
+      if (!token) return
+      fetch('/api/v1/users/me', { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data) setProfile(data) })
+        .catch(() => {})
+    })
+  }, [user, getToken])
 
   useEffect(() => {
     let cancelled = false
@@ -133,6 +161,58 @@ export default function Profile() {
     }
   }
 
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const token = await getToken()
+      const res = await fetch('/api/v1/users/me/export', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) return
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'ecalt-data-export.json'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch { /* non-critical */ } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleDeleteAccount = async () => {
+    if (deleteInput !== 'DELETE') return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const token = await getToken()
+      const res = await fetch('/api/v1/users/me', {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        const detail = typeof body.detail === 'string' ? body.detail : ''
+        setDeleteError(detail.includes('already_deleted') ? 'This account has already been deleted.' : 'Something went wrong. Please try again.')
+        return
+      }
+      await signOut()
+      navigate('/', { replace: true, state: { message: 'Your account has been deleted.' } })
+    } catch {
+      setDeleteError('Something went wrong. Please try again.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  const consentDate = profile?.consent_given_at
+    ? new Date(profile.consent_given_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    : null
+  const accountStatus = profile?.consent_status === 'pending'
+    ? 'Under review (parental consent pending)'
+    : 'Standard'
+
   if (authLoading || !user) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
@@ -156,6 +236,51 @@ export default function Profile() {
               <div className="flex justify-between"><dt className="text-slate-500">Display name</dt><dd className="text-slate-800 dark:text-slate-200">{user.displayName || '—'}</dd></div>
               <div className="flex justify-between"><dt className="text-slate-500">Email</dt><dd className="text-slate-800 dark:text-slate-200">{user.email || '—'}</dd></div>
             </dl>
+          </div>
+
+          {/* Subscription card */}
+          <div className="glass-card rounded-2xl p-5 mb-5">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Subscription</h2>
+            {subLoading ? (
+              <div className="flex items-center gap-2 text-slate-400 text-xs py-2"><Loader2 size={13} className="animate-spin" /> Loading…</div>
+            ) : plan ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CreditCard size={15} className="text-violet-500" />
+                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{plan.name}</span>
+                    {!plan.is_active && (
+                      <span className="text-[10px] text-rose-500 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded-full">inactive</span>
+                    )}
+                  </div>
+                  <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                    {plan.base_price_cents === 0 ? 'Free' : `$${(plan.base_price_cents / 100).toFixed(0)}/mo`}
+                  </span>
+                </div>
+
+                {couponExtras && (couponExtras.extra_credits_cents > 0 || couponExtras.bonus_messages > 0) && (
+                  <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-50 dark:bg-violet-500/10 border border-violet-200 dark:border-violet-500/20">
+                    <Ticket size={13} className="text-violet-500 shrink-0" />
+                    <span className="text-xs text-violet-700 dark:text-violet-300 font-medium">Coupon active —</span>
+                    <span className="text-xs text-violet-600 dark:text-violet-400">
+                      {[
+                        couponExtras.extra_credits_cents > 0 && `+$${(couponExtras.extra_credits_cents / 100).toFixed(2)} credit`,
+                        couponExtras.bonus_messages > 0 && `+${couponExtras.bonus_messages} messages`,
+                      ].filter(Boolean).join(' · ')}
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  onClick={() => navigate('/pricing')}
+                  className="text-xs text-violet-600 dark:text-violet-400 hover:underline"
+                >
+                  {plan.base_price_cents === 0 ? 'Upgrade plan →' : 'Manage plan →'}
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400">No active plan.</p>
+            )}
           </div>
 
           {/* Notifications card */}
@@ -275,8 +400,124 @@ export default function Profile() {
               </div>
             )}
           </div>
+          {/* Privacy & Data card */}
+          <div className="glass-card rounded-2xl p-5 mb-5">
+            <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-4">Privacy &amp; Data</h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700/50 p-4">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Download size={15} className="text-violet-500" />
+                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Download my data</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Get a copy of all your ECALT data as a JSON file.</p>
+                <button
+                  onClick={handleExport}
+                  disabled={exporting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white transition-all disabled:opacity-60"
+                >
+                  {exporting ? <><Loader2 size={11} className="animate-spin" /> Exporting…</> : <><Download size={11} /> Download</>}
+                </button>
+              </div>
+
+              <div className="rounded-xl border border-rose-200 dark:border-rose-900/40 p-4">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Trash2 size={15} className="text-rose-500" />
+                  <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Delete my account</span>
+                </div>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Permanently remove your account and all associated data.</p>
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white transition-all"
+                >
+                  <Trash2 size={11} /> Delete account
+                </button>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-100 dark:border-slate-700/50 pt-4 space-y-3">
+              <div className="text-sm text-slate-700 dark:text-slate-300">
+                {consentDate
+                  ? <>You agreed to our Terms of Service and Privacy Policy on <span className="font-medium">{consentDate}</span>.</>
+                  : <span className="text-slate-400">Consent date not available.</span>
+                }
+                <a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="block mt-1 text-xs text-violet-600 dark:text-violet-400 hover:underline">
+                  Update consent preferences →
+                </a>
+              </div>
+              <p className="text-sm text-slate-700 dark:text-slate-300">
+                Account type:{' '}
+                <span className={profile?.consent_status === 'pending' ? 'font-medium text-amber-600 dark:text-amber-400' : 'font-medium'}>
+                  {profile ? accountStatus : '—'}
+                </span>
+              </p>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Delete confirmation modal */}
+      {showDeleteModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-modal-title"
+        >
+          <div className="glass-card rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl">
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <AlertTriangle size={18} className="text-rose-500 shrink-0 mt-0.5" />
+                <h2 id="delete-modal-title" className="text-base font-bold text-slate-900 dark:text-slate-100">Delete your account?</h2>
+              </div>
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeleteInput(''); setDeleteError(null) }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                aria-label="Close"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs font-semibold text-slate-600 dark:text-slate-400 mb-2">This will permanently delete:</p>
+            <ul className="text-xs text-slate-600 dark:text-slate-400 mb-4 space-y-1">
+              {['Your profile and learning history', 'All journeys and progress', 'All conversations', 'Your Mind Signatures', 'Your subscription (if active)'].map(item => (
+                <li key={item} className="flex items-center gap-1.5"><span className="text-rose-400">•</span> {item}</li>
+              ))}
+            </ul>
+            <p className="text-xs font-semibold text-rose-600 dark:text-rose-400 mb-4">This cannot be undone.</p>
+            <div className="mb-4">
+              <label htmlFor="delete-confirm-input" className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">
+                Type DELETE to confirm:
+              </label>
+              <input
+                id="delete-confirm-input"
+                type="text"
+                value={deleteInput}
+                onChange={e => { setDeleteInput(e.target.value); if (deleteError) setDeleteError(null) }}
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-rose-400"
+              />
+              {deleteError && <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-400" role="alert">{deleteError}</p>}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeleteInput(''); setDeleteError(null) }}
+                className="flex-1 px-4 py-2 rounded-xl text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deleteInput !== 'DELETE' || deleting}
+                className="flex-1 px-4 py-2 rounded-xl text-sm font-medium bg-rose-600 hover:bg-rose-500 text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {deleting ? <><Loader2 size={14} className="animate-spin" /> Deleting…</> : 'Delete Account'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

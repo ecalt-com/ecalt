@@ -14,5 +14,6 @@ openai>=1.84.0
 sendgrid>=6.11.0
 twilio>=9.0.0
 apscheduler>=3.10.4
+razorpay>=1.4.2
 pytest>=7.4
 pytest-asyncio>=0.23

@@ -4,6 +4,7 @@ import { ArrowLeft, Sparkles, Copy, Check, RefreshCw, ExternalLink } from 'lucid
 import { useAuth } from '../lib/AuthContext'
 import PageMeta from '../components/PageMeta'
 import ConstellationMap from '../components/constellation/ConstellationMap'
+import { MindSignatureDisclaimer } from '../components/MindSignatureDisclaimer'
 
 interface Domain {
   domain: string
@@ -146,6 +147,7 @@ export default function MindSignature() {
                     <p key={i} className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{p}</p>
                   ))}
                 </div>
+                <MindSignatureDisclaimer />
               </div>
 
               {/* Verification + actions */}

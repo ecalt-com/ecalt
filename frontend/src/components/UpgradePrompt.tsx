@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Zap, X } from 'lucide-react'
 import { useSubscription } from '../lib/SubscriptionContext'
+import { useGeo, isIndia } from '../lib/GeoContext'
 
 interface UpgradePromptProps {
   reason: 'free_trial_exhausted' | 'budget_exhausted' | string
@@ -24,8 +25,19 @@ const MESSAGES = {
 
 export default function UpgradePrompt({ reason, onDismiss }: UpgradePromptProps) {
   const navigate = useNavigate()
-  const { plan } = useSubscription()
+  const { plan, plans } = useSubscription()
+  const { country } = useGeo()
   const msg = MESSAGES[reason as keyof typeof MESSAGES] ?? MESSAGES.default
+  const individualPlan = plans.find(p => p.plan_id === 'individual')
+
+  let individualPrice: string | null = null
+  if (individualPlan) {
+    if (isIndia(country) && individualPlan.base_price_inr_paise) {
+      individualPrice = `₹${(individualPlan.base_price_inr_paise / 100).toFixed(0)}/mo`
+    } else {
+      individualPrice = `$${(individualPlan.base_price_cents / 100).toFixed(0)}/mo`
+    }
+  }
 
   return (
     <div className="mx-4 mb-4 glass-card rounded-2xl p-5 border border-violet-500/20">
@@ -52,12 +64,12 @@ export default function UpgradePrompt({ reason, onDismiss }: UpgradePromptProps)
         >
           View plans →
         </button>
-        {plan?.plan_id === 'free_trial' && (
+        {plan?.plan_id === 'free_trial' && individualPrice && (
           <button
             onClick={() => navigate('/pricing?plan=individual')}
             className="flex-1 py-2 px-3 rounded-lg text-xs font-medium border border-violet-400/40 text-violet-300 hover:bg-violet-500/10 transition-colors"
           >
-            Individual — $19/mo
+            Individual — {individualPrice}
           </button>
         )}
       </div>

@@ -30,7 +30,7 @@ async def extract_knowledge_nodes(uid: str, user_message: str, assistant_respons
     """Extract concept-domain pairs from a conversation turn and upsert into knowledge_nodes."""
     excerpt = f"Learner: {user_message[:300]}\nResponse: {assistant_response[:400]}"
 
-    raw = await complete_text(
+    raw, _, _, _ = await complete_text(
         interaction_type="knowledge_extraction",
         system=_EXTRACT_SYSTEM,
         user_content=f"[CONVERSATION]:\n{excerpt}",

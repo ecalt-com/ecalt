@@ -47,7 +47,7 @@ async def explore(
         logger.exception("explore generation failed", extra={"question": request.question[:120]})
         raise HTTPException(status_code=500, detail="Failed to generate journey. Please try again.")
 
-    record_usage(uid, in_tok, out_tok, get_config("journey")["model"])
+    record_usage(uid, in_tok, out_tok, get_config("journey")["model"], interaction_type="journey")
 
     # Persist to DB (non-fatal if it fails)
     try:

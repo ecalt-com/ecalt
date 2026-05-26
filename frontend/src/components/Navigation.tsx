@@ -16,7 +16,6 @@ const AUTH_LINKS = [
   { to: '/learn', label: 'Learn' },
   { to: '/passport', label: 'Passport' },
   { to: '/mind-signature', label: 'Mind Signature' },
-  { to: '/profile', label: 'Profile' },
 ]
 
 function UserAvatar({ photoURL, displayName }: { photoURL: string | null; displayName: string | null }) {
@@ -76,12 +75,25 @@ export default function Navigation() {
               <div className="w-20 h-7 rounded-lg bg-slate-200/60 dark:bg-slate-700/40 animate-pulse" />
             ) : user ? (
               <>
-                <div className="flex items-center gap-2 px-2">
+                <Link
+                  to="/profile"
+                  className={clsx(
+                    'flex items-center gap-2 px-2 py-1 rounded-lg transition-all',
+                    pathname === '/profile'
+                      ? 'bg-violet-50 dark:bg-violet-600/20'
+                      : 'hover:bg-slate-100 dark:hover:bg-slate-800/50'
+                  )}
+                >
                   <UserAvatar photoURL={user.photoURL} displayName={user.displayName} />
-                  <span className="text-sm text-slate-600 dark:text-slate-400 max-w-[120px] truncate">
+                  <span className={clsx(
+                    'text-sm font-medium max-w-[120px] truncate',
+                    pathname === '/profile'
+                      ? 'text-violet-700 dark:text-violet-300'
+                      : 'text-slate-600 dark:text-slate-400'
+                  )}>
                     {user.displayName?.split(' ')[0] ?? user.email}
                   </span>
-                </div>
+                </Link>
                 <button
                   onClick={signOut}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-all ml-1"

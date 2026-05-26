@@ -147,8 +147,8 @@ async def complete_text(
     system: str,
     user_content: str,
     max_tokens: int = 1024,
-) -> str:
-    """Single-turn, non-streaming completion. Reads provider/model from DB config."""
+) -> tuple[str, int, int, int]:
+    """Single-turn, non-streaming completion. Returns (text, input_tokens, output_tokens, cached_input_tokens)."""
     cfg = get_config(interaction_type)
     provider, model = cfg["provider"], cfg["model"]
 
@@ -165,12 +165,17 @@ async def complete_text(
             resp = await _get_openai().chat.completions.create(
                 model=model, messages=oai_messages, max_tokens=max_tokens,
             )
-        return (resp.choices[0].message.content or "").strip()
+        in_tok = resp.usage.prompt_tokens if resp.usage else 0
+        out_tok = resp.usage.completion_tokens if resp.usage else 0
+        cached_tok = 0
+        if resp.usage and hasattr(resp.usage, "prompt_tokens_details") and resp.usage.prompt_tokens_details:
+            cached_tok = resp.usage.prompt_tokens_details.cached_tokens or 0
+        return (resp.choices[0].message.content or "").strip(), in_tok, out_tok, cached_tok
     else:
         resp = await _get_anthropic().messages.create(
             model=model, max_tokens=max_tokens, system=system, messages=messages,
         )
-        return resp.content[0].text.strip()
+        return resp.content[0].text.strip(), resp.usage.input_tokens, resp.usage.output_tokens, 0
 
 
 # ── Streaming abstraction ─────────────────────────────────────────────────────
@@ -181,10 +186,10 @@ async def stream_completion(
     system: str,
     messages: list[dict],
     max_tokens: int = 1024,
-) -> AsyncGenerator[tuple[str, int, int], None]:
+) -> AsyncGenerator[tuple[str, int, int, int], None]:
     """
-    Yields (text_chunk, input_tokens, output_tokens).
-    input_tokens / output_tokens are only non-zero on the final yield.
+    Yields (text_chunk, input_tokens, output_tokens, cached_input_tokens).
+    Token counts are only non-zero on the final yield.
     """
     if provider == "openai":
         async for item in _stream_openai(model, system, messages, max_tokens):
@@ -196,7 +201,7 @@ async def stream_completion(
 
 async def _stream_anthropic(
     model: str, system: str, messages: list[dict], max_tokens: int
-) -> AsyncGenerator[tuple[str, int, int], None]:
+) -> AsyncGenerator[tuple[str, int, int, int], None]:
     input_tokens = output_tokens = 0
     async with _get_anthropic().messages.stream(
         model=model,
@@ -205,16 +210,16 @@ async def _stream_anthropic(
         messages=messages,
     ) as stream:
         async for text in stream.text_stream:
-            yield text, 0, 0
+            yield text, 0, 0, 0
         final = await stream.get_final_message()
         input_tokens = final.usage.input_tokens
         output_tokens = final.usage.output_tokens
-    yield "", input_tokens, output_tokens
+    yield "", input_tokens, output_tokens, 0
 
 
 async def _stream_openai(
     model: str, system: str, messages: list[dict], max_tokens: int
-) -> AsyncGenerator[tuple[str, int, int], None]:
+) -> AsyncGenerator[tuple[str, int, int, int], None]:
     oai_messages = [{"role": "system", "content": system}]
     for m in messages:
         content = m["content"]
@@ -225,7 +230,7 @@ async def _stream_openai(
             )
         oai_messages.append({"role": m["role"], "content": content})
 
-    input_tokens = output_tokens = 0
+    input_tokens = output_tokens = cached_tok = 0
     # o1 models don't support streaming or system messages the same way
     if model.startswith("o1"):
         oai_messages_no_sys = [m for m in oai_messages if m["role"] != "system"]
@@ -237,8 +242,8 @@ async def _stream_openai(
         text = resp.choices[0].message.content or ""
         input_tokens = resp.usage.prompt_tokens if resp.usage else 0
         output_tokens = resp.usage.completion_tokens if resp.usage else 0
-        yield text, 0, 0
-        yield "", input_tokens, output_tokens
+        yield text, 0, 0, 0
+        yield "", input_tokens, output_tokens, 0
         return
 
     stream = await _get_openai().chat.completions.create(
@@ -250,8 +255,10 @@ async def _stream_openai(
     )
     async for chunk in stream:
         if chunk.choices and chunk.choices[0].delta.content:
-            yield chunk.choices[0].delta.content, 0, 0
+            yield chunk.choices[0].delta.content, 0, 0, 0
         if chunk.usage:
             input_tokens = chunk.usage.prompt_tokens
             output_tokens = chunk.usage.completion_tokens
-    yield "", input_tokens, output_tokens
+            if hasattr(chunk.usage, "prompt_tokens_details") and chunk.usage.prompt_tokens_details:
+                cached_tok = chunk.usage.prompt_tokens_details.cached_tokens or 0
+    yield "", input_tokens, output_tokens, cached_tok

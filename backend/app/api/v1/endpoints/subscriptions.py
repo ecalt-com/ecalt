@@ -1,9 +1,13 @@
 import datetime
+import json
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.auth import get_required_user
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 from app.core.config import settings
 from app.core.database import get_db
 from app.services.subscription_service import (
@@ -63,23 +67,115 @@ async def list_plans():
             return {"plans": [dict(r) for r in cur.fetchall()]}
 
 
+@router.get("/config")
+async def get_payment_config():
+    """Public endpoint: return publishable payment keys for the frontend."""
+    return {
+        "stripe_publishable_key": settings.STRIPE_PUBLISHABLE_KEY,
+        "razorpay_key_id": settings.RAZORPAY_KEY_ID,
+    }
+
+
+@router.post("/sync")
+async def sync_subscription(
+    session_id: str | None = None,
+    uid: str = Depends(get_required_user),
+):
+    """
+    Called by the frontend immediately after a Stripe redirect (before the webhook
+    fires) to pull the subscription state directly from Stripe.  Returns the same
+    shape as GET /me so the caller can refresh in one round-trip.
+    """
+    if session_id and settings.STRIPE_SECRET_KEY:
+        import stripe
+        stripe.api_key = settings.STRIPE_SECRET_KEY
+        try:
+            session = stripe.checkout.Session.retrieve(
+                session_id,
+                expand=["subscription"],
+            )
+            # Verify the session belongs to this user via client_reference_id
+            # (set at checkout creation; works for all sessions regardless of metadata).
+            if session.client_reference_id != uid:
+                logger.warning(
+                    "subscriptions.sync.uid_mismatch",
+                    extra={"uid": uid, "session_ref": session.client_reference_id},
+                )
+                sub = None
+            else:
+                sub = session.subscription
+            if sub:
+                price_id = sub.items.data[0].price.id
+                plan_id = _stripe_price_to_plan(price_id)
+                item = sub.items.data[0]
+                try:
+                    period_start = datetime.datetime.fromtimestamp(item.current_period_start)
+                    period_end = datetime.datetime.fromtimestamp(item.current_period_end)
+                except AttributeError:
+                    period_start = None
+                    period_end = None
+                upsert_subscription_from_stripe(
+                    uid=uid,
+                    plan_id=plan_id,
+                    stripe_subscription_id=sub.id,
+                    stripe_customer_id=sub.customer,
+                    status=sub.status,
+                    period_start=period_start,
+                    period_end=period_end,
+                )
+                logger.info(
+                    "subscriptions.sync.ok",
+                    extra={"uid": uid, "plan_id": plan_id, "sub_id": sub.id, "status": sub.status},
+                )
+        except Exception:
+            logger.warning("subscriptions.sync.failed", extra={"uid": uid, "session_id": session_id}, exc_info=True)
+
+    # Re-use the /me logic so callers get a fully-populated response
+    plan = get_user_plan(uid)
+    usage = get_current_usage(uid)
+    extras = get_coupon_extras(uid)
+
+    is_free = plan["plan_id"] == "free_trial"
+    lifetime_count = count_lifetime_messages(uid) if is_free else None
+    base_limit = plan.get("lifetime_message_limit") or 6
+    lifetime_limit = (base_limit + extras["bonus_messages"]) if is_free else None
+
+    base_budget = float(plan.get("token_budget_cents") or 20.0)
+    total_budget = base_budget + extras["extra_credits_cents"]
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT is_admin FROM users WHERE uid = %s", (uid,))
+            row = cur.fetchone()
+            is_admin = bool(row["is_admin"]) if row else False
+
+    return {
+        "plan": plan,
+        "usage": usage,
+        "coupon_extras": extras,
+        "total_budget_cents": total_budget,
+        "lifetime_message_count": lifetime_count,
+        "lifetime_message_limit": lifetime_limit,
+        "is_admin": is_admin,
+        "is_limited": (
+            (is_free and (lifetime_count or 0) >= (lifetime_limit or 6))
+            or usage["estimated_cost_cents"] >= total_budget
+        ),
+    }
+
+
 class CheckoutRequest(BaseModel):
     plan_id: str
+    country: str = "US"
 
 
 @router.post("/checkout")
 async def create_checkout(body: CheckoutRequest, uid: str = Depends(get_required_user)):
-    if not settings.STRIPE_SECRET_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="Billing is not configured. Add STRIPE_SECRET_KEY to enable payments.",
-        )
-
-    # Validate plan
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT stripe_price_id FROM plan_configs WHERE plan_id = %s AND is_active = true",
+                "SELECT stripe_price_id, base_price_inr_paise, razorpay_plan_id "
+                "FROM plan_configs WHERE plan_id = %s AND is_active = true",
                 (body.plan_id,),
             )
             row = cur.fetchone()
@@ -87,7 +183,18 @@ async def create_checkout(body: CheckoutRequest, uid: str = Depends(get_required
     if not row:
         raise HTTPException(status_code=404, detail="Plan not found")
 
-    stripe_price_id = row.get("stripe_price_id") if row else None
+    if body.country == "IN":
+        return _razorpay_checkout(uid, body.plan_id, row)
+    return _stripe_checkout(uid, body.plan_id, row)
+
+
+def _stripe_checkout(uid: str, plan_id: str, row) -> dict:
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Billing is not configured. Add STRIPE_SECRET_KEY to enable payments.",
+        )
+    stripe_price_id = row.get("stripe_price_id")
     if not stripe_price_id:
         raise HTTPException(
             status_code=503,
@@ -100,11 +207,137 @@ async def create_checkout(body: CheckoutRequest, uid: str = Depends(get_required
     session = stripe.checkout.Session.create(
         mode="subscription",
         line_items=[{"price": stripe_price_id, "quantity": 1}],
-        success_url=f"{settings.FRONTEND_URL}/learn?upgraded=true",
+        success_url=f"{settings.FRONTEND_URL}/welcome?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{settings.FRONTEND_URL}/pricing",
         client_reference_id=uid,
+        # Embed uid in subscription metadata so the customer.subscription.created
+        # webhook has everything it needs without an extra Subscription.retrieve() call.
+        subscription_data={"metadata": {"uid": uid, "app": "ecalt"}},
     )
-    return {"checkout_url": session.url}
+    return {"gateway": "stripe", "checkout_url": session.url}
+
+
+def _razorpay_checkout(uid: str, plan_id: str, row) -> dict:
+    if not settings.RAZORPAY_KEY_ID:
+        raise HTTPException(status_code=503, detail="Razorpay not configured")
+
+    amount_paise = row.get("base_price_inr_paise")
+    if not amount_paise:
+        raise HTTPException(status_code=503, detail="INR price not configured for this plan")
+
+    razorpay_plan_id = row.get("razorpay_plan_id")
+
+    if razorpay_plan_id:
+        # Recurring subscription — proper billing, Razorpay handles renewals
+        from app.services.razorpay_service import create_razorpay_subscription
+        sub = create_razorpay_subscription(razorpay_plan_id, uid, plan_id)
+        return {
+            "gateway": "razorpay",
+            "checkout_type": "subscription",
+            "subscription_id": sub["id"],
+            "amount": amount_paise,
+            "currency": "INR",
+            "key_id": settings.RAZORPAY_KEY_ID,
+        }
+    else:
+        # Fallback: one-time order until plan is provisioned in Razorpay
+        from app.services.razorpay_service import create_razorpay_order
+        order = create_razorpay_order(amount_paise, plan_id, uid)
+        return {
+            "gateway": "razorpay",
+            "checkout_type": "order",
+            "order_id": order["id"],
+            "amount": order["amount"],
+            "currency": order["currency"],
+            "key_id": settings.RAZORPAY_KEY_ID,
+        }
+
+
+class RazorpayVerifyRequest(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+    plan_id: str
+
+
+@router.post("/razorpay/verify")
+async def verify_razorpay_payment(
+    body: RazorpayVerifyRequest,
+    uid: str = Depends(get_required_user),
+):
+    from app.services.razorpay_service import verify_razorpay_signature
+    if not verify_razorpay_signature(
+        body.razorpay_order_id, body.razorpay_payment_id, body.razorpay_signature
+    ):
+        raise HTTPException(status_code=400, detail="Invalid payment signature")
+
+    upsert_subscription_from_stripe(
+        uid=uid,
+        plan_id=body.plan_id,
+        razorpay_payment_id=body.razorpay_payment_id,
+        payment_gateway="razorpay",
+    )
+    return {"success": True}
+
+
+@router.post("/razorpay/webhook")
+async def razorpay_webhook(request: Request):
+    if not settings.RAZORPAY_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Razorpay webhook not configured")
+
+    payload = await request.body()
+    sig = request.headers.get("x-razorpay-signature", "")
+
+    from app.services.razorpay_service import verify_webhook_signature
+    if not verify_webhook_signature(payload, sig):
+        raise HTTPException(status_code=400, detail="Invalid webhook signature")
+
+    event = json.loads(payload)
+    event_type = event.get("event")
+
+    if event_type == "payment.captured":
+        payment = event["payload"]["payment"]["entity"]
+        notes = payment.get("notes", {})
+        uid = notes.get("uid")
+        plan_id = notes.get("plan_id")
+        if uid and plan_id:
+            upsert_subscription_from_stripe(
+                uid=uid,
+                plan_id=plan_id,
+                payment_gateway="razorpay",
+                razorpay_payment_id=payment["id"],
+            )
+
+    elif event_type == "subscription.charged":
+        # Fires on every successful renewal for Razorpay Subscriptions
+        subscription = event["payload"]["subscription"]["entity"]
+        notes = subscription.get("notes", {})
+        uid = notes.get("uid")
+        plan_id = notes.get("plan_id")
+        payment = event["payload"].get("payment", {}).get("entity", {})
+        if uid and plan_id:
+            upsert_subscription_from_stripe(
+                uid=uid,
+                plan_id=plan_id,
+                payment_gateway="razorpay",
+                razorpay_payment_id=payment.get("id"),
+            )
+
+    elif event_type == "subscription.cancelled":
+        subscription = event["payload"]["subscription"]["entity"]
+        notes = subscription.get("notes", {})
+        uid = notes.get("uid")
+        if uid:
+            from app.core.database import get_db
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE subscriptions SET status = 'cancelled' WHERE uid = %s AND payment_gateway = 'razorpay'",
+                        (uid,),
+                    )
+
+    # payment.failed: no subscription change needed, just log for support
+    return {"received": True}
 
 
 @router.post("/webhook")
@@ -123,34 +356,75 @@ async def stripe_webhook(request: Request):
     except (stripe.error.SignatureVerificationError, ValueError):
         raise HTTPException(status_code=400, detail="Invalid webhook signature")
 
-    if event["type"] == "checkout.session.completed":
-        session = event["data"]["object"]
-        uid = session.get("client_reference_id")
-        sub_id = session.get("subscription")
-        customer_id = session.get("customer")
-        if uid and sub_id:
-            sub = stripe.Subscription.retrieve(sub_id)
-            plan_id = _stripe_price_to_plan(sub["items"]["data"][0]["price"]["id"])
+    if event["type"] == "customer.subscription.created":
+        # Snapshot — the full subscription object is already in the event.
+        # uid is in metadata (set at checkout session creation via subscription_data).
+        # No extra Subscription.retrieve() call needed.
+        sub = event["data"]["object"]
+        try:
+            uid = sub.metadata["uid"]
+        except (KeyError, TypeError, AttributeError):
+            uid = None
+        if uid:
+            item = sub.items.data[0]
+            price_id = item.price.id
+            plan_id = _stripe_price_to_plan(price_id)
             upsert_subscription_from_stripe(
                 uid=uid,
                 plan_id=plan_id,
-                stripe_subscription_id=sub_id,
-                stripe_customer_id=customer_id,
-                status=sub["status"],
-                period_start=datetime.datetime.fromtimestamp(sub["current_period_start"]),
-                period_end=datetime.datetime.fromtimestamp(sub["current_period_end"]),
+                stripe_subscription_id=sub.id,
+                stripe_customer_id=sub.customer,
+                status=sub.status,
+                period_start=datetime.datetime.fromtimestamp(item.current_period_start),
+                period_end=datetime.datetime.fromtimestamp(item.current_period_end),
+            )
+            logger.info(
+                "stripe.webhook.subscription_created",
+                extra={"uid": uid, "plan_id": plan_id, "sub_id": sub.id},
+            )
+        else:
+            logger.warning(
+                "stripe.webhook.missing_uid",
+                extra={"sub_id": sub.id, "hint": "subscription_data.metadata.uid not set at checkout"},
             )
 
-    elif event["type"] in ("customer.subscription.updated", "customer.subscription.deleted"):
+    elif event["type"] == "customer.subscription.updated":
         sub = event["data"]["object"]
-        sub_id = sub["id"]
-        status = sub["status"]
+        u_item = sub.items.data[0]
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE subscriptions
+                    SET status = %s,
+                        current_period_start = %s,
+                        current_period_end   = %s
+                    WHERE stripe_subscription_id = %s
+                    """,
+                    (
+                        sub.status,
+                        datetime.datetime.fromtimestamp(u_item.current_period_start),
+                        datetime.datetime.fromtimestamp(u_item.current_period_end),
+                        sub.id,
+                    ),
+                )
+        logger.info(
+            "stripe.webhook.subscription_updated",
+            extra={"sub_id": sub.id, "status": sub.status},
+        )
+
+    elif event["type"] == "customer.subscription.deleted":
+        sub = event["data"]["object"]
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     "UPDATE subscriptions SET status = %s WHERE stripe_subscription_id = %s",
-                    (status, sub_id),
+                    (sub.status, sub.id),
                 )
+        logger.info(
+            "stripe.webhook.subscription_deleted",
+            extra={"sub_id": sub.id},
+        )
 
     return {"received": True}
 

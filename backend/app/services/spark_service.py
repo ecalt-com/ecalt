@@ -137,7 +137,7 @@ async def generate_daily_spark(uid: str) -> str:
 
     topic_hint = ", ".join(topics[:3]) if topics else "science, history, or technology"
 
-    spark = await complete_text(
+    spark_text, _, _, _ = await complete_text(
         interaction_type="daily_spark",
         system=(
             "Generate a single fascinating curiosity question that would make someone want to learn immediately. "
@@ -146,7 +146,7 @@ async def generate_daily_spark(uid: str) -> str:
         user_content=f"Topics the learner loves: {topic_hint}",
         max_tokens=120,
     )
-    spark = spark.strip('"').strip("'")
+    spark = spark_text.strip('"').strip("'")
 
     try:
         with get_db() as conn:
@@ -165,8 +165,8 @@ async def generate_daily_spark(uid: str) -> str:
     return spark
 
 
-async def generate_spark(question: str) -> tuple[str, Mission]:
-    raw = await complete_text(
+async def generate_spark(question: str) -> tuple[str, Mission, int, int]:
+    raw, in_tok, out_tok, _ = await complete_text(
         interaction_type="spark",
         system=_SYSTEM,
         user_content=f"Question: {question}",
@@ -197,4 +197,4 @@ async def generate_spark(question: str) -> tuple[str, Mission]:
         icon=m["icon"],
         steps=steps,
     )
-    return data["answer"], mission
+    return data["answer"], mission, in_tok, out_tok

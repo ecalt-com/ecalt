@@ -3,6 +3,8 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional
 from app.models.schemas import SparkRequest, SparkResponse
 from app.services.spark_service import consume_spark, generate_spark
+from app.services.subscription_service import check_budget, record_usage
+from app.services.provider_service import get_config
 from app.core.auth import get_optional_user
 from app.core.limiter import limiter
 
@@ -21,16 +23,20 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
     """
     The free-tier curiosity engine.
 
-    Uses **Claude Haiku** (minimal cost) to return a 2-3 sentence answer
-    and a proposed 4-5 step learning mission.
-
     Rate-limited to **5 sparks per session per hour**. Authenticated users
     are keyed by Firebase uid; guests are keyed by session_id.
-    Returns `429` when the limit is reached.
+    Authenticated users are also gated by their plan token budget.
+    Returns `429` when the session limit is reached, `402` when budget is exhausted.
     """
     key = uid or body.session_id
     if not key:
         raise HTTPException(status_code=400, detail="session_id required for unauthenticated requests")
+
+    # Budget check for authenticated users — guests use session window only
+    if uid:
+        allowed, reason = check_budget(uid, context="ai")
+        if not allowed:
+            raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
 
     allowed, used, remaining = consume_spark(key)
 
@@ -46,13 +52,16 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
         )
 
     try:
-        answer, mission = await generate_spark(body.question.strip())
+        answer, mission, in_tok, out_tok = await generate_spark(body.question.strip())
     except ValueError as e:
         logger.error("spark parse error [%s]: %s", body.question[:80], e, exc_info=True)
         raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         logger.error("spark generation failed [%s]: %s", body.question[:80], e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Spark generation failed: {e}")
+
+    if uid:
+        record_usage(uid, in_tok, out_tok, get_config("spark")["model"], interaction_type="spark")
 
     return SparkResponse(
         answer=answer,

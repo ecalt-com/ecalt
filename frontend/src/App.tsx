@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { HelmetProvider } from 'react-helmet-async'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
@@ -7,8 +7,13 @@ import { ThemeProvider } from './lib/ThemeContext'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { ToastProvider } from './lib/ToastContext'
 import { SubscriptionProvider } from './lib/SubscriptionContext'
+import { GeoProvider } from './lib/GeoContext'
+import { PaymentConfigProvider } from './lib/PaymentConfig'
 import OnboardingModal from './components/OnboardingModal'
 import ErrorBoundary from './components/ErrorBoundary'
+import BirthYearGate from './components/auth/BirthYearGate'
+import Under13Block from './components/auth/Under13Block'
+import ParentalConsentForm, { ConsentSentScreen } from './components/auth/ParentalConsentForm'
 
 // LANDING PAGE TOGGLE — swap these two lines to use cosmic home:
 // const Home       = lazy(() => import('./pages/HomeCosmic'))
@@ -23,6 +28,8 @@ const Journeys      = lazy(() => import('./pages/Journeys'))
 const Journey       = lazy(() => import('./pages/Journey'))
 const Passport      = lazy(() => import('./pages/Passport'))
 const Profile       = lazy(() => import('./pages/Profile'))
+const ConsentConfirm = lazy(() => import('./pages/ConsentConfirm'))
+const Welcome       = lazy(() => import('./pages/Welcome'))
 const ComingSoon    = lazy(() => import('./pages/ComingSoon'))
 
 function PageSkeleton() {
@@ -34,7 +41,8 @@ function PageSkeleton() {
 }
 
 function AppShell() {
-  const { needsOnboarding } = useAuth()
+  const { needsOnboarding, postSignInPhase, parentEmail, completeBirthYear, markConsentSent, dismissPostSignIn } = useAuth()
+
   return (
     <>
       <Suspense fallback={<PageSkeleton />}>
@@ -50,6 +58,9 @@ function AppShell() {
           <Route path="/journey/:id" element={<ErrorBoundary><Journey /></ErrorBoundary>} />
           <Route path="/passport" element={<ErrorBoundary><Passport /></ErrorBoundary>} />
           <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
+          <Route path="/privacy" element={<Navigate to="/profile" replace />} />
+          <Route path="/welcome" element={<ErrorBoundary><Welcome /></ErrorBoundary>} />
+          <Route path="/consent/confirm" element={<ErrorBoundary><ConsentConfirm /></ErrorBoundary>} />
           <Route
             path="/sign-in"
             element={<ComingSoon title="Sign In — Coming Soon" description="User accounts are on the way. Drop your email and we'll notify you." />}
@@ -64,6 +75,21 @@ function AppShell() {
           />
         </Routes>
       </Suspense>
+
+      {/* Post-sign-in compliance gates — rendered in order of priority */}
+      {postSignInPhase === 'birth_year' && (
+        <BirthYearGate onSubmit={completeBirthYear} />
+      )}
+      {postSignInPhase === 'under_13' && (
+        <Under13Block onDismiss={dismissPostSignIn} />
+      )}
+      {postSignInPhase === 'consent_pending' && (
+        <ParentalConsentForm onSent={markConsentSent} />
+      )}
+      {postSignInPhase === 'consent_sent' && parentEmail && (
+        <ConsentSentScreen parentEmail={parentEmail} onSignOut={dismissPostSignIn} />
+      )}
+
       {needsOnboarding && <OnboardingModal />}
     </>
   )
@@ -74,6 +100,8 @@ export default function App() {
     <HelmetProvider>
       <ThemeProvider>
         <AuthProvider>
+          <GeoProvider>
+          <PaymentConfigProvider>
           <SubscriptionProvider>
           <ToastProvider>
             <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -81,6 +109,8 @@ export default function App() {
             </BrowserRouter>
           </ToastProvider>
           </SubscriptionProvider>
+          </PaymentConfigProvider>
+          </GeoProvider>
         </AuthProvider>
         <Analytics />
         <SpeedInsights />

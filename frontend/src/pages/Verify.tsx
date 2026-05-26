@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ShieldCheck, ShieldX, ArrowLeft } from 'lucide-react'
+import { ShieldCheck, ShieldX, ArrowLeft, Info } from 'lucide-react'
 import PageMeta from '../components/PageMeta'
 import ConstellationMap from '../components/constellation/ConstellationMap'
+import { MindSignatureDisclaimer } from '../components/MindSignatureDisclaimer'
 
 interface Domain {
   domain: string
@@ -71,6 +72,20 @@ export default function Verify() {
             </div>
           ) : signature ? (
             <div className="space-y-6">
+              {/* Legal disclaimer banner — must appear before signature content */}
+              <div className="glass-card rounded-2xl p-5 flex items-start gap-3">
+                <div className="w-8 h-8 rounded-xl bg-violet-100 dark:bg-violet-500/15 flex items-center justify-center shrink-0">
+                  <Info size={16} className="text-violet-600 dark:text-violet-400" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-0.5">Verified Mind Signature</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                    This is an AI-generated capability indicator based on demonstrated learning engagement.
+                    It is <strong>not</strong> an accredited educational credential, degree, or qualification.
+                  </p>
+                </div>
+              </div>
+
               {/* Verified badge */}
               <div className="glass-card rounded-2xl p-6 flex items-center gap-4">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-500/15 flex items-center justify-center shrink-0">
@@ -128,6 +143,7 @@ export default function Verify() {
                     <p key={i} className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{p}</p>
                   ))}
                 </div>
+                <MindSignatureDisclaimer />
               </div>
 
               {/* Hash */}

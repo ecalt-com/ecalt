@@ -143,8 +143,9 @@ async def stream_chat(
     full_response = ""
     input_tokens = 0
     output_tokens = 0
+    cached_input_tokens = 0
     try:
-        async for text, in_tok, out_tok in stream_completion(provider, model, _CHAT_SYSTEM, messages):
+        async for text, in_tok, out_tok, cached_tok in stream_completion(provider, model, _CHAT_SYSTEM, messages):
             if text:
                 full_response += text
                 yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
@@ -152,6 +153,8 @@ async def stream_chat(
                 input_tokens = in_tok
             if out_tok:
                 output_tokens = out_tok
+            if cached_tok:
+                cached_input_tokens = cached_tok
     except Exception as e:
         yield f"data: {json.dumps({'type': 'error', 'message': 'Could not generate response. Please try again.'})}\n\n"
         return
@@ -161,7 +164,7 @@ async def stream_chat(
 
     yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
 
-    asyncio.ensure_future(_post_stream_bg(uid, user_message, validated, model, input_tokens, output_tokens))
+    asyncio.ensure_future(_post_stream_bg(uid, user_message, validated, model, input_tokens, output_tokens, cached_input_tokens))
 
 
 async def _post_stream_bg(
@@ -171,11 +174,12 @@ async def _post_stream_bg(
     model: str,
     input_tokens: int,
     output_tokens: int,
+    cached_input_tokens: int = 0,
 ) -> None:
     from app.services.knowledge_service import extract_knowledge_nodes
     from app.services.subscription_service import record_usage
     try:
-        record_usage(uid, input_tokens, output_tokens, model)
+        record_usage(uid, input_tokens, output_tokens, model, interaction_type="daily_chat", cached_input_tokens=cached_input_tokens)
     except Exception:
         pass
     try:

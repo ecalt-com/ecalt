@@ -89,7 +89,7 @@ async def generate_step_content(
         f"Age group: {age_group}\n\n"
         "Generate the lesson content JSON."
     )
-    raw = await complete_text(
+    raw, in_tok, out_tok, _ = await complete_text(
         interaction_type="step_content",
         system=STEP_CONTENT_SYSTEM,
         user_content=user_content,
@@ -101,8 +101,6 @@ async def generate_step_content(
         raise ValueError("AI did not return valid content JSON")
     data = json.loads(raw[start:end])
     content = data["content"]
-    in_tok = (len(STEP_CONTENT_SYSTEM) + len(user_content)) // 4
-    out_tok = len(raw) // 4
     return content, in_tok, out_tok
 
 
@@ -149,7 +147,7 @@ async def warm_journey_steps(
                         (journey_id, step.id, content),
                     )
             if uid:
-                record_usage(uid, in_tok, out_tok, model)
+                record_usage(uid, in_tok, out_tok, model, interaction_type="step_content")
         except Exception:
             pass
 
@@ -157,7 +155,7 @@ async def warm_journey_steps(
 async def generate_journey(question: str, age_group: str = "all") -> tuple[Journey, int, int]:
     """Returns (journey, estimated_input_tokens, estimated_output_tokens)."""
     user_content = f"Question: {question}\nTarget age group: {age_group}\n\nGenerate the learning journey JSON."
-    raw = await complete_text(
+    raw, in_tok, out_tok, _ = await complete_text(
         interaction_type="journey",
         system=SYSTEM_PROMPT,
         user_content=user_content,
@@ -195,6 +193,4 @@ async def generate_journey(question: str, age_group: str = "all") -> tuple[Journ
         icon=data.get("icon", "📚"),
         created_at=datetime.now(timezone.utc).isoformat(),
     )
-    in_tok = (len(SYSTEM_PROMPT) + len(user_content)) // 4
-    out_tok = len(raw) // 4
     return journey, in_tok, out_tok
