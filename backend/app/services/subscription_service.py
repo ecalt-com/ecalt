@@ -13,17 +13,16 @@ def get_user_plan(uid: str) -> dict:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT pc.* FROM subscriptions s
-                JOIN plan_configs pc ON s.plan_id = pc.plan_id
-                WHERE s.uid = %s AND s.status IN ('active', 'trialing')
-                LIMIT 1
+                SELECT pc.* FROM plan_configs pc
+                WHERE pc.plan_id = COALESCE(
+                    (SELECT plan_id FROM subscriptions
+                     WHERE uid = %s AND status IN ('active', 'trialing')
+                     LIMIT 1),
+                    'free_trial'
+                )
                 """,
                 (uid,),
             )
-            row = cur.fetchone()
-            if row:
-                return dict(row)
-            cur.execute("SELECT * FROM plan_configs WHERE plan_id = 'free_trial'")
             return dict(cur.fetchone())
 
 
@@ -298,23 +297,20 @@ def upsert_subscription_from_stripe(
 def get_admin_stats() -> dict:
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT COUNT(*) AS n FROM users")
-            total_users = cur.fetchone()["n"]
-
-            cur.execute("SELECT COUNT(DISTINCT uid) AS n FROM conversations WHERE started_at >= now() - interval '24 hours'")
-            dau = cur.fetchone()["n"]
-
-            cur.execute("SELECT COUNT(*) AS n FROM conversation_messages WHERE created_at >= now() - interval '24 hours'")
-            messages_today = cur.fetchone()["n"]
-
             cur.execute(
-                "SELECT COALESCE(SUM(estimated_cost_cents), 0) AS n FROM token_usage WHERE period_start = date_trunc('month', now())::date"
+                """
+                SELECT
+                    (SELECT COUNT(*)          FROM users)                                                      AS total_users,
+                    (SELECT COUNT(DISTINCT uid) FROM conversations WHERE started_at >= now() - interval '24 hours') AS dau,
+                    (SELECT COUNT(*)          FROM conversation_messages WHERE created_at >= now() - interval '24 hours') AS messages_today,
+                    COALESCE((SELECT SUM(estimated_cost_cents) FROM token_usage
+                               WHERE period_start = date_trunc('month', now())::date), 0)                     AS monthly_cost_cents
+                """
             )
-            monthly_cost_cents = float(cur.fetchone()["n"])
-
+            row = cur.fetchone()
     return {
-        "total_users": total_users,
-        "dau": dau,
-        "messages_today": messages_today,
-        "monthly_api_cost_cents": monthly_cost_cents,
+        "total_users": row["total_users"],
+        "dau": row["dau"],
+        "messages_today": row["messages_today"],
+        "monthly_api_cost_cents": float(row["monthly_cost_cents"]),
     }

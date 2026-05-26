@@ -1,5 +1,6 @@
 import datetime
 import json
+from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
@@ -10,37 +11,75 @@ from app.core.logging_config import get_logger
 logger = get_logger(__name__)
 from app.core.config import settings
 from app.core.database import get_db
-from app.services.subscription_service import (
-    get_user_plan,
-    get_current_usage,
-    count_lifetime_messages,
-    get_coupon_extras,
-    upsert_subscription_from_stripe,
-)
+from app.services.subscription_service import upsert_subscription_from_stripe
 
 router = APIRouter()
 
+_ME_QUERY = """
+    SELECT
+        pc.*,
+        COALESCE(tu.input_tokens, 0)           AS _usage_input_tokens,
+        COALESCE(tu.output_tokens, 0)          AS _usage_output_tokens,
+        COALESCE(tu.estimated_cost_cents, 0.0) AS _usage_cost_cents,
+        COALESCE(tu.message_count, 0)          AS _usage_message_count,
+        COALESCE(cr.extra_credits, 0)          AS _extra_credits_cents,
+        COALESCE(cr.bonus_msgs, 0)             AS _bonus_messages,
+        COALESCE(u.is_admin, false)            AS _is_admin,
+        COALESCE(mc.n, 0)                      AS _lifetime_messages
+    FROM plan_configs pc
+    JOIN (
+        SELECT COALESCE(
+            (SELECT plan_id FROM subscriptions
+             WHERE uid = %(uid)s AND status IN ('active', 'trialing')
+             LIMIT 1),
+            'free_trial'
+        ) AS plan_id
+    ) rp ON pc.plan_id = rp.plan_id
+    LEFT JOIN token_usage tu
+        ON tu.uid = %(uid)s AND tu.period_start = %(period_start)s
+    LEFT JOIN (
+        SELECT COALESCE(SUM(credit_applied_cents), 0)   AS extra_credits,
+               COALESCE(SUM(bonus_messages_applied), 0) AS bonus_msgs
+        FROM coupon_redemptions
+        WHERE uid = %(uid)s
+          AND (credit_expires_at IS NULL OR credit_expires_at > now())
+    ) cr ON true
+    LEFT JOIN users u ON u.uid = %(uid)s
+    LEFT JOIN (
+        SELECT COUNT(*) AS n
+        FROM conversation_messages
+        WHERE conversation_id IN (SELECT id FROM conversations WHERE uid = %(uid)s)
+          AND role = 'user'
+    ) mc ON true
+"""
 
-@router.get("/me")
-async def get_my_subscription(uid: str = Depends(get_required_user)):
-    plan = get_user_plan(uid)
-    usage = get_current_usage(uid)
-    extras = get_coupon_extras(uid)
 
-    is_free = plan["plan_id"] == "free_trial"
-    lifetime_count = count_lifetime_messages(uid) if is_free else None
-    base_limit = plan.get("lifetime_message_limit") or 6
-    lifetime_limit = (base_limit + extras["bonus_messages"]) if is_free else None
-
-    base_budget = float(plan.get("token_budget_cents") or 20.0)
-    total_budget = base_budget + extras["extra_credits_cents"]
-
+def _build_me_response(uid: str) -> dict:
+    period_start = date.today().replace(day=1)
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT is_admin FROM users WHERE uid = %s", (uid,))
-            row = cur.fetchone()
-            is_admin = bool(row["is_admin"]) if row else False
+            cur.execute(_ME_QUERY, {"uid": uid, "period_start": period_start})
+            row = dict(cur.fetchone())
 
+    plan = {k: v for k, v in row.items() if not k.startswith("_")}
+    usage = {
+        "uid": uid,
+        "period_start": period_start,
+        "input_tokens": row["_usage_input_tokens"],
+        "output_tokens": row["_usage_output_tokens"],
+        "estimated_cost_cents": float(row["_usage_cost_cents"]),
+        "message_count": row["_usage_message_count"],
+    }
+    extras = {
+        "extra_credits_cents": float(row["_extra_credits_cents"]),
+        "bonus_messages": int(row["_bonus_messages"]),
+    }
+    is_free = plan["plan_id"] == "free_trial"
+    base_limit = plan.get("lifetime_message_limit") or 6
+    lifetime_limit = (base_limit + extras["bonus_messages"]) if is_free else None
+    lifetime_count = row["_lifetime_messages"] if is_free else None
+    base_budget = float(plan.get("token_budget_cents") or 20.0)
+    total_budget = base_budget + extras["extra_credits_cents"]
     return {
         "plan": plan,
         "usage": usage,
@@ -48,7 +87,7 @@ async def get_my_subscription(uid: str = Depends(get_required_user)):
         "total_budget_cents": total_budget,
         "lifetime_message_count": lifetime_count,
         "lifetime_message_limit": lifetime_limit,
-        "is_admin": is_admin,
+        "is_admin": bool(row["_is_admin"]),
         "is_limited": (
             (is_free and (lifetime_count or 0) >= (lifetime_limit or 6))
             or usage["estimated_cost_cents"] >= total_budget
@@ -56,8 +95,13 @@ async def get_my_subscription(uid: str = Depends(get_required_user)):
     }
 
 
+@router.get("/me")
+def get_my_subscription(uid: str = Depends(get_required_user)):
+    return _build_me_response(uid)
+
+
 @router.get("/plans")
-async def list_plans():
+def list_plans():
     """Public endpoint: return all active plan configs."""
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -68,7 +112,7 @@ async def list_plans():
 
 
 @router.get("/config")
-async def get_payment_config():
+def get_payment_config():
     """Public endpoint: return publishable payment keys for the frontend."""
     return {
         "stripe_publishable_key": settings.STRIPE_PUBLISHABLE_KEY,
@@ -77,7 +121,7 @@ async def get_payment_config():
 
 
 @router.post("/sync")
-async def sync_subscription(
+def sync_subscription(
     session_id: str | None = None,
     uid: str = Depends(get_required_user),
 ):
@@ -130,38 +174,7 @@ async def sync_subscription(
         except Exception:
             logger.warning("subscriptions.sync.failed", extra={"uid": uid, "session_id": session_id}, exc_info=True)
 
-    # Re-use the /me logic so callers get a fully-populated response
-    plan = get_user_plan(uid)
-    usage = get_current_usage(uid)
-    extras = get_coupon_extras(uid)
-
-    is_free = plan["plan_id"] == "free_trial"
-    lifetime_count = count_lifetime_messages(uid) if is_free else None
-    base_limit = plan.get("lifetime_message_limit") or 6
-    lifetime_limit = (base_limit + extras["bonus_messages"]) if is_free else None
-
-    base_budget = float(plan.get("token_budget_cents") or 20.0)
-    total_budget = base_budget + extras["extra_credits_cents"]
-
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT is_admin FROM users WHERE uid = %s", (uid,))
-            row = cur.fetchone()
-            is_admin = bool(row["is_admin"]) if row else False
-
-    return {
-        "plan": plan,
-        "usage": usage,
-        "coupon_extras": extras,
-        "total_budget_cents": total_budget,
-        "lifetime_message_count": lifetime_count,
-        "lifetime_message_limit": lifetime_limit,
-        "is_admin": is_admin,
-        "is_limited": (
-            (is_free and (lifetime_count or 0) >= (lifetime_limit or 6))
-            or usage["estimated_cost_cents"] >= total_budget
-        ),
-    }
+    return _build_me_response(uid)
 
 
 class CheckoutRequest(BaseModel):
@@ -170,7 +183,7 @@ class CheckoutRequest(BaseModel):
 
 
 @router.post("/checkout")
-async def create_checkout(body: CheckoutRequest, uid: str = Depends(get_required_user)):
+def create_checkout(body: CheckoutRequest, uid: str = Depends(get_required_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -261,7 +274,7 @@ class RazorpayVerifyRequest(BaseModel):
 
 
 @router.post("/razorpay/verify")
-async def verify_razorpay_payment(
+def verify_razorpay_payment(
     body: RazorpayVerifyRequest,
     uid: str = Depends(get_required_user),
 ):

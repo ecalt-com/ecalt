@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Optional
 
 import jwt
@@ -6,6 +7,9 @@ from jwt import PyJWKClient
 from fastapi import Header, HTTPException, Depends
 
 from app.core.config import settings
+
+_admin_cache: dict[str, tuple[bool, float]] = {}
+_ADMIN_CACHE_TTL = 60.0
 
 logger = logging.getLogger(__name__)
 
@@ -83,17 +87,29 @@ def get_active_user(uid: str = Depends(get_required_user)) -> str:
 
 
 def get_admin_user(uid: str = Depends(get_required_user)) -> str:
-    """Raises 403 if user is not an admin."""
+    """Raises 403 if user is not an admin. Result is cached for 60 s per uid."""
+    now = time.monotonic()
+    cached = _admin_cache.get(uid)
+    if cached is not None:
+        is_admin, ts = cached
+        if now - ts < _ADMIN_CACHE_TTL:
+            if not is_admin:
+                raise HTTPException(status_code=403, detail="Admin access required")
+            return uid
+
     from app.core.database import get_db
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT is_admin FROM users WHERE uid = %s", (uid,))
                 row = cur.fetchone()
-                if not row or not row["is_admin"]:
-                    raise HTTPException(status_code=403, detail="Admin access required")
+                is_admin = bool(row and row["is_admin"])
     except HTTPException:
         raise
     except Exception:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    _admin_cache[uid] = (is_admin, now)
+    if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return uid

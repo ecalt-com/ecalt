@@ -27,15 +27,20 @@ def provision_razorpay_plan(plan_id: str, name: str, amount_paise: int) -> str:
             },
             "notes": {"plan_id": plan_id, "app": "ecalt"},
         })
-    except _rzp.errors.BadRequestError as e:
-        logger.error("razorpay.provision.bad_request plan_id=%s error=%s", plan_id, e)
-        raise ValueError(f"Razorpay rejected the request: {e}") from e
-    except _rzp.errors.ServerError as e:
-        logger.error("razorpay.provision.server_error plan_id=%s error=%s", plan_id, e)
-        raise ValueError(
-            f"Razorpay server error — check that Subscriptions are enabled on your "
-            f"Razorpay account (Dashboard → Settings → Subscriptions). Detail: {e}"
-        ) from e
+    except (_rzp.errors.BadRequestError, _rzp.errors.ServerError) as e:
+        logger.error("razorpay.provision.error plan_id=%s error=%s", plan_id, e)
+        err_str = str(e).lower()
+        # ServerError (5xx) on plan creation almost always means Subscriptions is not
+        # activated; Razorpay returns an empty body so str(e) is "".
+        if isinstance(e, _rzp.errors.ServerError) or any(
+            kw in err_str for kw in ("subscription", "feature", "not been activated")
+        ):
+            raise ValueError(
+                "Razorpay Subscriptions are not enabled on this account. "
+                "Activate it once at: Dashboard → Settings → Subscriptions. "
+                "There is no API to enable this — it is a one-time dashboard action."
+            ) from e
+        raise ValueError(f"Razorpay error: {e}") from e
     logger.info("razorpay.provision: created plan %s for %s", plan["id"], plan_id)
     return plan["id"]
 

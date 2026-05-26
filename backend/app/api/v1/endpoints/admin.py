@@ -18,7 +18,7 @@ class BootstrapRequest(BaseModel):
 
 
 @router.post("/bootstrap")
-async def bootstrap_first_admin(body: BootstrapRequest):
+def bootstrap_first_admin(body: BootstrapRequest):
     """Set the first admin user. Only works when zero admins exist."""
     if not body.email and not body.uid:
         raise HTTPException(status_code=400, detail="Provide email or uid")
@@ -48,18 +48,9 @@ async def bootstrap_first_admin(body: BootstrapRequest):
     return {"promoted": dict(row)}
 
 
-def get_admin_user(uid: str = Depends(get_required_user)) -> str:
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT is_admin FROM users WHERE uid = %s", (uid,))
-            row = cur.fetchone()
-            if not row or not row["is_admin"]:
-                raise HTTPException(status_code=403, detail="Admin access required")
-    return uid
-
 
 @router.get("/plans")
-async def list_plans(_uid: str = Depends(get_admin_user)):
+def list_plans(_uid: str = Depends(get_admin_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM plan_configs ORDER BY base_price_cents")
@@ -77,7 +68,7 @@ class PlanCreate(BaseModel):
 
 
 @router.post("/plans")
-async def create_plan(body: PlanCreate, _uid: str = Depends(get_admin_user)):
+def create_plan(body: PlanCreate, _uid: str = Depends(get_admin_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -110,7 +101,7 @@ class PlanUpdate(BaseModel):
 
 
 @router.patch("/plans/{plan_id}")
-async def update_plan(plan_id: str, body: PlanUpdate, _uid: str = Depends(get_admin_user)):
+def update_plan(plan_id: str, body: PlanUpdate, _uid: str = Depends(get_admin_user)):
     updates = {k: v for k, v in body.model_dump().items() if v is not None}
     if not updates:
         raise HTTPException(status_code=400, detail="No fields to update")
@@ -138,7 +129,7 @@ class ProvisionRequest(BaseModel):
 
 
 @router.post("/plans/{plan_id}/provision")
-async def provision_plan(plan_id: str, body: ProvisionRequest, _uid: str = Depends(get_admin_user)):
+def provision_plan(plan_id: str, body: ProvisionRequest, _uid: str = Depends(get_admin_user)):
     """
     Auto-provision the plan in Stripe and/or Razorpay. Creates the Product+Price or
     Plan objects via their APIs and stores the resulting IDs back in plan_configs.
@@ -221,12 +212,12 @@ async def provision_plan(plan_id: str, body: ProvisionRequest, _uid: str = Depen
 
 
 @router.get("/stats")
-async def get_stats(_uid: str = Depends(get_admin_user)):
+def get_stats(_uid: str = Depends(get_admin_user)):
     return get_admin_stats()
 
 
 @router.get("/users")
-async def list_users(_uid: str = Depends(get_admin_user)):
+def list_users(_uid: str = Depends(get_admin_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -243,7 +234,7 @@ async def list_users(_uid: str = Depends(get_admin_user)):
 
 
 @router.get("/ai-config")
-async def get_ai_config(_uid: str = Depends(get_admin_user)):
+def get_ai_config(_uid: str = Depends(get_admin_user)):
     """Return current provider/model config for each interaction type."""
     return {
         "configs": get_all_configs(),
@@ -258,7 +249,7 @@ class AIConfigUpdate(BaseModel):
 
 
 @router.patch("/ai-config")
-async def update_ai_config(body: AIConfigUpdate, _uid: str = Depends(get_admin_user)):
+def update_ai_config(body: AIConfigUpdate, _uid: str = Depends(get_admin_user)):
     valid_providers = list(AVAILABLE_MODELS.keys())
     if body.provider not in valid_providers:
         raise HTTPException(status_code=400, detail=f"Provider must be one of: {valid_providers}")
@@ -270,7 +261,7 @@ async def update_ai_config(body: AIConfigUpdate, _uid: str = Depends(get_admin_u
 
 
 @router.get("/usage")
-async def get_usage_breakdown(_uid: str = Depends(get_admin_user)):
+def get_usage_breakdown(_uid: str = Depends(get_admin_user)):
     """Token usage and cost breakdown by model for current billing month."""
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -338,7 +329,7 @@ async def get_usage_breakdown(_uid: str = Depends(get_admin_user)):
 
 
 @router.patch("/users/{target_uid}/toggle-admin")
-async def toggle_admin(target_uid: str, acting_uid: str = Depends(get_admin_user)):
+def toggle_admin(target_uid: str, acting_uid: str = Depends(get_admin_user)):
     """Promote or demote a user's admin status."""
     with get_db() as conn:
         with conn.cursor() as cur:

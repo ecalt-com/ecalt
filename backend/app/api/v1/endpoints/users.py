@@ -145,7 +145,7 @@ async def upsert_user(body: UserUpsertRequest, uid: str = Depends(get_required_u
 
 
 @router.get("/me", response_model=UserProfile, summary="Get current user profile")
-async def get_me(uid: str = Depends(get_required_user)):
+def get_me(uid: str = Depends(get_required_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -166,7 +166,7 @@ async def get_me(uid: str = Depends(get_required_user)):
 
 
 @router.patch("/me/onboarding", response_model=UserProfile, summary="Mark onboarding complete")
-async def complete_onboarding(uid: str = Depends(get_required_user)):
+def complete_onboarding(uid: str = Depends(get_required_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -185,7 +185,7 @@ class InterestsRequest(BaseModel):
 
 
 @router.patch("/me/interests", summary="Save user interest topics")
-async def save_interests(body: InterestsRequest, uid: str = Depends(get_required_user)):
+def save_interests(body: InterestsRequest, uid: str = Depends(get_required_user)):
     topics = [t.lower()[:50] for t in body.topics[:12]]
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -210,7 +210,7 @@ async def save_interests(body: InterestsRequest, uid: str = Depends(get_required
 # ── COPPA parental consent confirmation (no auth) ─────────────────────────────
 
 @router.get("/consent/confirm", summary="Confirm parental consent via email token")
-async def consent_confirm(token: str = Query(..., description="UUID token from consent email")):
+def consent_confirm(token: str = Query(..., description="UUID token from consent email")):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -255,7 +255,7 @@ async def consent_confirm(token: str = Query(..., description="UUID token from c
 # ── GDPR: consent record ──────────────────────────────────────────────────────
 
 @router.get("/me/consent", summary="Get consent record (GDPR transparency)")
-async def get_consent(uid: str = Depends(get_required_user)):
+def get_consent(uid: str = Depends(get_required_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -274,7 +274,7 @@ async def get_consent(uid: str = Depends(get_required_user)):
 # ── GDPR: data portability ────────────────────────────────────────────────────
 
 @router.get("/me/export", summary="Export all personal data (GDPR Art. 20)")
-async def export_account(uid: str = Depends(get_required_user)):
+def export_account(uid: str = Depends(get_required_user)):
     def _iso(val):
         return val.isoformat() if hasattr(val, "isoformat") else val
 
@@ -349,7 +349,7 @@ async def export_account(uid: str = Depends(get_required_user)):
 # ── GDPR: right to erasure ────────────────────────────────────────────────────
 
 @router.delete("/me", status_code=204, summary="Delete account and all personal data (GDPR Art. 17)")
-async def delete_account(uid: str = Depends(get_required_user)):
+def delete_account(uid: str = Depends(get_required_user)):
     # Cancel active Stripe subscription (non-fatal)
     try:
         with get_db() as conn:

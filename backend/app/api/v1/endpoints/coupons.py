@@ -23,7 +23,7 @@ class ApplyRequest(BaseModel):
 
 
 @router.post("/apply")
-async def apply(body: ApplyRequest, uid: str = Depends(get_required_user)):
+def apply(body: ApplyRequest, uid: str = Depends(get_required_user)):
     try:
         result = apply_coupon(uid, body.code)
     except ValueError as e:
@@ -54,12 +54,12 @@ class UpdateCouponRequest(BaseModel):
 
 
 @router.get("/admin")
-async def admin_list(uid: str = Depends(get_admin_user)):
+def admin_list(uid: str = Depends(get_admin_user)):
     return {"coupons": list_coupons()}
 
 
 @router.post("/admin")
-async def admin_create(body: CreateCouponRequest, uid: str = Depends(get_admin_user)):
+def admin_create(body: CreateCouponRequest, uid: str = Depends(get_admin_user)):
     try:
         coupon = create_coupon(
             code=body.code,
@@ -77,7 +77,7 @@ async def admin_create(body: CreateCouponRequest, uid: str = Depends(get_admin_u
 
 
 @router.patch("/admin/{code}")
-async def admin_update(code: str, body: UpdateCouponRequest, uid: str = Depends(get_admin_user)):
+def admin_update(code: str, body: UpdateCouponRequest, uid: str = Depends(get_admin_user)):
     try:
         updated = update_coupon(code, **body.model_dump(exclude_none=True))
     except ValueError as e:
@@ -86,5 +86,5 @@ async def admin_update(code: str, body: UpdateCouponRequest, uid: str = Depends(
 
 
 @router.get("/admin/{code}/redemptions")
-async def admin_redemptions(code: str, uid: str = Depends(get_admin_user)):
+def admin_redemptions(code: str, uid: str = Depends(get_admin_user)):
     return {"redemptions": get_coupon_redemptions(code)}

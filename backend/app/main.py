@@ -22,6 +22,12 @@ setup_logging(settings.LOG_LEVEL, settings.ENVIRONMENT)
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     setup_logging(settings.LOG_LEVEL, settings.ENVIRONMENT)
+    from app.core.database import _get_pool, warm_pool
+    try:
+        _get_pool()
+        warm_pool()
+    except Exception:
+        pass  # logged inside; don't prevent startup
     from app.services.scheduler import setup_scheduler
     sched = setup_scheduler()
     sched.start()

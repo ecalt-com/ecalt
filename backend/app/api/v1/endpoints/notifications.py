@@ -105,7 +105,7 @@ def _ensure_row(cur, uid: str) -> None:
 # ── Preferences endpoints ─────────────────────────────────────────────────────
 
 @router.get("/preferences", response_model=NotificationPreferences)
-async def get_preferences(uid: str = Depends(get_required_user)):
+def get_preferences(uid: str = Depends(get_required_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT * FROM notification_preferences WHERE uid = %s", (uid,))
@@ -114,7 +114,7 @@ async def get_preferences(uid: str = Depends(get_required_user)):
 
 
 @router.patch("/preferences", response_model=NotificationPreferences)
-async def patch_preferences(body: PreferencesPatch, uid: str = Depends(get_required_user)):
+def patch_preferences(body: PreferencesPatch, uid: str = Depends(get_required_user)):
     updates: dict = {}
     if body.email_enabled is not None:
         updates["email_enabled"] = body.email_enabled
@@ -157,7 +157,7 @@ async def patch_preferences(body: PreferencesPatch, uid: str = Depends(get_requi
 
 
 @router.delete("/preferences/email", response_model=NotificationPreferences)
-async def unsubscribe_email(uid: str = Depends(get_required_user)):
+def unsubscribe_email(uid: str = Depends(get_required_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             _ensure_row(cur, uid)
@@ -170,7 +170,7 @@ async def unsubscribe_email(uid: str = Depends(get_required_user)):
 
 
 @router.delete("/preferences/whatsapp", response_model=NotificationPreferences)
-async def opt_out_whatsapp(uid: str = Depends(get_required_user)):
+def opt_out_whatsapp(uid: str = Depends(get_required_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             _ensure_row(cur, uid)
@@ -231,7 +231,7 @@ async def whatsapp_opt_in(body: WhatsAppOptInRequest, uid: str = Depends(get_req
 
 
 @router.post("/whatsapp/confirm", response_model=NotificationPreferences)
-async def whatsapp_confirm(body: WhatsAppConfirmRequest, uid: str = Depends(get_required_user)):
+def whatsapp_confirm(body: WhatsAppConfirmRequest, uid: str = Depends(get_required_user)):
     """Confirm WhatsApp opt-in. In production this is triggered by a Twilio inbound webhook
     that matches the user's stored phone number after they reply YES."""
     phone = _normalize_phone(body.phone)
@@ -278,7 +278,7 @@ async def trigger_notification(body: TriggerRequest, _admin: str = Depends(get_a
 # ── One-click unsubscribe (Phase 5) ──────────────────────────────────────────
 
 @router.get("/unsubscribe", include_in_schema=False)
-async def one_click_unsubscribe(uid: str = Query(...), token: str = Query(...)):
+def one_click_unsubscribe(uid: str = Query(...), token: str = Query(...)):
     """GDPR one-click unsubscribe. No auth required — validated by signed token."""
     from app.services.email_service import verify_unsubscribe_token
 
@@ -312,7 +312,7 @@ _TRANSPARENT_GIF = (
 
 
 @router.get("/open", include_in_schema=False)
-async def track_open(log_id: str = Query(...)):
+def track_open(log_id: str = Query(...)):
     """Tracking pixel endpoint — sets opened_at on the notification_log row."""
     try:
         with get_db() as conn:
