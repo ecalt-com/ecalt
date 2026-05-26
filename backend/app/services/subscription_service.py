@@ -191,6 +191,24 @@ def record_usage(
                 row = cur.fetchone()
                 spent_cents = float(row["estimated_cost_cents"]) if row else cost_cents
 
+                cur.execute(
+                    """
+                    INSERT INTO usage_by_interaction
+                        (uid, period_start, interaction_type, input_tokens, output_tokens,
+                         cached_input_tokens, estimated_cost_cents, request_count)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 1)
+                    ON CONFLICT (uid, period_start, interaction_type) DO UPDATE SET
+                        input_tokens         = usage_by_interaction.input_tokens + EXCLUDED.input_tokens,
+                        output_tokens        = usage_by_interaction.output_tokens + EXCLUDED.output_tokens,
+                        cached_input_tokens  = usage_by_interaction.cached_input_tokens + EXCLUDED.cached_input_tokens,
+                        estimated_cost_cents = usage_by_interaction.estimated_cost_cents + EXCLUDED.estimated_cost_cents,
+                        request_count        = usage_by_interaction.request_count + 1,
+                        updated_at           = now()
+                    """,
+                    (uid, period_start, interaction_type, input_tokens, output_tokens,
+                     cached_input_tokens, cost_cents),
+                )
+
         try:
             plan = get_user_plan(uid)
             extras = get_coupon_extras(uid)
@@ -257,6 +275,45 @@ def get_budget_status(uid: str) -> dict:
         result["is_limited"] = (used_messages >= total_limit) or (spent >= total_budget)
 
     return result
+
+
+def get_usage_history(uid: str, months: int = 6) -> list[dict]:
+    """Return token_usage rows for the past N months, newest first."""
+    months = min(months, 24)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT period_start, input_tokens, output_tokens,
+                       COALESCE(cached_input_tokens, 0) AS cached_input_tokens,
+                       estimated_cost_cents, message_count
+                FROM token_usage
+                WHERE uid = %s
+                  AND period_start >= (date_trunc('month', now()) - (%s * interval '1 month'))::date
+                ORDER BY period_start DESC
+                """,
+                (uid, months),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+
+def get_usage_breakdown(uid: str) -> list[dict]:
+    """Return per-interaction-type usage for the current billing month, ordered by cost."""
+    period_start = date.today().replace(day=1)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT interaction_type, input_tokens, output_tokens,
+                       COALESCE(cached_input_tokens, 0) AS cached_input_tokens,
+                       estimated_cost_cents, request_count
+                FROM usage_by_interaction
+                WHERE uid = %s AND period_start = %s
+                ORDER BY estimated_cost_cents DESC
+                """,
+                (uid, period_start),
+            )
+            return [dict(r) for r in cur.fetchall()]
 
 
 def upsert_subscription_from_stripe(

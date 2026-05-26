@@ -4,7 +4,10 @@ from typing import Optional
 
 from app.core.auth import get_required_user, get_admin_user
 from app.core.database import get_db
-from app.services.subscription_service import get_admin_stats
+from app.services.subscription_service import (
+    get_admin_stats, get_usage_history,
+    get_usage_breakdown as svc_usage_breakdown,
+)
 from app.services.provider_service import (
     AVAILABLE_MODELS, get_all_configs, set_config
 )
@@ -222,12 +225,34 @@ def list_users(_uid: str = Depends(get_admin_user)):
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT u.uid, u.email, u.display_name, u.is_admin, u.created_at,
-                       COALESCE(s.plan_id, 'free_trial') as plan_id,
-                       COALESCE(s.status, 'active') as sub_status
+                SELECT
+                    u.uid, u.email, u.display_name, u.is_admin, u.created_at,
+                    COALESCE(s.plan_id, 'free_trial')  AS plan_id,
+                    COALESCE(s.status, 'active')        AS sub_status,
+                    pc.token_budget_cents               AS budget_cents,
+                    COALESCE(tu.estimated_cost_cents, 0) AS spent_cents,
+                    COALESCE(tu.input_tokens, 0)         AS input_tokens,
+                    COALESCE(tu.output_tokens, 0)        AS output_tokens,
+                    COALESCE(tu.cached_input_tokens, 0)  AS cached_input_tokens,
+                    COALESCE(tu.message_count, 0)        AS message_count,
+                    CASE
+                        WHEN COALESCE(pc.token_budget_cents, 0) > 0
+                        THEN ROUND(
+                            (COALESCE(tu.estimated_cost_cents, 0) /
+                            pc.token_budget_cents * 100)::numeric, 1
+                        )
+                        ELSE 0
+                    END AS pct_used
                 FROM users u
-                LEFT JOIN subscriptions s ON u.uid = s.uid
-                ORDER BY u.created_at DESC LIMIT 100
+                LEFT JOIN subscriptions s
+                    ON s.uid = u.uid AND s.status IN ('active', 'trialing')
+                LEFT JOIN plan_configs pc
+                    ON pc.plan_id = COALESCE(s.plan_id, 'free_trial')
+                LEFT JOIN token_usage tu
+                    ON tu.uid = u.uid
+                    AND tu.period_start = date_trunc('month', now())::date
+                ORDER BY spent_cents DESC, u.created_at DESC
+                LIMIT 100
                 """
             )
             return {"users": [dict(r) for r in cur.fetchall()]}
@@ -325,6 +350,214 @@ def get_usage_breakdown(_uid: str = Depends(get_admin_user)):
             "total_cached_input_tokens": total_cached,
             "cache_hit_pct": cache_hit_pct,
         },
+    }
+
+
+@router.get("/revenue")
+def get_revenue(_uid: str = Depends(get_admin_user)):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    pc.plan_id,
+                    pc.name                                              AS plan_name,
+                    pc.base_price_cents                                  AS price_cents,
+                    pc.base_price_inr_paise,
+                    COUNT(s.uid)                                         AS user_count,
+                    SUM(CASE WHEN s.payment_gateway = 'stripe'
+                             THEN pc.base_price_cents ELSE 0 END)        AS mrr_usd_cents,
+                    SUM(CASE WHEN s.payment_gateway = 'razorpay'
+                             THEN COALESCE(pc.base_price_inr_paise, 0)
+                             ELSE 0 END)                                 AS mrr_inr_paise
+                FROM subscriptions s
+                JOIN plan_configs pc ON pc.plan_id = s.plan_id
+                WHERE s.status IN ('active', 'trialing')
+                GROUP BY pc.plan_id, pc.name, pc.base_price_cents, pc.base_price_inr_paise
+                ORDER BY pc.base_price_cents DESC
+                """
+            )
+            plan_distribution = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(s.status, 'no_subscription') AS status,
+                    COUNT(*)                               AS user_count
+                FROM users u
+                LEFT JOIN subscriptions s ON s.uid = u.uid
+                GROUP BY COALESCE(s.status, 'no_subscription')
+                """
+            )
+            status_breakdown = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                """
+                SELECT
+                    payment_gateway,
+                    COUNT(*)                                     AS subscriptions,
+                    SUM(pc.base_price_cents)                     AS total_usd_cents,
+                    SUM(COALESCE(pc.base_price_inr_paise, 0))    AS total_inr_paise
+                FROM subscriptions s
+                JOIN plan_configs pc ON pc.plan_id = s.plan_id
+                WHERE s.status IN ('active', 'trialing')
+                GROUP BY payment_gateway
+                """
+            )
+            gateway_split = [dict(r) for r in cur.fetchall()]
+
+    total_mrr_usd = sum((p.get("mrr_usd_cents") or 0) for p in plan_distribution)
+    total_mrr_inr = sum((p.get("mrr_inr_paise") or 0) for p in plan_distribution)
+    total_paid = next((s["user_count"] for s in status_breakdown if s["status"] == "active"), 0)
+    total_trial = next((s["user_count"] for s in status_breakdown if s["status"] == "trialing"), 0)
+    total_free = next((s["user_count"] for s in status_breakdown if s["status"] == "no_subscription"), 0)
+    arpu_usd = round(total_mrr_usd / total_paid, 1) if total_paid > 0 else 0
+
+    return {
+        "plan_distribution": plan_distribution,
+        "status_breakdown": status_breakdown,
+        "gateway_split": gateway_split,
+        "summary": {
+            "total_mrr_usd_cents": total_mrr_usd,
+            "total_mrr_inr_paise": total_mrr_inr,
+            "total_paid_users": total_paid,
+            "total_trial_users": total_trial,
+            "total_free_users": total_free,
+            "arpu_usd_cents": arpu_usd,
+        },
+    }
+
+
+@router.get("/users/{target_uid}")
+def get_user_detail(target_uid: str, _uid: str = Depends(get_admin_user)):
+    """Full usage and account detail for a single user. Admin only."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+
+            # ── Profile + subscription + current-month usage ──────────────────
+            cur.execute(
+                """
+                SELECT
+                    u.uid, u.email, u.display_name, u.photo_url,
+                    u.is_admin, u.streak_days, u.last_active_date,
+                    u.age_group_flag, u.account_status, u.created_at,
+
+                    COALESCE(s.plan_id, 'free_trial')       AS plan_id,
+                    pc.name                                  AS plan_name,
+                    COALESCE(s.status, 'none')               AS sub_status,
+                    s.payment_gateway,
+                    s.current_period_start,
+                    s.current_period_end,
+                    pc.token_budget_cents                    AS budget_cents,
+                    pc.lifetime_message_limit,
+
+                    COALESCE(tu.estimated_cost_cents, 0)     AS spent_cents,
+                    COALESCE(tu.input_tokens, 0)             AS input_tokens,
+                    COALESCE(tu.output_tokens, 0)            AS output_tokens,
+                    COALESCE(tu.cached_input_tokens, 0)      AS cached_input_tokens,
+                    COALESCE(tu.message_count, 0)            AS message_count,
+                    CASE
+                        WHEN COALESCE(pc.token_budget_cents, 0) > 0
+                        THEN ROUND(
+                            (COALESCE(tu.estimated_cost_cents, 0) /
+                             pc.token_budget_cents * 100)::numeric, 1
+                        )
+                        ELSE 0
+                    END AS pct_used
+
+                FROM users u
+                LEFT JOIN subscriptions s
+                    ON s.uid = u.uid AND s.status IN ('active', 'trialing')
+                LEFT JOIN plan_configs pc
+                    ON pc.plan_id = COALESCE(s.plan_id, 'free_trial')
+                LEFT JOIN token_usage tu
+                    ON tu.uid = u.uid
+                    AND tu.period_start = date_trunc('month', now())::date
+                WHERE u.uid = %s
+                """,
+                (target_uid,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="User not found")
+            profile = dict(row)
+
+            # ── Lifetime stats ────────────────────────────────────────────────
+            cur.execute(
+                """
+                SELECT
+                    COALESCE(SUM(estimated_cost_cents), 0) AS lifetime_cost_cents,
+                    COALESCE(SUM(input_tokens), 0)         AS lifetime_input_tokens,
+                    COALESCE(SUM(output_tokens), 0)        AS lifetime_output_tokens,
+                    COALESCE(SUM(message_count), 0)        AS lifetime_message_count,
+                    MIN(period_start)                      AS first_active_month
+                FROM token_usage
+                WHERE uid = %s
+                """,
+                (target_uid,),
+            )
+            lifetime = dict(cur.fetchone())
+
+            # Total conversations
+            cur.execute(
+                "SELECT COUNT(*) AS total_conversations FROM conversations WHERE uid = %s",
+                (target_uid,),
+            )
+            lifetime["total_conversations"] = cur.fetchone()["total_conversations"]
+
+            # Lifetime chat messages (for free-trial gate visibility)
+            cur.execute(
+                """
+                SELECT COUNT(*) AS lifetime_chat_messages
+                FROM conversation_messages
+                WHERE conversation_id IN (SELECT id FROM conversations WHERE uid = %s)
+                  AND role = 'user'
+                """,
+                (target_uid,),
+            )
+            lifetime["lifetime_chat_messages"] = cur.fetchone()["lifetime_chat_messages"]
+
+            # ── Active coupon credits ─────────────────────────────────────────
+            cur.execute(
+                """
+                SELECT
+                    c.code, c.description,
+                    cr.credit_applied_cents,
+                    cr.bonus_messages_applied,
+                    cr.redeemed_at,
+                    cr.credit_expires_at,
+                    CASE
+                        WHEN cr.credit_expires_at IS NULL THEN true
+                        WHEN cr.credit_expires_at > now() THEN true
+                        ELSE false
+                    END AS is_active
+                FROM coupon_redemptions cr
+                JOIN coupons c ON c.code = cr.coupon_code
+                WHERE cr.uid = %s
+                ORDER BY cr.redeemed_at DESC
+                """,
+                (target_uid,),
+            )
+            coupons = [dict(r) for r in cur.fetchall()]
+
+    # ── Per-interaction breakdown (current month) ─────────────────────────────
+    breakdown = svc_usage_breakdown(target_uid)
+
+    # ── Monthly history (last 12 months) ─────────────────────────────────────
+    history = get_usage_history(target_uid, months=12)
+
+    # Split the flat SQL row into logical sections
+    usage_keys = {"spent_cents", "budget_cents", "input_tokens", "output_tokens",
+                  "cached_input_tokens", "message_count", "pct_used"}
+    current_month = {k: profile.pop(k) for k in list(profile) if k in usage_keys}
+
+    return {
+        "profile": profile,
+        "current_month": current_month,
+        "lifetime": lifetime,
+        "breakdown": breakdown,
+        "history": history,
+        "coupons": coupons,
     }
 
 
