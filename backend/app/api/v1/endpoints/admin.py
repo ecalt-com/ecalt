@@ -561,6 +561,568 @@ def get_user_detail(target_uid: str, _uid: str = Depends(get_admin_user)):
     }
 
 
+@router.get("/cost-analysis")
+def get_cost_analysis(_uid: str = Depends(get_admin_user)):
+    """AI cost & margin risk analysis across plans, users, interaction types, and cache trend."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+
+            # Query 1 — cost vs revenue per plan
+            cur.execute(
+                """
+                SELECT
+                    pc.plan_id,
+                    pc.name                                         AS plan_name,
+                    pc.base_price_cents                             AS price_cents,
+                    pc.token_budget_cents                           AS budget_cents,
+                    COUNT(DISTINCT s.uid)                           AS active_users,
+                    COALESCE(SUM(tu.estimated_cost_cents), 0)       AS total_spent_cents,
+                    COALESCE(AVG(tu.estimated_cost_cents), 0)       AS avg_spent_cents,
+                    COALESCE(MAX(tu.estimated_cost_cents), 0)       AS max_spent_cents,
+                    CASE WHEN pc.base_price_cents > 0
+                         THEN ROUND((COALESCE(SUM(tu.estimated_cost_cents), 0) /
+                              (pc.base_price_cents * NULLIF(COUNT(DISTINCT s.uid), 0)) * 100)::numeric, 1)
+                         ELSE 0 END                                 AS cost_revenue_pct
+                FROM plan_configs pc
+                LEFT JOIN subscriptions s
+                    ON s.plan_id = pc.plan_id AND s.status IN ('active', 'trialing')
+                LEFT JOIN token_usage tu
+                    ON tu.uid = s.uid
+                    AND tu.period_start = date_trunc('month', now())::date
+                GROUP BY pc.plan_id, pc.name, pc.base_price_cents, pc.token_budget_cents
+                ORDER BY pc.base_price_cents DESC
+                """
+            )
+            plan_margins = [dict(r) for r in cur.fetchall()]
+
+            # Query 2 — users at risk (>75% of budget used this month)
+            cur.execute(
+                """
+                SELECT
+                    u.uid, u.email, u.display_name,
+                    COALESCE(s.plan_id, 'free_trial')               AS plan_id,
+                    pc.token_budget_cents                            AS budget_cents,
+                    tu.estimated_cost_cents                          AS spent_cents,
+                    ROUND((tu.estimated_cost_cents /
+                           pc.token_budget_cents * 100)::numeric, 1) AS pct_used
+                FROM token_usage tu
+                JOIN users u ON u.uid = tu.uid
+                LEFT JOIN subscriptions s
+                    ON s.uid = tu.uid AND s.status IN ('active', 'trialing')
+                JOIN plan_configs pc
+                    ON pc.plan_id = COALESCE(s.plan_id, 'free_trial')
+                WHERE tu.period_start = date_trunc('month', now())::date
+                  AND pc.token_budget_cents > 0
+                  AND (tu.estimated_cost_cents / pc.token_budget_cents) >= 0.75
+                ORDER BY pct_used DESC
+                LIMIT 50
+                """
+            )
+            at_risk_users = [dict(r) for r in cur.fetchall()]
+
+            # Query 3 — cost by interaction type (all users, this month)
+            cur.execute(
+                """
+                SELECT
+                    interaction_type,
+                    COUNT(DISTINCT uid)              AS user_count,
+                    SUM(request_count)               AS total_requests,
+                    SUM(input_tokens)                AS total_input_tokens,
+                    SUM(output_tokens)               AS total_output_tokens,
+                    SUM(estimated_cost_cents)        AS total_cost_cents,
+                    AVG(estimated_cost_cents)        AS avg_cost_per_user_cents
+                FROM usage_by_interaction
+                WHERE period_start = date_trunc('month', now())::date
+                GROUP BY interaction_type
+                ORDER BY total_cost_cents DESC
+                """
+            )
+            by_interaction = [dict(r) for r in cur.fetchall()]
+
+            # Query 4 — cache hit rate last 6 months
+            cur.execute(
+                """
+                SELECT
+                    period_start,
+                    SUM(input_tokens)                AS total_input,
+                    SUM(cached_input_tokens)         AS total_cached,
+                    ROUND(
+                        CASE WHEN SUM(input_tokens) > 0
+                             THEN SUM(cached_input_tokens)::numeric / SUM(input_tokens) * 100
+                             ELSE 0 END, 1
+                    )                                AS cache_hit_pct,
+                    SUM(estimated_cost_cents)        AS total_cost_cents
+                FROM token_usage
+                WHERE period_start >= date_trunc('month', now() - interval '5 months')::date
+                GROUP BY period_start
+                ORDER BY period_start
+                """
+            )
+            cache_trend = [
+                {**dict(r), "period_start": str(r["period_start"])}
+                for r in cur.fetchall()
+            ]
+
+    return {
+        "plan_margins": plan_margins,
+        "at_risk_users": at_risk_users,
+        "by_interaction": by_interaction,
+        "cache_trend": cache_trend,
+    }
+
+
+@router.get("/content-stats")
+def get_content_stats(journey_id: Optional[str] = None, _uid: str = Depends(get_admin_user)):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            if journey_id:
+                cur.execute(
+                    """
+                    SELECT
+                        up.step_id,
+                        COUNT(DISTINCT up.uid) AS completions
+                    FROM user_progress up
+                    WHERE up.journey_id = %s
+                    GROUP BY up.step_id
+                    ORDER BY completions DESC
+                    """,
+                    (journey_id,),
+                )
+                return {"step_dropoff": [dict(r) for r in cur.fetchall()]}
+
+            cur.execute(
+                """
+                SELECT
+                    j.id, j.title, j.icon, j.difficulty,
+                    j.estimated_hours, j.age_group,
+                    COUNT(DISTINCT up.uid)                        AS unique_learners,
+                    COUNT(*)                                      AS total_step_completions,
+                    jsonb_array_length(j.steps)                  AS total_steps,
+                    COUNT(DISTINCT CASE
+                        WHEN step_counts.completed = jsonb_array_length(j.steps)
+                        THEN step_counts.uid END)                AS fully_completed_users,
+                    ROUND(
+                        COUNT(DISTINCT CASE
+                            WHEN step_counts.completed = jsonb_array_length(j.steps)
+                            THEN step_counts.uid END
+                        )::numeric /
+                        NULLIF(COUNT(DISTINCT up.uid), 0) * 100
+                    , 1)                                         AS completion_pct
+                FROM journeys j
+                LEFT JOIN user_progress up ON up.journey_id = j.id
+                LEFT JOIN (
+                    SELECT journey_id, uid, COUNT(*) AS completed
+                    FROM user_progress
+                    GROUP BY journey_id, uid
+                ) step_counts ON step_counts.journey_id = j.id
+                             AND step_counts.uid = up.uid
+                GROUP BY j.id, j.title, j.icon, j.difficulty, j.estimated_hours, j.age_group
+                HAVING COUNT(DISTINCT up.uid) > 0
+                ORDER BY unique_learners DESC
+                LIMIT 20
+                """
+            )
+            top_journeys = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                """
+                SELECT
+                    COUNT(DISTINCT journey_id) AS journeys_started,
+                    COUNT(DISTINCT uid)        AS users_with_progress,
+                    ROUND(AVG(pct)::numeric, 1) AS avg_completion_pct
+                FROM (
+                    SELECT
+                        up.uid, up.journey_id,
+                        COUNT(up.step_id)::float /
+                        NULLIF(jsonb_array_length(j.steps), 0) * 100 AS pct
+                    FROM user_progress up
+                    JOIN journeys j ON j.id = up.journey_id
+                    GROUP BY up.uid, up.journey_id, j.steps
+                ) sub
+                """
+            )
+            summary = dict(cur.fetchone())
+
+            cur.execute(
+                """
+                SELECT
+                    c.id, c.title, c.uid,
+                    u.email, u.display_name,
+                    COUNT(*)              AS message_count,
+                    MAX(cm.created_at)   AS last_message_at
+                FROM conversations c
+                JOIN conversation_messages cm ON cm.conversation_id = c.id
+                JOIN users u ON u.uid = c.uid
+                WHERE c.started_at >= now() - interval '30 days'
+                GROUP BY c.id, c.title, c.uid, u.email, u.display_name
+                ORDER BY message_count DESC
+                LIMIT 20
+                """
+            )
+            top_conversations = []
+            for r in cur.fetchall():
+                row = dict(r)
+                if row.get("last_message_at"):
+                    row["last_message_at"] = row["last_message_at"].isoformat()
+                top_conversations.append(row)
+
+            cur.execute(
+                """
+                SELECT
+                    discovered_at::date       AS day,
+                    COUNT(*)                  AS new_concepts,
+                    COUNT(DISTINCT uid)       AS unique_users
+                FROM knowledge_nodes
+                WHERE discovered_at >= now() - interval '14 days'
+                GROUP BY day
+                ORDER BY day
+                """
+            )
+            knowledge_growth = [
+                {**dict(r), "day": str(r["day"])}
+                for r in cur.fetchall()
+            ]
+
+    return {
+        "top_journeys": top_journeys,
+        "completion_summary": {
+            "journeys_started": int(summary["journeys_started"] or 0),
+            "users_with_progress": int(summary["users_with_progress"] or 0),
+            "avg_completion_pct": float(summary["avg_completion_pct"] or 0),
+        },
+        "top_conversations": top_conversations,
+        "knowledge_growth": knowledge_growth,
+    }
+
+
+@router.get("/funnel")
+def get_funnel(_uid: str = Depends(get_admin_user)):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH signups AS (
+                    SELECT uid, created_at::date AS signup_date
+                    FROM users
+                ),
+                conversions AS (
+                    SELECT s.uid, MIN(s.created_at) AS converted_at
+                    FROM subscriptions s
+                    WHERE s.status IN ('active', 'trialing')
+                      AND s.plan_id != 'free_trial'
+                    GROUP BY s.uid
+                )
+                SELECT
+                    COUNT(DISTINCT sg.uid)                              AS total_signups,
+                    COUNT(DISTINCT CASE
+                        WHEN co.converted_at::date <= sg.signup_date + 30
+                        THEN sg.uid END)                                AS converted_30d,
+                    COUNT(DISTINCT CASE
+                        WHEN co.converted_at::date <= sg.signup_date + 60
+                        THEN sg.uid END)                                AS converted_60d,
+                    COUNT(DISTINCT CASE
+                        WHEN co.converted_at::date <= sg.signup_date + 90
+                        THEN sg.uid END)                                AS converted_90d,
+                    ROUND(AVG(
+                        CASE WHEN co.converted_at IS NOT NULL
+                             THEN (co.converted_at::date - sg.signup_date)
+                        END
+                    )::numeric, 1)                                      AS avg_days_to_convert
+                FROM signups sg
+                LEFT JOIN conversions co ON co.uid = sg.uid
+                WHERE sg.signup_date >= CURRENT_DATE - 180
+                """
+            )
+            conv_row = dict(cur.fetchone())
+            total = int(conv_row["total_signups"])
+
+            def _pct(n):
+                return round(int(n) / total * 100, 1) if total > 0 else 0.0
+
+            cur.execute(
+                """
+                SELECT
+                    date_trunc('month', current_period_end)::date AS month,
+                    COUNT(*)                                      AS cancellations
+                FROM subscriptions
+                WHERE status = 'cancelled'
+                  AND current_period_end >= now() - interval '6 months'
+                GROUP BY month
+                ORDER BY month
+                """
+            )
+            cancels = {str(r["month"]): int(r["cancellations"]) for r in cur.fetchall()}
+
+            cur.execute(
+                """
+                SELECT
+                    date_trunc('month', created_at)::date AS month,
+                    COUNT(*)                              AS new_subscriptions
+                FROM subscriptions
+                WHERE status IN ('active', 'trialing')
+                  AND plan_id != 'free_trial'
+                  AND created_at >= now() - interval '6 months'
+                GROUP BY month
+                ORDER BY month
+                """
+            )
+            activations = {str(r["month"]): int(r["new_subscriptions"]) for r in cur.fetchall()}
+
+            all_months = sorted(set(cancels) | set(activations))
+            monthly_churn = [
+                {
+                    "month": m,
+                    "cancellations": cancels.get(m, 0),
+                    "new_subscriptions": activations.get(m, 0),
+                }
+                for m in all_months
+            ]
+
+            cur.execute(
+                """
+                SELECT
+                    u.uid, u.email, u.display_name,
+                    u.created_at::date AS signup_date,
+                    COALESCE(mc.n, 0)  AS lifetime_messages
+                FROM users u
+                LEFT JOIN subscriptions s
+                    ON s.uid = u.uid AND s.status IN ('active', 'trialing')
+                    AND s.plan_id != 'free_trial'
+                LEFT JOIN (
+                    SELECT c.uid, COUNT(*) AS n
+                    FROM conversation_messages cm
+                    JOIN conversations c ON c.id = cm.conversation_id
+                    WHERE cm.role = 'user'
+                    GROUP BY c.uid
+                ) mc ON mc.uid = u.uid
+                WHERE s.uid IS NULL
+                  AND COALESCE(mc.n, 0) >= 6
+                ORDER BY u.created_at DESC
+                LIMIT 100
+                """
+            )
+            exhausted = []
+            for r in cur.fetchall():
+                row = dict(r)
+                row["signup_date"] = str(row["signup_date"]) if row["signup_date"] else None
+                exhausted.append(row)
+
+    return {
+        "conversion": {
+            "total_signups_180d": total,
+            "converted_30d": int(conv_row["converted_30d"]),
+            "converted_30d_pct": _pct(conv_row["converted_30d"]),
+            "converted_60d": int(conv_row["converted_60d"]),
+            "converted_60d_pct": _pct(conv_row["converted_60d"]),
+            "converted_90d": int(conv_row["converted_90d"]),
+            "converted_90d_pct": _pct(conv_row["converted_90d"]),
+            "avg_days_to_convert": float(conv_row["avg_days_to_convert"]) if conv_row["avg_days_to_convert"] else None,
+        },
+        "monthly_churn": monthly_churn,
+        "trial_exhausted_never_upgraded": exhausted,
+    }
+
+
+@router.get("/feature-usage")
+def get_feature_usage(_uid: str = Depends(get_admin_user)):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    interaction_type,
+                    COUNT(DISTINCT uid)         AS unique_users,
+                    SUM(request_count)          AS total_requests,
+                    SUM(input_tokens)           AS total_input_tokens,
+                    SUM(output_tokens)          AS total_output_tokens,
+                    SUM(cached_input_tokens)    AS total_cached_tokens,
+                    SUM(estimated_cost_cents)   AS total_cost_cents,
+                    ROUND(AVG(estimated_cost_cents / NULLIF(request_count, 0))::numeric, 6)
+                                                AS avg_cost_per_request_cents
+                FROM usage_by_interaction
+                WHERE period_start = date_trunc('month', now())::date
+                GROUP BY interaction_type
+                ORDER BY total_requests DESC
+                """
+            )
+            this_month = [dict(r) for r in cur.fetchall()]
+
+            cur.execute(
+                """
+                SELECT
+                    period_start,
+                    interaction_type,
+                    SUM(request_count)        AS total_requests,
+                    SUM(estimated_cost_cents) AS total_cost_cents
+                FROM usage_by_interaction
+                WHERE period_start >= date_trunc('month', now() - interval '5 months')::date
+                GROUP BY period_start, interaction_type
+                ORDER BY period_start, total_requests DESC
+                """
+            )
+            trend = [
+                {**dict(r), "period_start": str(r["period_start"])}
+                for r in cur.fetchall()
+            ]
+
+            cur.execute(
+                """
+                SELECT
+                    cm.model_used,
+                    COUNT(*)                          AS message_count,
+                    COALESCE(SUM(tu.estimated_cost_cents), 0) AS total_cost_cents
+                FROM conversation_messages cm
+                JOIN conversations c ON c.id = cm.conversation_id
+                LEFT JOIN token_usage tu
+                    ON tu.uid = c.uid
+                    AND tu.period_start = date_trunc('month', now())::date
+                WHERE cm.created_at >= date_trunc('month', now())
+                  AND cm.role = 'assistant'
+                  AND cm.model_used IS NOT NULL
+                GROUP BY cm.model_used
+                ORDER BY message_count DESC
+                """
+            )
+            models = [dict(r) for r in cur.fetchall()]
+
+    return {"this_month": this_month, "trend": trend, "models": models}
+
+
+@router.get("/retention")
+def get_retention(_uid: str = Depends(get_admin_user)):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    COUNT(DISTINCT CASE WHEN last_active_date = CURRENT_DATE
+                                        THEN uid END) AS dau,
+                    COUNT(DISTINCT CASE WHEN last_active_date >= CURRENT_DATE - 6
+                                        THEN uid END) AS wau,
+                    COUNT(DISTINCT CASE WHEN last_active_date >= CURRENT_DATE - 29
+                                        THEN uid END) AS mau
+                FROM users
+                """
+            )
+            active = dict(cur.fetchone())
+            dau = int(active["dau"])
+            wau = int(active["wau"])
+            mau = int(active["mau"])
+            stickiness = round(dau / mau * 100, 1) if mau > 0 else 0.0
+
+            cur.execute(
+                """
+                WITH cohort AS (
+                    SELECT
+                        u.uid,
+                        u.created_at::date AS signup_date,
+                        MIN(tu_all.period_start) AS first_active_month
+                    FROM users u
+                    LEFT JOIN token_usage tu_all ON tu_all.uid = u.uid
+                    WHERE u.created_at >= now() - interval '60 days'
+                    GROUP BY u.uid, u.created_at
+                ),
+                activity AS (
+                    SELECT DISTINCT
+                        c.uid,
+                        cm.created_at::date AS active_date
+                    FROM conversation_messages cm
+                    JOIN conversations c ON c.id = cm.conversation_id
+                    WHERE cm.role = 'user'
+                )
+                SELECT
+                    COUNT(DISTINCT c.uid) AS cohort_size,
+                    COUNT(DISTINCT CASE
+                        WHEN a.active_date BETWEEN c.signup_date + 1
+                                               AND c.signup_date + 2
+                        THEN c.uid END) AS retained_d1,
+                    COUNT(DISTINCT CASE
+                        WHEN a.active_date BETWEEN c.signup_date + 7
+                                               AND c.signup_date + 14
+                        THEN c.uid END) AS retained_d7,
+                    COUNT(DISTINCT CASE
+                        WHEN a.active_date BETWEEN c.signup_date + 30
+                                               AND c.signup_date + 60
+                        THEN c.uid END) AS retained_d30
+                FROM cohort c
+                LEFT JOIN activity a ON a.uid = c.uid
+                """
+            )
+            ret_row = dict(cur.fetchone())
+            cohort_size = int(ret_row["cohort_size"])
+            d1_count = int(ret_row["retained_d1"])
+            d7_count = int(ret_row["retained_d7"])
+            d30_count = int(ret_row["retained_d30"])
+
+            def _pct(count: int, total: int) -> float:
+                return round(count / total * 100, 1) if total > 0 else 0.0
+
+            cur.execute(
+                """
+                SELECT
+                    date_trunc('week', created_at)::date AS week_start,
+                    COUNT(*) AS new_users
+                FROM users
+                WHERE created_at >= now() - interval '12 weeks'
+                GROUP BY week_start
+                ORDER BY week_start
+                """
+            )
+            weekly_signups = [
+                {"week_start": str(r["week_start"]), "new_users": r["new_users"]}
+                for r in cur.fetchall()
+            ]
+
+            cur.execute(
+                """
+                SELECT
+                    u.uid, u.email, u.display_name,
+                    u.created_at::date                        AS signup_date,
+                    COALESCE(s.plan_id, 'free_trial')         AS plan_id,
+                    COALESCE(tu.message_count, 0)             AS ai_requests_ever,
+                    u.last_active_date
+                FROM users u
+                LEFT JOIN subscriptions s
+                    ON s.uid = u.uid AND s.status IN ('active', 'trialing')
+                LEFT JOIN token_usage tu
+                    ON tu.uid = u.uid
+                    AND tu.period_start = date_trunc('month', now())::date
+                WHERE u.created_at <= now() - interval '3 days'
+                  AND (u.last_active_date IS NULL
+                       OR u.last_active_date < CURRENT_DATE - 14)
+                ORDER BY u.created_at DESC
+                LIMIT 100
+                """
+            )
+            inactive_users = []
+            for r in cur.fetchall():
+                row = dict(r)
+                row["signup_date"] = str(row["signup_date"]) if row["signup_date"] else None
+                row["last_active_date"] = str(row["last_active_date"]) if row["last_active_date"] else None
+                inactive_users.append(row)
+
+    return {
+        "active_users": {
+            "dau": dau,
+            "wau": wau,
+            "mau": mau,
+            "stickiness": stickiness,
+        },
+        "retention": {
+            "cohort_size": cohort_size,
+            "cohort_window": "last 60 days",
+            "d1_count": d1_count,
+            "d1_pct": _pct(d1_count, cohort_size),
+            "d7_count": d7_count,
+            "d7_pct": _pct(d7_count, cohort_size),
+            "d30_count": d30_count,
+            "d30_pct": _pct(d30_count, cohort_size),
+        },
+        "weekly_signups": weekly_signups,
+        "inactive_users": inactive_users,
+    }
+
+
 @router.patch("/users/{target_uid}/toggle-admin")
 def toggle_admin(target_uid: str, acting_uid: str = Depends(get_admin_user)):
     """Promote or demote a user's admin status."""

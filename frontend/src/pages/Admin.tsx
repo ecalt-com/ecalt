@@ -169,6 +169,162 @@ interface DailyUsage {
   messages: number
 }
 
+interface PlanMargin {
+  plan_id: string
+  plan_name: string
+  price_cents: number
+  budget_cents: number
+  active_users: number
+  total_spent_cents: number
+  avg_spent_cents: number
+  max_spent_cents: number
+  cost_revenue_pct: number
+}
+
+interface AtRiskUser {
+  uid: string
+  email: string | null
+  display_name: string | null
+  plan_id: string
+  budget_cents: number
+  spent_cents: number
+  pct_used: number
+}
+
+interface ByInteractionRow {
+  interaction_type: string
+  user_count: number
+  total_requests: number
+  total_input_tokens: number
+  total_output_tokens: number
+  total_cost_cents: number
+  avg_cost_per_user_cents: number
+}
+
+interface CacheTrendPoint {
+  period_start: string
+  total_input: number
+  total_cached: number
+  cache_hit_pct: number
+  total_cost_cents: number
+}
+
+interface CostAnalysis {
+  plan_margins: PlanMargin[]
+  at_risk_users: AtRiskUser[]
+  by_interaction: ByInteractionRow[]
+  cache_trend: CacheTrendPoint[]
+}
+
+interface TopJourney {
+  id: string
+  title: string
+  icon: string | null
+  difficulty: string | null
+  estimated_hours: number | null
+  age_group: string | null
+  unique_learners: number
+  total_step_completions: number
+  total_steps: number
+  fully_completed_users: number
+  completion_pct: number
+}
+
+interface ContentData {
+  top_journeys: TopJourney[]
+  completion_summary: {
+    journeys_started: number
+    users_with_progress: number
+    avg_completion_pct: number
+  }
+  top_conversations: {
+    id: string
+    title: string | null
+    uid: string
+    email: string | null
+    display_name: string | null
+    message_count: number
+    last_message_at: string | null
+  }[]
+  knowledge_growth: {
+    day: string
+    new_concepts: number
+    unique_users: number
+  }[]
+}
+
+interface StepDropoff {
+  step_id: string
+  completions: number
+}
+
+interface FunnelData {
+  conversion: {
+    total_signups_180d: number
+    converted_30d: number; converted_30d_pct: number
+    converted_60d: number; converted_60d_pct: number
+    converted_90d: number; converted_90d_pct: number
+    avg_days_to_convert: number | null
+  }
+  monthly_churn: {
+    month: string
+    cancellations: number
+    new_subscriptions: number
+  }[]
+  trial_exhausted_never_upgraded: {
+    uid: string
+    email: string | null
+    display_name: string | null
+    signup_date: string | null
+    lifetime_messages: number
+  }[]
+}
+
+interface FeatureUsageSummary {
+  interaction_type: string
+  unique_users: number
+  total_requests: number
+  total_input_tokens: number
+  total_output_tokens: number
+  total_cached_tokens: number
+  total_cost_cents: number
+  avg_cost_per_request_cents: number
+}
+
+interface FeatureTrendPoint {
+  period_start: string
+  interaction_type: string
+  total_requests: number
+  total_cost_cents: number
+}
+
+interface FeatureUsageData {
+  this_month: FeatureUsageSummary[]
+  trend: FeatureTrendPoint[]
+  models: { model_used: string; message_count: number; total_cost_cents: number }[]
+}
+
+interface RetentionData {
+  active_users: { dau: number; wau: number; mau: number; stickiness: number }
+  retention: {
+    cohort_size: number
+    cohort_window: string
+    d1_count: number; d1_pct: number
+    d7_count: number; d7_pct: number
+    d30_count: number; d30_pct: number
+  }
+  weekly_signups: { week_start: string; new_users: number }[]
+  inactive_users: {
+    uid: string
+    email: string | null
+    display_name: string | null
+    signup_date: string | null
+    plan_id: string
+    ai_requests_ever: number
+    last_active_date: string | null
+  }[]
+}
+
 const PLAN_ICONS: Record<string, React.ElementType> = {
   free_trial: Zap, individual: Zap, student: GraduationCap,
   family: Users, university: Building2, enterprise: Building2,
@@ -220,6 +376,75 @@ const fmtTokens = (n: number) =>
 const fmtMonth = (iso: string) =>
   new Date(iso + 'T00:00:00').toLocaleString('default', { month: 'short', year: 'numeric' })
 
+const FEATURE_COLORS = ['bg-violet-500', 'bg-emerald-500', 'bg-amber-400', 'bg-sky-500']
+const OTHER_COLOR = 'bg-slate-400'
+
+function FeatureTrendChart({ trend }: { trend: FeatureTrendPoint[] }) {
+  const featureTotals: Record<string, number> = {}
+  trend.forEach(r => {
+    featureTotals[r.interaction_type] = (featureTotals[r.interaction_type] ?? 0) + Number(r.total_requests)
+  })
+  const topFeatures = Object.entries(featureTotals)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 4)
+    .map(([k]) => k)
+
+  const byMonth: Record<string, Record<string, number>> = {}
+  trend.forEach(r => {
+    if (!byMonth[r.period_start]) byMonth[r.period_start] = {}
+    const key = topFeatures.includes(r.interaction_type) ? r.interaction_type : '__other__'
+    byMonth[r.period_start][key] = (byMonth[r.period_start][key] ?? 0) + Number(r.total_cost_cents)
+  })
+  const uniqueMonths = Object.keys(byMonth).sort()
+  const hasOther = trend.some(r => !topFeatures.includes(r.interaction_type))
+  const displayFeatures = hasOther ? [...topFeatures, '__other__'] : topFeatures
+  const maxGroupVal = Math.max(
+    ...uniqueMonths.map(m => displayFeatures.reduce((s, f) => s + (byMonth[m]?.[f] ?? 0), 0)),
+    1,
+  )
+
+  return (
+    <>
+      <div className="flex items-end gap-3 h-24">
+        {uniqueMonths.map(month => (
+          <div key={month} className="flex-1 flex flex-col justify-end min-w-0">
+            <div className="flex items-end gap-0.5 h-20">
+              {displayFeatures.map((feat, i) => {
+                const val = byMonth[month]?.[feat] ?? 0
+                const pct = (val / maxGroupVal) * 100
+                const color = feat === '__other__' ? OTHER_COLOR : (FEATURE_COLORS[i] ?? OTHER_COLOR)
+                return (
+                  <div
+                    key={feat}
+                    className="flex-1 flex items-end min-w-0 h-full"
+                    title={`${feat === '__other__' ? 'Other' : (INTERACTION_LABELS[feat] ?? feat)}: ${fmtCents(val)}`}
+                  >
+                    <div
+                      className={`w-full rounded-t ${color}`}
+                      style={{ height: val > 0 ? `${Math.max(pct, 4)}%` : '0' }}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+            <p className="text-[9px] text-slate-400 text-center mt-1 truncate">{fmtMonth(month)}</p>
+          </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-3 mt-3">
+        {displayFeatures.map((feat, i) => (
+          <div key={feat} className="flex items-center gap-1.5">
+            <div className={`w-2 h-2 rounded-sm ${feat === '__other__' ? OTHER_COLOR : (FEATURE_COLORS[i] ?? OTHER_COLOR)}`} />
+            <span className="text-[10px] text-slate-500">
+              {feat === '__other__' ? 'Other' : (INTERACTION_LABELS[feat] ?? feat)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </>
+  )
+}
+
 export default function Admin() {
   const navigate = useNavigate()
   const { getToken, user } = useAuth()
@@ -232,13 +457,21 @@ export default function Admin() {
   const [usageByModel, setUsageByModel] = useState<UsageByModel[]>([])
   const [dailyUsage, setDailyUsage] = useState<DailyUsage[]>([])
   const [revenue, setRevenue] = useState<RevenueData | null>(null)
+  const [costAnalysis, setCostAnalysis] = useState<CostAnalysis | null>(null)
+  const [retentionData, setRetentionData] = useState<RetentionData | null>(null)
+  const [featureUsage, setFeatureUsage] = useState<FeatureUsageData | null>(null)
+  const [funnelData, setFunnelData] = useState<FunnelData | null>(null)
+  const [contentData, setContentData] = useState<ContentData | null>(null)
+  const [expandedJourneyId, setExpandedJourneyId] = useState<string | null>(null)
+  const [journeyDropoff, setJourneyDropoff] = useState<Record<string, StepDropoff[]>>({})
+  const [loadingDropoff, setLoadingDropoff] = useState<string | null>(null)
 
   const [saving, setSaving] = useState<string | null>(null)
   const [savingAI, setSavingAI] = useState<string | null>(null)
   const [edits, setEdits] = useState<Record<string, Partial<PlanRow>>>({})
   const [aiEdits, setAiEdits] = useState<Record<string, AIConfig>>({})
   const [togglingUid, setTogglingUid] = useState<string | null>(null)
-  const [tab, setTab] = useState<'overview' | 'plans' | 'ai' | 'users' | 'coupons' | 'revenue'>('overview')
+  const [tab, setTab] = useState<'overview' | 'plans' | 'ai' | 'users' | 'coupons' | 'revenue' | 'retention' | 'funnel' | 'content'>('overview')
   const [userSearch, setUserSearch] = useState('')
 
   // Coupon state
@@ -278,14 +511,19 @@ export default function Admin() {
       const token = await getToken()
       if (!token) return
 
-      const [pRes, sRes, uRes, aiRes, usageRes, cRes, revRes] = await Promise.all([
-        fetch('/api/v1/admin/plans',     { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/stats',     { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/users',     { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/ai-config', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/usage',     { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/coupons/admin',   { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/revenue',   { headers: { Authorization: `Bearer ${token}` } }),
+      const [pRes, sRes, uRes, aiRes, usageRes, cRes, revRes, costRes, retRes, fuRes, fnRes, csRes] = await Promise.all([
+        fetch('/api/v1/admin/plans',          { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/stats',          { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/users',          { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/ai-config',      { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/usage',          { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/coupons/admin',        { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/revenue',        { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/cost-analysis',  { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/retention',      { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/feature-usage',  { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/funnel',          { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/admin/content-stats',   { headers: { Authorization: `Bearer ${token}` } }),
       ])
 
       if (pRes.status === 403) { navigate('/'); return }
@@ -304,6 +542,11 @@ export default function Admin() {
       }
       if (!cancelled && cRes.ok) setCoupons(await cRes.json().then((d: any) => d.coupons ?? []))
       if (!cancelled && revRes.ok) setRevenue(await revRes.json())
+      if (!cancelled && costRes.ok) setCostAnalysis(await costRes.json())
+      if (!cancelled && retRes.ok) setRetentionData(await retRes.json())
+      if (!cancelled && fuRes.ok) setFeatureUsage(await fuRes.json())
+      if (!cancelled && fnRes.ok) setFunnelData(await fnRes.json())
+      if (!cancelled && csRes.ok) setContentData(await csRes.json())
     }
     load().catch(() => navigate('/'))
     return () => { cancelled = true }
@@ -442,6 +685,25 @@ export default function Admin() {
     }
   }
 
+  const handleExpandJourney = async (journeyId: string) => {
+    if (expandedJourneyId === journeyId) { setExpandedJourneyId(null); return }
+    setExpandedJourneyId(journeyId)
+    if (journeyDropoff[journeyId]) return
+    setLoadingDropoff(journeyId)
+    try {
+      const token = await getToken()
+      const res = await fetch(`/api/v1/admin/content-stats?journey_id=${journeyId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (res.ok) {
+        const data = await res.json()
+        setJourneyDropoff(prev => ({ ...prev, [journeyId]: data.step_dropoff ?? [] }))
+      }
+    } finally {
+      setLoadingDropoff(null)
+    }
+  }
+
   const handleProvision = async (planId: string, gateway: 'stripe' | 'razorpay' | 'both') => {
     setProvisioning(prev => ({ ...prev, [planId]: gateway }))
     try {
@@ -501,12 +763,15 @@ export default function Admin() {
   }
 
   const TABS = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'plans',    label: 'Pricing Plans' },
-    { id: 'ai',       label: 'AI Providers' },
-    { id: 'users',    label: 'Users' },
-    { id: 'coupons',  label: 'Coupons' },
-    { id: 'revenue',  label: 'Revenue' },
+    { id: 'overview',   label: 'Overview' },
+    { id: 'plans',      label: 'Pricing Plans' },
+    { id: 'ai',         label: 'AI Providers' },
+    { id: 'users',      label: 'Users' },
+    { id: 'coupons',    label: 'Coupons' },
+    { id: 'revenue',    label: 'Revenue' },
+    { id: 'retention',  label: 'Retention' },
+    { id: 'funnel',     label: 'Funnel' },
+    { id: 'content',    label: 'Content' },
   ] as const
 
   const inputCls = 'mt-1 w-full bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs px-2 py-1.5 rounded-lg outline-none border border-slate-200 dark:border-slate-700 focus:border-violet-400 dark:focus:border-violet-500/50'
@@ -582,6 +847,111 @@ export default function Admin() {
                     </span>
                   </div>
                 ))}
+              </div>
+
+              {/* Feature Usage section */}
+              <div className="mt-8">
+                <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">
+                  Feature Usage — {new Date().toLocaleString('default', { month: 'long', year: 'numeric' })}
+                </h2>
+
+                {!featureUsage ? (
+                  <div className="flex items-center gap-2 text-slate-500 text-sm mb-6">
+                    <Loader2 size={14} className="animate-spin" /> Loading feature data…
+                  </div>
+                ) : (
+                  <>
+                    {/* Feature summary table */}
+                    <div className="glass-card rounded-xl overflow-hidden mb-6">
+                      {featureUsage.this_month.length === 0 ? (
+                        <p className="text-xs text-slate-400 px-4 py-6 text-center">No feature usage data for this month yet.</p>
+                      ) : (
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-slate-200 dark:border-slate-700">
+                              <th className="text-left px-4 py-2.5 text-slate-500 font-semibold">Feature</th>
+                              <th className="text-right px-4 py-2.5 text-slate-500 font-semibold hidden sm:table-cell">Users</th>
+                              <th className="text-right px-4 py-2.5 text-slate-500 font-semibold">Requests</th>
+                              <th className="text-right px-4 py-2.5 text-slate-500 font-semibold">Cost</th>
+                              <th className="text-right px-4 py-2.5 text-slate-500 font-semibold hidden md:table-cell">Cost/req</th>
+                              <th className="px-4 py-2.5 text-slate-500 font-semibold hidden lg:table-cell w-40">Share</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {featureUsage.this_month.map(r => {
+                              const totalCost = featureUsage.this_month.reduce((s, x) => s + Number(x.total_cost_cents), 0)
+                              const share = totalCost > 0 ? (Number(r.total_cost_cents) / totalCost) * 100 : 0
+                              return (
+                                <tr key={r.interaction_type} className="border-b border-slate-100 dark:border-slate-800 last:border-0">
+                                  <td className="px-4 py-2.5 font-medium text-slate-700 dark:text-slate-300">
+                                    {INTERACTION_LABELS[r.interaction_type] ?? r.interaction_type}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-500 hidden sm:table-cell">{r.unique_users}</td>
+                                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-500">{Number(r.total_requests).toLocaleString()}</td>
+                                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-600 dark:text-slate-300">{fmtCents(Number(r.total_cost_cents))}</td>
+                                  <td className="px-4 py-2.5 text-right tabular-nums text-slate-400 hidden md:table-cell">
+                                    {r.avg_cost_per_request_cents != null
+                                      ? `$${Number(r.avg_cost_per_request_cents).toFixed(4)}`
+                                      : '—'}
+                                  </td>
+                                  <td className="px-4 py-2.5 hidden lg:table-cell">
+                                    <div className="flex items-center gap-2">
+                                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
+                                        <div className="h-full rounded-full bg-violet-500" style={{ width: `${share}%` }} />
+                                      </div>
+                                      <span className="text-[10px] tabular-nums text-slate-400 w-7 text-right shrink-0">{Math.round(share)}%</span>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+
+                    {/* 6-month trend grouped bar chart */}
+                    <div className="glass-card rounded-xl p-5 mb-6">
+                      <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-4">6-Month Cost Trend per Feature</h2>
+                      {featureUsage.trend.length === 0 ? (
+                        <p className="text-xs text-slate-400">No trend data yet.</p>
+                      ) : (
+                        <FeatureTrendChart trend={featureUsage.trend} />
+                      )}
+                    </div>
+
+                    {/* Model distribution */}
+                    <div className="glass-card rounded-xl p-5 mb-4">
+                      <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-4">Model Distribution</h2>
+                      {featureUsage.models.length === 0 ? (
+                        <p className="text-xs text-slate-400">No model data for this month yet.</p>
+                      ) : (
+                        <div className="space-y-2.5">
+                          {featureUsage.models.map(m => {
+                            const maxCount = Math.max(...featureUsage.models.map(x => x.message_count), 1)
+                            return (
+                              <div key={m.model_used} className="flex items-center gap-3">
+                                <span className="text-xs font-mono text-slate-600 dark:text-slate-400 w-36 shrink-0 truncate">{m.model_used}</span>
+                                <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full bg-violet-500/70"
+                                    style={{ width: `${(m.message_count / maxCount) * 100}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs tabular-nums text-slate-500 w-20 text-right shrink-0">
+                                  {m.message_count.toLocaleString()} calls
+                                </span>
+                                <span className="text-xs tabular-nums text-slate-400 w-14 text-right shrink-0 hidden sm:block">
+                                  {fmtCents(m.total_cost_cents)}
+                                </span>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
               </div>
             </>
           )}
@@ -789,6 +1159,253 @@ export default function Admin() {
           {/* AI Providers tab */}
           {tab === 'ai' && (
             <>
+              {/* ── Cost Analysis ─────────────────────────────────────────────── */}
+              {costAnalysis && (
+                <>
+                  {/* 1. Cost vs Revenue by Plan */}
+                  <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">Cost vs Revenue by Plan</h2>
+                  <div className="glass-card rounded-xl overflow-hidden mb-6">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 dark:border-slate-700">
+                          <th className="text-left px-4 py-2.5 text-slate-500 font-semibold">Plan</th>
+                          <th className="text-right px-4 py-2.5 text-slate-500 font-semibold">Users</th>
+                          <th className="text-right px-4 py-2.5 text-slate-500 font-semibold hidden sm:table-cell">Avg/user</th>
+                          <th className="text-right px-4 py-2.5 text-slate-500 font-semibold hidden sm:table-cell">Max/user</th>
+                          <th className="text-right px-4 py-2.5 text-slate-500 font-semibold">Cost/Rev%</th>
+                          <th className="text-right px-4 py-2.5 text-slate-500 font-semibold">Health</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {costAnalysis.plan_margins.map(r => {
+                          const pct = Number(r.cost_revenue_pct)
+                          const health = pct >= 60
+                            ? { label: 'At risk', cls: 'text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10' }
+                            : pct >= 30
+                              ? { label: 'Watch', cls: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10' }
+                              : { label: 'Healthy', cls: 'text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10' }
+                          return (
+                            <tr key={r.plan_id} className="border-b border-slate-100 dark:border-slate-800 last:border-0">
+                              <td className="px-4 py-2.5 text-slate-700 dark:text-slate-300 font-medium">{r.plan_name}</td>
+                              <td className="px-4 py-2.5 text-right tabular-nums text-slate-600 dark:text-slate-400">{r.active_users}</td>
+                              <td className="px-4 py-2.5 text-right tabular-nums text-slate-600 dark:text-slate-400 hidden sm:table-cell">{fmtCents(r.avg_spent_cents)}</td>
+                              <td className="px-4 py-2.5 text-right tabular-nums text-slate-600 dark:text-slate-400 hidden sm:table-cell">{fmtCents(r.max_spent_cents)}</td>
+                              <td className="px-4 py-2.5 text-right tabular-nums text-slate-600 dark:text-slate-400">
+                                {r.price_cents > 0 ? `${pct}%` : '—'}
+                              </td>
+                              <td className="px-4 py-2.5 text-right">
+                                {r.price_cents > 0 ? (
+                                  <span className={clsx('text-[10px] font-semibold px-1.5 py-0.5 rounded', health.cls)}>{health.label}</span>
+                                ) : <span className="text-[10px] text-slate-400">—</span>}
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* 2. Users Near Budget Limit */}
+                  {costAnalysis.at_risk_users.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-2 mb-3">
+                        <AlertTriangle size={13} className="text-amber-500 shrink-0" />
+                        <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                          Users Near Budget Limit
+                          <span className="ml-2 text-amber-500">({costAnalysis.at_risk_users.length} above 75%)</span>
+                        </h2>
+                      </div>
+                      <div className="glass-card rounded-xl overflow-hidden mb-6">
+                        <div className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                          {costAnalysis.at_risk_users.map(u => {
+                            const isExpanded = expandedUid === u.uid
+                            const detail = userDetails[u.uid]
+                            const isLoadingThis = loadingDetail === u.uid
+                            const pct = Math.min(100, u.pct_used)
+                            const barColor = pct >= 90 ? 'bg-rose-500' : 'bg-amber-400'
+                            const txtColor = pct >= 90 ? 'text-rose-500' : 'text-amber-500'
+                            return (
+                              <div key={u.uid}>
+                                <div
+                                  className="px-4 py-3 flex items-center gap-3 cursor-pointer hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors"
+                                  onClick={() => handleExpandUser(u.uid)}
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{u.display_name ?? u.email ?? u.uid}</p>
+                                    <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
+                                  </div>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono shrink-0 hidden sm:block">{u.plan_id}</span>
+                                  <div className="shrink-0 flex flex-col items-end gap-0.5 w-32">
+                                    <div className="flex items-center gap-1.5 w-full">
+                                      <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                                        <div className={clsx('h-full rounded-full', barColor)} style={{ width: `${pct}%` }} />
+                                      </div>
+                                      <span className={clsx('text-[10px] tabular-nums font-semibold w-10 text-right', txtColor)}>{u.pct_used}%</span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-400 tabular-nums">{fmtCents(u.spent_cents)} / {fmtCents(u.budget_cents)}</span>
+                                  </div>
+                                  <div className="text-slate-400 shrink-0">
+                                    {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                  </div>
+                                </div>
+
+                                {isExpanded && (
+                                  <div className="border-t border-slate-100 dark:border-slate-700/50 px-4 pb-5 pt-4">
+                                    {isLoadingThis && (
+                                      <div className="flex items-center gap-2 text-slate-400 text-xs py-4 justify-center">
+                                        <Loader2 size={13} className="animate-spin" /> Loading usage detail…
+                                      </div>
+                                    )}
+                                    {!isLoadingThis && !detail && (
+                                      <p className="text-xs text-slate-400 text-center py-4">Failed to load detail.</p>
+                                    )}
+                                    {!isLoadingThis && detail && (
+                                      <div className="space-y-5">
+                                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                          {[
+                                            { label: 'Plan', value: detail.profile.plan_name },
+                                            { label: 'Status', value: detail.profile.sub_status },
+                                            { label: 'Streak', value: `${detail.profile.streak_days} days` },
+                                            { label: 'Last active', value: detail.profile.last_active_date ? new Date(detail.profile.last_active_date).toLocaleDateString() : '—' },
+                                          ].map(({ label, value }) => (
+                                            <div key={label} className="bg-slate-50 dark:bg-slate-800/40 rounded-lg p-2.5">
+                                              <p className="text-[10px] text-slate-400 uppercase tracking-wide">{label}</p>
+                                              <p className="font-medium text-slate-700 dark:text-slate-200 mt-0.5 truncate">{value}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                        <div>
+                                          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                                            <BarChart2 size={11} /> This Month
+                                          </p>
+                                          {(() => {
+                                            const spent = detail.current_month.spent_cents
+                                            const budget = detail.current_month.budget_cents ?? 0
+                                            const p = calcPct(spent, budget)
+                                            const barCls = p >= 90 ? 'bg-rose-500' : p >= 70 ? 'bg-amber-400' : 'bg-emerald-500'
+                                            const txtCls = p >= 90 ? 'text-rose-500' : p >= 70 ? 'text-amber-500' : 'text-emerald-600 dark:text-emerald-400'
+                                            return (
+                                              <div className="mb-3">
+                                                <div className="flex items-center justify-between text-xs mb-1">
+                                                  <span className="text-slate-600 dark:text-slate-300">{fmtCents(spent)}<span className="text-slate-400"> / {fmtCents(budget)}</span></span>
+                                                  <span className={clsx('font-semibold tabular-nums', txtCls)}>{fmtPct(spent, budget)}</span>
+                                                </div>
+                                                <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
+                                                  <div className={clsx('h-full rounded-full', barCls)} style={{ width: `${Math.max(spent > 0 ? 0.5 : 0, p)}%` }} />
+                                                </div>
+                                              </div>
+                                            )
+                                          })()}
+                                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                                            {[
+                                              { label: 'Requests', value: String(detail.current_month.message_count) },
+                                              { label: 'Input tokens', value: fmtTokens(detail.current_month.input_tokens) },
+                                              { label: 'Output tokens', value: fmtTokens(detail.current_month.output_tokens) },
+                                              { label: 'Cached tokens', value: fmtTokens(detail.current_month.cached_input_tokens) },
+                                            ].map(({ label, value }) => (
+                                              <div key={label} className="bg-slate-50 dark:bg-slate-800/40 rounded-lg p-2.5 text-xs">
+                                                <p className="text-[10px] text-slate-400 uppercase tracking-wide">{label}</p>
+                                                <p className="font-bold text-slate-800 dark:text-slate-100 tabular-nums mt-0.5">{value}</p>
+                                              </div>
+                                            ))}
+                                          </div>
+                                        </div>
+                                        {detail.breakdown.length > 0 && (
+                                          <div>
+                                            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Usage by Feature</p>
+                                            <div className="space-y-1.5">
+                                              {detail.breakdown.map(r => (
+                                                <div key={r.interaction_type} className="flex items-center gap-2 text-xs">
+                                                  <span className="text-slate-600 dark:text-slate-400 w-28 shrink-0 truncate">{INTERACTION_LABELS[r.interaction_type] ?? r.interaction_type}</span>
+                                                  <span className="tabular-nums text-slate-500">{r.request_count} req</span>
+                                                  <span className="tabular-nums text-slate-500 ml-auto">{fmtCents(r.estimated_cost_cents)}</span>
+                                                </div>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* 3. Cost by Feature */}
+                  {costAnalysis.by_interaction.length > 0 && (
+                    <>
+                      <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">Cost by Feature (this month)</h2>
+                      <div className="glass-card rounded-xl p-4 mb-6">
+                        {(() => {
+                          const maxCost = Math.max(...costAnalysis.by_interaction.map(r => r.total_cost_cents), 1)
+                          return (
+                            <div className="space-y-2.5">
+                              {costAnalysis.by_interaction.map(r => (
+                                <div key={r.interaction_type} className="flex items-center gap-3">
+                                  <span className="text-xs text-slate-600 dark:text-slate-400 w-28 shrink-0 truncate">
+                                    {INTERACTION_LABELS[r.interaction_type] ?? r.interaction_type}
+                                  </span>
+                                  <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
+                                    <div className="h-full rounded-full bg-violet-500" style={{ width: `${(r.total_cost_cents / maxCost) * 100}%` }} />
+                                  </div>
+                                  <span className="text-xs tabular-nums font-medium text-slate-700 dark:text-slate-300 w-14 text-right shrink-0">
+                                    {fmtCents(r.total_cost_cents)}
+                                  </span>
+                                  <span className="text-[10px] tabular-nums text-slate-400 w-16 text-right shrink-0 hidden sm:block">
+                                    {(r.total_requests ?? 0).toLocaleString()} req
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })()}
+                      </div>
+                    </>
+                  )}
+
+                  {/* 4. Cache Hit Rate trend (6 months) */}
+                  {costAnalysis.cache_trend.length > 0 && (
+                    <>
+                      <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">Cache Hit Rate (6 months)</h2>
+                      <div className="glass-card rounded-xl p-4 mb-8">
+                        <div className="flex items-end gap-2 h-16">
+                          {costAnalysis.cache_trend.map(r => {
+                            const pct = Number(r.cache_hit_pct)
+                            return (
+                              <div
+                                key={r.period_start}
+                                className="flex-1 flex flex-col justify-end min-w-0"
+                                title={`${fmtMonth(r.period_start)}: ${pct}% cache hit`}
+                              >
+                                <div
+                                  className="w-full bg-violet-500/70 dark:bg-violet-500/50 rounded-t"
+                                  style={{ height: `${Math.max(pct, 4)}%` }}
+                                />
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          {costAnalysis.cache_trend.map(r => (
+                            <div key={r.period_start} className="flex-1 text-center min-w-0">
+                              <p className="text-[9px] text-slate-400 truncate">{fmtMonth(r.period_start)}</p>
+                              <p className="text-[9px] font-semibold text-violet-500 tabular-nums">{r.cache_hit_pct}%</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="border-t border-slate-200 dark:border-slate-700/50 mb-8" />
+                </>
+              )}
+
               {/* Usage breakdown */}
               <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">Usage This Month</h2>
               {usageByModel.length > 0 ? (
@@ -1360,6 +1977,467 @@ export default function Admin() {
                         )
                       })()}
                     </div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Retention tab */}
+          {tab === 'retention' && (
+            <>
+              {!retentionData ? (
+                <div className="flex items-center gap-2 text-slate-500 text-sm">
+                  <Loader2 size={14} className="animate-spin" /> Loading retention data…
+                </div>
+              ) : (
+                <>
+                  {/* Active user cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+                    {[
+                      { label: 'DAU',        value: String(retentionData.active_users.dau) },
+                      { label: 'WAU',        value: String(retentionData.active_users.wau) },
+                      { label: 'MAU',        value: String(retentionData.active_users.mau) },
+                      { label: 'Stickiness', value: `${retentionData.active_users.stickiness}%` },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="glass-card rounded-xl p-4">
+                        <p className="text-xs text-slate-500 mb-1">{label}</p>
+                        <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Retention bars */}
+                  <div className="glass-card rounded-xl p-5 mb-6">
+                    <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">Retention</h2>
+                    <p className="text-xs text-slate-400 mb-4">
+                      {retentionData.retention.cohort_size} users who signed up in {retentionData.retention.cohort_window}
+                    </p>
+                    <div className="space-y-3">
+                      {([
+                        { label: 'D1',  pct: retentionData.retention.d1_pct,  count: retentionData.retention.d1_count,  desc: 'came back next day' },
+                        { label: 'D7',  pct: retentionData.retention.d7_pct,  count: retentionData.retention.d7_count,  desc: 'active in week 2' },
+                        { label: 'D30', pct: retentionData.retention.d30_pct, count: retentionData.retention.d30_count, desc: 'active in month 2' },
+                      ] as { label: string; pct: number; count: number; desc: string }[]).map(({ label, pct, count, desc }) => (
+                        <div key={label} className="flex items-center gap-3">
+                          <span className="text-xs font-mono text-slate-500 w-7 shrink-0">{label}</span>
+                          <div className="flex-1 h-3 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-violet-500"
+                              style={{ width: `${Math.max(pct > 0 ? 1 : 0, pct)}%` }}
+                            />
+                          </div>
+                          <span className="text-xs tabular-nums font-semibold text-violet-600 dark:text-violet-400 w-12 text-right shrink-0">{pct}%</span>
+                          <span className="text-[11px] text-slate-400 hidden sm:block">({count} {desc})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Weekly signups bar chart */}
+                  {retentionData.weekly_signups.length > 0 && (
+                    <div className="glass-card rounded-xl p-5 mb-6">
+                      <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-4">Weekly New Signups (last 12 weeks)</h2>
+                      {(() => {
+                        const maxVal = Math.max(...retentionData.weekly_signups.map(w => w.new_users), 1)
+                        return (
+                          <>
+                            <div className="flex items-end gap-1 h-20">
+                              {retentionData.weekly_signups.map(w => {
+                                const barPct = Math.round((w.new_users / maxVal) * 100)
+                                return (
+                                  <div
+                                    key={w.week_start}
+                                    className="flex-1 flex flex-col justify-end min-w-0"
+                                    title={`${w.week_start}: ${w.new_users} signups`}
+                                  >
+                                    <div
+                                      className="w-full bg-violet-500/70 dark:bg-violet-500/50 rounded-t"
+                                      style={{ height: `${Math.max(barPct, 4)}%` }}
+                                    />
+                                  </div>
+                                )
+                              })}
+                            </div>
+                            <div className="flex justify-between mt-2">
+                              <span className="text-[9px] text-slate-400">
+                                {retentionData.weekly_signups[0]?.week_start}
+                              </span>
+                              <span className="text-[9px] text-slate-400">
+                                {retentionData.weekly_signups[retentionData.weekly_signups.length - 1]?.week_start}
+                              </span>
+                            </div>
+                          </>
+                        )
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Inactive users */}
+                  <div className="glass-card rounded-xl overflow-hidden">
+                    <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/50">
+                      <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        Inactive Users (14+ days no activity)
+                        <span className="ml-2 text-xs font-normal text-slate-400">{retentionData.inactive_users.length} shown</span>
+                      </h2>
+                    </div>
+                    {retentionData.inactive_users.length === 0 ? (
+                      <p className="text-xs text-slate-400 px-5 py-6 text-center">No inactive users — great retention!</p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                        {retentionData.inactive_users.map(u => {
+                          const today = new Date()
+                          const signupDate = u.signup_date ? new Date(u.signup_date) : null
+                          const lastActive = u.last_active_date ? new Date(u.last_active_date) : null
+                          const daysSinceSignup = signupDate
+                            ? Math.floor((today.getTime() - signupDate.getTime()) / 86_400_000)
+                            : null
+                          const daysSinceActive = lastActive
+                            ? Math.floor((today.getTime() - lastActive.getTime()) / 86_400_000)
+                            : null
+                          return (
+                            <div key={u.uid} className="px-5 py-3 flex items-center gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                                  {u.display_name ?? u.email ?? u.uid}
+                                </p>
+                                <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
+                              </div>
+                              <span className="text-[10px] font-mono text-slate-400 shrink-0 hidden sm:block">{u.plan_id}</span>
+                              <div className="shrink-0 text-right">
+                                <p className="text-[10px] text-slate-500">
+                                  {daysSinceSignup !== null ? `joined ${daysSinceSignup}d ago` : '—'}
+                                </p>
+                                <p className="text-[10px] text-amber-500">
+                                  {daysSinceActive !== null ? `inactive ${daysSinceActive}d` : 'never active'}
+                                </p>
+                              </div>
+                              <div className="shrink-0 text-right w-14 hidden md:block">
+                                <p className="text-[10px] text-slate-400">{u.ai_requests_ever} req</p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Funnel tab */}
+          {tab === 'funnel' && (
+            <>
+              {!funnelData ? (
+                <div className="flex items-center gap-2 text-slate-500 text-sm">
+                  <Loader2 size={14} className="animate-spin" /> Loading funnel data…
+                </div>
+              ) : (
+                <>
+                  {/* Free → Paid Conversion */}
+                  <div className="glass-card rounded-xl p-5 mb-6">
+                    <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">
+                      Free → Paid Conversion
+                    </h2>
+                    <p className="text-xs text-slate-400 mb-4">
+                      Last 180 days · {funnelData.conversion.total_signups_180d.toLocaleString()} signups
+                    </p>
+                    <div className="space-y-3 mb-4">
+                      {([
+                        { label: 'D30', pct: funnelData.conversion.converted_30d_pct, count: funnelData.conversion.converted_30d, desc: 'converted within 30 days' },
+                        { label: 'D60', pct: funnelData.conversion.converted_60d_pct, count: funnelData.conversion.converted_60d, desc: 'converted within 60 days' },
+                        { label: 'D90', pct: funnelData.conversion.converted_90d_pct, count: funnelData.conversion.converted_90d, desc: 'converted within 90 days' },
+                      ] as { label: string; pct: number; count: number; desc: string }[]).map(({ label, pct, count, desc }) => (
+                        <div key={label} className="flex items-center gap-3">
+                          <span className="text-xs font-mono text-slate-500 w-7 shrink-0">{label}</span>
+                          <div className="flex-1 h-3 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-violet-500"
+                              style={{ width: `${Math.max(pct > 0 ? 1 : 0, pct)}%` }}
+                            />
+                          </div>
+                          <span className="text-xs tabular-nums font-semibold text-violet-600 dark:text-violet-400 w-12 text-right shrink-0">{pct}%</span>
+                          <span className="text-[11px] text-slate-400 hidden sm:block">({count} {desc})</span>
+                        </div>
+                      ))}
+                    </div>
+                    {funnelData.conversion.avg_days_to_convert != null && (
+                      <p className="text-xs text-slate-500">
+                        Avg time to convert: <span className="font-semibold text-slate-700 dark:text-slate-200">{funnelData.conversion.avg_days_to_convert} days</span>
+                        <span className="ml-2 text-[10px] text-slate-400">
+                          {funnelData.conversion.avg_days_to_convert < 7 ? '— excellent' : funnelData.conversion.avg_days_to_convert > 30 ? '— consider more nudges' : ''}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Activations vs Cancellations */}
+                  <div className="glass-card rounded-xl p-5 mb-6">
+                    <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-4">
+                      Activations vs Cancellations (last 6 months)
+                    </h2>
+                    {funnelData.monthly_churn.length === 0 ? (
+                      <p className="text-xs text-slate-400">No subscription data yet.</p>
+                    ) : (
+                      <>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs mb-4">
+                            <thead>
+                              <tr className="border-b border-slate-200 dark:border-slate-700">
+                                <th className="text-left px-3 py-2 text-slate-500 font-semibold">Month</th>
+                                <th className="text-right px-3 py-2 text-slate-500 font-semibold">New subs</th>
+                                <th className="text-right px-3 py-2 text-slate-500 font-semibold">Cancellations</th>
+                                <th className="text-right px-3 py-2 text-slate-500 font-semibold">Net</th>
+                                <th className="px-3 py-2 w-40 hidden sm:table-cell" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {funnelData.monthly_churn.map(r => {
+                                const net = r.new_subscriptions - r.cancellations
+                                const maxVal = Math.max(...funnelData.monthly_churn.map(x => x.new_subscriptions), 1)
+                                return (
+                                  <tr key={r.month} className="border-b border-slate-100 dark:border-slate-800 last:border-0">
+                                    <td className="px-3 py-2.5 text-slate-600 dark:text-slate-300 font-medium">{fmtMonth(r.month)}</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400 font-medium">{r.new_subscriptions}</td>
+                                    <td className="px-3 py-2.5 text-right tabular-nums text-rose-500 dark:text-rose-400">{r.cancellations}</td>
+                                    <td className={clsx('px-3 py-2.5 text-right tabular-nums font-semibold', net >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-500 dark:text-rose-400')}>
+                                      {net >= 0 ? `+${net}` : net}
+                                    </td>
+                                    <td className="px-3 py-2.5 hidden sm:table-cell">
+                                      <div className="flex items-center gap-1 h-3">
+                                        <div
+                                          className="h-full rounded bg-emerald-500"
+                                          style={{ width: `${(r.new_subscriptions / maxVal) * 100}%`, minWidth: r.new_subscriptions > 0 ? '2px' : '0' }}
+                                        />
+                                        <div
+                                          className="h-full rounded bg-rose-400"
+                                          style={{ width: `${(r.cancellations / maxVal) * 100}%`, minWidth: r.cancellations > 0 ? '2px' : '0' }}
+                                        />
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-emerald-500" /><span className="text-[10px] text-slate-500">New</span></div>
+                          <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-rose-400" /><span className="text-[10px] text-slate-500">Cancelled</span></div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Trial exhausted — never upgraded */}
+                  <div className="glass-card rounded-xl overflow-hidden">
+                    <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/50">
+                      <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">
+                        Trial Exhausted — Never Upgraded
+                        <span className="ml-2 text-xs font-normal text-slate-400">{funnelData.trial_exhausted_never_upgraded.length} shown</span>
+                      </h2>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        Used 6+ messages but never paid — highest-intent re-engagement audience.
+                      </p>
+                    </div>
+                    {funnelData.trial_exhausted_never_upgraded.length === 0 ? (
+                      <p className="text-xs text-slate-400 px-5 py-6 text-center">No trial-exhausted users found.</p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                        {funnelData.trial_exhausted_never_upgraded.map(u => {
+                          const signupDate = u.signup_date ? new Date(u.signup_date) : null
+                          const daysSinceSignup = signupDate
+                            ? Math.floor((Date.now() - signupDate.getTime()) / 86_400_000)
+                            : null
+                          return (
+                            <div key={u.uid} className="px-5 py-3 flex items-center gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                                  {u.display_name ?? u.email ?? u.uid}
+                                </p>
+                                <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <p className="text-[10px] text-slate-500">
+                                  {daysSinceSignup !== null ? `joined ${daysSinceSignup}d ago` : '—'}
+                                </p>
+                                <p className="text-[10px] text-slate-400">{u.signup_date ?? '—'}</p>
+                              </div>
+                              <div className="shrink-0 text-right w-20 hidden sm:block">
+                                <p className="text-xs tabular-nums font-medium text-amber-600 dark:text-amber-400">{u.lifetime_messages} msgs</p>
+                                <p className="text-[10px] text-slate-400">used</p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* Content tab */}
+          {tab === 'content' && (
+            <>
+              {!contentData ? (
+                <div className="flex items-center gap-2 text-slate-500 text-sm">
+                  <Loader2 size={14} className="animate-spin" /> Loading content data…
+                </div>
+              ) : (
+                <>
+                  {/* Completion summary */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
+                    {[
+                      { label: 'Journeys started',    value: String(contentData.completion_summary.journeys_started) },
+                      { label: 'Users with progress', value: String(contentData.completion_summary.users_with_progress) },
+                      { label: 'Avg completion',      value: `${contentData.completion_summary.avg_completion_pct}%` },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="glass-card rounded-xl p-4">
+                        <p className="text-xs text-slate-500 mb-1">{label}</p>
+                        <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Top journeys */}
+                  <div className="glass-card rounded-xl overflow-hidden mb-6">
+                    <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/50">
+                      <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">Top Journeys by Learners</h2>
+                    </div>
+                    {contentData.top_journeys.length === 0 ? (
+                      <p className="text-xs text-slate-400 px-5 py-6 text-center">No journey activity yet.</p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                        {contentData.top_journeys.map(j => {
+                          const pct = Number(j.completion_pct)
+                          const barColor = pct >= 40 ? 'bg-violet-500' : pct >= 20 ? 'bg-amber-400' : 'bg-rose-400'
+                          const isExpanded = expandedJourneyId === j.id
+                          const dropoff = journeyDropoff[j.id]
+                          const isLoadingThis = loadingDropoff === j.id
+                          const maxCompletions = dropoff ? Math.max(...dropoff.map(s => s.completions), 1) : 1
+                          return (
+                            <div key={j.id}>
+                              <div
+                                className="px-5 py-3 cursor-pointer hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors"
+                                onClick={() => handleExpandJourney(j.id)}
+                              >
+                                <div className="flex items-center gap-3 mb-2">
+                                  {j.icon && <span className="text-base shrink-0">{j.icon}</span>}
+                                  <p className="text-xs font-medium text-slate-800 dark:text-slate-200 flex-1 truncate">{j.title}</p>
+                                  <span className="text-[10px] text-slate-400 shrink-0 hidden sm:block">{j.difficulty ?? '—'}</span>
+                                  <span className="text-[10px] tabular-nums text-slate-500 shrink-0">{j.unique_learners} learners</span>
+                                  <span className={clsx('text-[10px] tabular-nums font-semibold shrink-0 w-10 text-right',
+                                    pct >= 40 ? 'text-violet-600 dark:text-violet-400' : pct >= 20 ? 'text-amber-500' : 'text-rose-500'
+                                  )}>{pct}%</span>
+                                  <div className="text-slate-400 shrink-0">
+                                    {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                                  </div>
+                                </div>
+                                <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
+                                  <div className={`h-full rounded-full ${barColor}`} style={{ width: `${Math.max(pct > 0 ? 1 : 0, pct)}%` }} />
+                                </div>
+                              </div>
+                              {isExpanded && (
+                                <div className="px-5 pb-4 pt-2 border-t border-slate-100 dark:border-slate-700/40 bg-slate-50/40 dark:bg-slate-800/20">
+                                  <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-2">Step drop-off</p>
+                                  {isLoadingThis && (
+                                    <div className="flex items-center gap-2 text-slate-400 text-xs py-2">
+                                      <Loader2 size={12} className="animate-spin" /> Loading…
+                                    </div>
+                                  )}
+                                  {!isLoadingThis && dropoff && dropoff.length === 0 && (
+                                    <p className="text-xs text-slate-400">No step data yet.</p>
+                                  )}
+                                  {!isLoadingThis && dropoff && dropoff.length > 0 && (
+                                    <div className="space-y-1.5">
+                                      {dropoff.map(s => (
+                                        <div key={s.step_id} className="flex items-center gap-2">
+                                          <span className="text-[10px] font-mono text-slate-500 w-24 shrink-0 truncate">{s.step_id}</span>
+                                          <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden">
+                                            <div className="h-full rounded-full bg-violet-500/70" style={{ width: `${(s.completions / maxCompletions) * 100}%` }} />
+                                          </div>
+                                          <span className="text-[10px] tabular-nums text-slate-500 w-10 text-right shrink-0">{s.completions}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Most active conversations */}
+                  <div className="glass-card rounded-xl overflow-hidden mb-6">
+                    <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700/50">
+                      <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">Most Active Conversations (last 30 days)</h2>
+                    </div>
+                    {contentData.top_conversations.length === 0 ? (
+                      <p className="text-xs text-slate-400 px-5 py-6 text-center">No conversations in the last 30 days.</p>
+                    ) : (
+                      <div className="divide-y divide-slate-100 dark:divide-slate-700/40">
+                        {contentData.top_conversations.map(c => (
+                          <div key={c.id} className="px-5 py-3 flex items-center gap-3">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                                {c.title ?? 'Untitled'}
+                              </p>
+                              <p className="text-[11px] text-slate-500 truncate">{c.email ?? c.uid}</p>
+                            </div>
+                            <span className="text-xs tabular-nums font-semibold text-violet-600 dark:text-violet-400 shrink-0">
+                              {c.message_count} msgs
+                            </span>
+                            {c.last_message_at && (
+                              <span className="text-[10px] text-slate-400 shrink-0 hidden sm:block">
+                                {new Date(c.last_message_at).toLocaleDateString('default', { month: 'short', day: 'numeric' })}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Knowledge graph growth */}
+                  <div className="glass-card rounded-xl p-5">
+                    <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-4">Knowledge Graph Growth (last 14 days)</h2>
+                    {contentData.knowledge_growth.length === 0 ? (
+                      <p className="text-xs text-slate-400">No knowledge nodes discovered yet.</p>
+                    ) : (
+                      <>
+                        {(() => {
+                          const maxConcepts = Math.max(...contentData.knowledge_growth.map(d => d.new_concepts), 1)
+                          return (
+                            <>
+                              <div className="flex items-end gap-1 h-16 mb-2">
+                                {contentData.knowledge_growth.map(d => (
+                                  <div
+                                    key={d.day}
+                                    className="flex-1 flex flex-col justify-end min-w-0"
+                                    title={`${d.day}: ${d.new_concepts} concepts, ${d.unique_users} users`}
+                                  >
+                                    <div
+                                      className="w-full bg-violet-500/70 dark:bg-violet-500/50 rounded-t"
+                                      style={{ height: `${Math.max((d.new_concepts / maxConcepts) * 100, 4)}%` }}
+                                    />
+                                  </div>
+                                ))}
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-[9px] text-slate-400">{contentData.knowledge_growth[0]?.day}</span>
+                                <span className="text-[9px] text-slate-400">{contentData.knowledge_growth[contentData.knowledge_growth.length - 1]?.day}</span>
+                              </div>
+                            </>
+                          )
+                        })()}
+                      </>
+                    )}
                   </div>
                 </>
               )}
