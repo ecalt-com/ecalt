@@ -1,38 +1,32 @@
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Settings, ArrowLeft, Save, Loader2, ShieldCheck, ShieldOff, Check, Zap, Search, Cpu, Ticket, Plus, ToggleLeft, ToggleRight, AlertTriangle, ChevronDown, ChevronUp, BarChart2, Copy, Trash2, X, Pencil } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../lib/AuthContext'
 import PageMeta from '../components/PageMeta'
 import type {
-  PlanRow, NewPlanForm, Stats, UserRow, UserDetail, RevenueData, AIConfig, ModelOption,
-  UsageByModel, DailyUsage, CostAnalysis, ContentData, StepDropoff,
-  FunnelData, FeatureUsageData, RetentionData, CouponRow, RedemptionRow, CouponStats,
+  PlanRow, NewPlanForm, UserDetail, AIConfig,
+  StepDropoff, CouponRow, RedemptionRow,
 } from './admin/types'
 import { PLAN_ICONS, PLAN_FEATURES, INTERACTION_LABELS, TABS, inputCls, selectCls } from './admin/constants'
 import type { TabId } from './admin/constants'
 import { fmtCents, fmtPct, calcPct, fmtTokens, fmtMonth } from './admin/utils'
 import { FeatureTrendChart } from './admin/components/FeatureTrendChart'
+import { useAdminData } from './admin/hooks/useAdminData'
+import { useCouponStats } from './admin/hooks/useCouponStats'
 
 
 
 export default function Admin() {
   const navigate = useNavigate()
-  const { getToken, user } = useAuth()
+  const { getToken } = useAuth()
 
-  const [plans, setPlans] = useState<PlanRow[]>([])
-  const [stats, setStats] = useState<Stats | null>(null)
-  const [users, setUsers] = useState<UserRow[]>([])
-  const [aiConfigs, setAiConfigs] = useState<AIConfig[]>([])
-  const [availableModels, setAvailableModels] = useState<Record<string, ModelOption[]>>({})
-  const [usageByModel, setUsageByModel] = useState<UsageByModel[]>([])
-  const [dailyUsage, setDailyUsage] = useState<DailyUsage[]>([])
-  const [revenue, setRevenue] = useState<RevenueData | null>(null)
-  const [costAnalysis, setCostAnalysis] = useState<CostAnalysis | null>(null)
-  const [retentionData, setRetentionData] = useState<RetentionData | null>(null)
-  const [featureUsage, setFeatureUsage] = useState<FeatureUsageData | null>(null)
-  const [funnelData, setFunnelData] = useState<FunnelData | null>(null)
-  const [contentData, setContentData] = useState<ContentData | null>(null)
+  const {
+    plans, stats, users, aiConfigs, availableModels,
+    usageByModel, dailyUsage, revenue, costAnalysis,
+    retentionData, featureUsage, funnelData, contentData, coupons,
+    setPlans, setUsers, setAiConfigs, setCoupons,
+  } = useAdminData()
   const [expandedJourneyId, setExpandedJourneyId] = useState<string | null>(null)
   const [journeyDropoff, setJourneyDropoff] = useState<Record<string, StepDropoff[]>>({})
   const [loadingDropoff, setLoadingDropoff] = useState<string | null>(null)
@@ -46,7 +40,6 @@ export default function Admin() {
   const [userSearch, setUserSearch] = useState('')
 
   // Coupon state
-  const [coupons, setCoupons] = useState<CouponRow[]>([])
   const [couponForm, setCouponForm] = useState({ code: '', description: '', credit_cents: '', bonus_messages: '', duration_days: '', max_redemptions: '', expires_at: '' })
   const [creatingCoupon, setCreatingCoupon] = useState(false)
   const [couponError, setCouponError] = useState<string | null>(null)
@@ -63,7 +56,7 @@ export default function Admin() {
   const [couponSearch, setCouponSearch] = useState('')
   const [couponStatusFilter, setCouponStatusFilter] = useState<'all' | 'active' | 'inactive' | 'expired' | 'depleted'>('all')
   const [couponSort, setCouponSort] = useState<'newest' | 'most_used' | 'expiring'>('newest')
-  const [couponStats, setCouponStats] = useState<CouponStats | null>(null)
+  const { couponStats } = useCouponStats(tab)
   const [showBulkForm, setShowBulkForm] = useState(false)
   const [bulkForm, setBulkForm] = useState({ prefix: '', count: '10', description: '', credit_cents: '', bonus_messages: '0', duration_days: '', expires_at: '' })
   const [bulkResult, setBulkResult] = useState<string[] | null>(null)
@@ -115,65 +108,6 @@ export default function Admin() {
       )
     return result
   }, [coupons, couponSearch, couponStatusFilter, couponSort])
-
-  useEffect(() => {
-    if (!user) return
-    let cancelled = false
-    async function load() {
-      const token = await getToken()
-      if (!token) return
-
-      const [pRes, sRes, uRes, aiRes, usageRes, cRes, revRes, costRes, retRes, fuRes, fnRes, csRes] = await Promise.all([
-        fetch('/api/v1/admin/plans',          { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/stats',          { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/users',          { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/ai-config',      { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/usage',          { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/coupons/admin',        { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/revenue',        { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/cost-analysis',  { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/retention',      { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/feature-usage',  { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/funnel',          { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/content-stats',   { headers: { Authorization: `Bearer ${token}` } }),
-      ])
-
-      if (pRes.status === 403) { navigate('/'); return }
-      if (!cancelled && pRes.ok) setPlans(await pRes.json().then((d: any) => d.plans ?? []))
-      if (!cancelled && sRes.ok) setStats(await sRes.json())
-      if (!cancelled && uRes.ok) setUsers(await uRes.json().then((d: any) => d.users ?? []))
-      if (!cancelled && aiRes.ok) {
-        const d = await aiRes.json()
-        setAiConfigs(d.configs ?? [])
-        setAvailableModels(d.available_models ?? {})
-      }
-      if (!cancelled && usageRes.ok) {
-        const d = await usageRes.json()
-        setUsageByModel(d.by_model ?? [])
-        setDailyUsage(d.daily ?? [])
-      }
-      if (!cancelled && cRes.ok) setCoupons(await cRes.json().then((d: any) => d.coupons ?? []))
-      if (!cancelled && revRes.ok) setRevenue(await revRes.json())
-      if (!cancelled && costRes.ok) setCostAnalysis(await costRes.json())
-      if (!cancelled && retRes.ok) setRetentionData(await retRes.json())
-      if (!cancelled && fuRes.ok) setFeatureUsage(await fuRes.json())
-      if (!cancelled && fnRes.ok) setFunnelData(await fnRes.json())
-      if (!cancelled && csRes.ok) setContentData(await csRes.json())
-    }
-    load().catch(() => navigate('/'))
-    return () => { cancelled = true }
-  }, [getToken, navigate, user])
-
-  useEffect(() => {
-    if (tab !== 'coupons' || couponStats !== null || !user) return
-    async function loadCouponStats() {
-      const token = await getToken()
-      if (!token) return
-      const res = await fetch('/api/v1/coupons/admin/stats', { headers: { Authorization: `Bearer ${token}` } })
-      if (res.ok) setCouponStats(await res.json())
-    }
-    loadCouponStats().catch(() => {})
-  }, [tab, couponStats, getToken, user])
 
   const handleSavePlan = async (planId: string) => {
     const patch = edits[planId]
