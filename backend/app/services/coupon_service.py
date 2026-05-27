@@ -1,3 +1,5 @@
+import secrets
+import string
 from datetime import datetime, timezone, timedelta
 
 from app.core.database import get_db
@@ -97,26 +99,112 @@ def create_coupon(
 def list_coupons() -> list[dict]:
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT * FROM coupons ORDER BY created_at DESC")
+            cur.execute(
+                "SELECT * FROM coupons WHERE is_deleted = false ORDER BY created_at DESC"
+            )
             return [dict(r) for r in cur.fetchall()]
 
 
 def update_coupon(code: str, **kwargs) -> dict:
-    allowed = {"description", "credit_cents", "bonus_messages", "max_redemptions", "expires_at", "is_active"}
+    allowed = {
+        "description", "credit_cents", "bonus_messages", "max_redemptions",
+        "expires_at", "is_active", "plan_override", "duration_days",
+    }
     updates = {k: v for k, v in kwargs.items() if k in allowed}
     if not updates:
         raise ValueError("No valid fields to update.")
-    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    set_clause = ", ".join(f"{k} = %s" for k in updates) + ", updated_at = now()"
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                f"UPDATE coupons SET {set_clause} WHERE code = %s RETURNING *",
+                f"UPDATE coupons SET {set_clause} WHERE code = %s AND is_deleted = false RETURNING *",
                 (*updates.values(), code.upper()),
             )
             row = cur.fetchone()
             if not row:
                 raise ValueError("Coupon not found.")
             return dict(row)
+
+
+def delete_coupon(code: str) -> None:
+    """Soft-delete a coupon. Existing redemptions and credits are unaffected."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE coupons
+                SET is_deleted = true, is_active = false, deleted_at = now(), updated_at = now()
+                WHERE code = %s AND is_deleted = false
+                RETURNING code
+                """,
+                (code.upper(),),
+            )
+            if not cur.fetchone():
+                raise ValueError("Coupon not found.")
+
+
+def grant_coupon_to_user(
+    uid: str,
+    description: str,
+    credit_cents: float = 0.0,
+    bonus_messages: int = 0,
+    duration_days: int | None = None,
+    granted_by: str | None = None,
+) -> dict:
+    """
+    Directly grant a credit/benefit to a specific user without them entering a code.
+    Creates a single-use internal coupon (tag='grant') and immediately redeems it for the user.
+    """
+    # Verify the target user exists
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT uid FROM users WHERE uid = %s", (uid,))
+            if not cur.fetchone():
+                raise ValueError("User not found.")
+
+    # Generate a unique internal code
+    suffix = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+    code = f"GRANT-{suffix}"
+
+    credit_expires_at = None
+    if duration_days:
+        credit_expires_at = datetime.now(timezone.utc) + timedelta(days=duration_days)
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            # Create the single-use coupon
+            cur.execute(
+                """
+                INSERT INTO coupons
+                  (code, description, credit_cents, bonus_messages, duration_days,
+                   max_redemptions, tag, is_active)
+                VALUES (%s, %s, %s, %s, %s, 1, 'grant', true)
+                """,
+                (code, description, credit_cents, bonus_messages, duration_days),
+            )
+            # Record the redemption directly — no user action needed
+            cur.execute(
+                """
+                INSERT INTO coupon_redemptions
+                  (uid, coupon_code, credit_applied_cents, bonus_messages_applied, credit_expires_at)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (uid, code, credit_cents, bonus_messages, credit_expires_at),
+            )
+            # Mark it as already fully redeemed
+            cur.execute(
+                "UPDATE coupons SET redemption_count = 1 WHERE code = %s",
+                (code,),
+            )
+
+    return {
+        "code": code,
+        "uid": uid,
+        "description": description,
+        "credit_cents": credit_cents,
+        "bonus_messages": bonus_messages,
+        "credit_expires_at": credit_expires_at.isoformat() if credit_expires_at else None,
+    }
 
 
 def get_coupon_redemptions(code: str) -> list[dict]:

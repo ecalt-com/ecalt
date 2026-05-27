@@ -10,6 +10,8 @@ from app.services.coupon_service import (
     create_coupon,
     list_coupons,
     update_coupon,
+    delete_coupon,
+    grant_coupon_to_user,
     get_coupon_redemptions,
 )
 
@@ -51,6 +53,16 @@ class UpdateCouponRequest(BaseModel):
     max_redemptions: Optional[int] = None
     expires_at: Optional[datetime] = None
     is_active: Optional[bool] = None
+    plan_override: Optional[str] = None
+    duration_days: Optional[int] = None
+
+
+class GrantCouponRequest(BaseModel):
+    uid: str
+    description: str
+    credit_cents: float = 0.0
+    bonus_messages: int = 0
+    duration_days: Optional[int] = None
 
 
 @router.get("/admin")
@@ -83,6 +95,32 @@ def admin_update(code: str, body: UpdateCouponRequest, uid: str = Depends(get_ad
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     return updated
+
+
+@router.delete("/admin/{code}", status_code=204)
+def admin_delete(code: str, uid: str = Depends(get_admin_user)):
+    try:
+        delete_coupon(code)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
+@router.post("/admin/grant")
+def admin_grant(body: GrantCouponRequest, uid: str = Depends(get_admin_user)):
+    if body.credit_cents == 0 and body.bonus_messages == 0:
+        raise HTTPException(status_code=400, detail="Grant must include credit_cents or bonus_messages.")
+    try:
+        result = grant_coupon_to_user(
+            uid=body.uid,
+            description=body.description,
+            credit_cents=body.credit_cents,
+            bonus_messages=body.bonus_messages,
+            duration_days=body.duration_days,
+            granted_by=uid,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return result
 
 
 @router.get("/admin/{code}/redemptions")
