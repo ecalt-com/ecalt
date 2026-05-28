@@ -4,3 +4,9 @@ __pycache__/
 .venv/
 venv/
 dist/
+
+# MCP
+.mcp.json
+
+# Graphify
+graphify-out/
