@@ -46,3 +46,9 @@ Thumbs.db
 # Misc
 *.pem
 .turbo/
+
+# MCP
+.mcp.json
+
+# Graphify
+graphify-out/
