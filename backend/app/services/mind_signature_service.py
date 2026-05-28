@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from app.core.database import get_db
 from app.services.mastery_service import get_domain_mastery, update_domain_mastery
-from app.services.provider_service import complete_text
+from app.services.provider_service import complete_text, get_config
 
 
 LEGAL_DISCLAIMER = (
@@ -12,7 +12,7 @@ LEGAL_DISCLAIMER = (
     "— not an accredited educational credential."
 )
 
-_NARRATIVE_SYSTEM = """\
+_NARRATIVE_SYSTEM_DEFAULT = """\
 You are writing a capability narrative for a learner's Mind Signature — a verified record of their demonstrated intellectual range.
 
 Write exactly 3 paragraphs. Be specific, warm, and grounded in the actual domains provided.
@@ -88,9 +88,10 @@ async def generate_mind_signature(uid: str) -> dict:
         for d in domains
     )
 
+    cfg = get_config("mind_signature")
     narrative, _, _, _ = await complete_text(
         interaction_type="mind_signature",
-        system=_NARRATIVE_SYSTEM,
+        system=cfg["style_prompt"],
         user_content=(
             f"[SYSTEM CONTEXT — not part of conversation]\n"
             f"Learner name: {display_name}\n"

@@ -3,13 +3,10 @@ import uuid
 from datetime import datetime, timezone
 
 from app.models.schemas import Journey, JourneyStep
-from app.services.provider_service import complete_text
+from app.services.provider_service import complete_text, get_config
 
 
-SYSTEM_PROMPT = """\
-You are ECALT's AI learning designer. Your job is to transform any question into an \
-engaging, structured learning journey.
-
+_JOURNEY_CONTRACT = """\
 Return ONLY a valid JSON object — no markdown, no explanation — with this exact structure:
 {
   "title": "Compelling journey title",
@@ -27,21 +24,10 @@ Return ONLY a valid JSON object — no markdown, no explanation — with this ex
       "estimated_minutes": 15
     }
   ]
-}
-
-Rules:
-- 6 to 12 steps that build progressively
-- Step types: concept (learn the idea), practice (do it), challenge (test yourself), explore (go deeper)
-- Make it feel like exploration, not a curriculum
-- Adapt complexity to the learner's likely age and level
-- Keep descriptions under 120 characters each
-- Estimated hours should reflect the sum of step minutes
-"""
+}"""
 
 
-STEP_CONTENT_SYSTEM = """\
-You are ECALT's expert learning designer. Write a delightful, beautifully structured lesson for a single learning step.
-
+_STEP_CONTENT_CONTRACT = """\
 Return ONLY a valid JSON object with this exact structure:
 {
   "content": "..."
@@ -59,16 +45,7 @@ The content field must follow this exact structure (use \\n\\n between each bloc
 
 5. ## 🎯 Try This! — A fun hands-on activity doable in 5 minutes, no special equipment. Write it as excited steps. Bold the action verbs.
 
-6. Final paragraph — One-sentence takeaway in **bold**, capturing the biggest idea.
-
-Style rules:
-- Write for the age group: adapt vocabulary to kids (simple + fun), teens (cool + relevant), or adults (smart + practical)
-- Use emojis naturally — one per heading, one or two in the body, not excessive
-- Sound like an enthusiastic friend who just discovered this, not a textbook
-- Never say "In this step", "Welcome to", "Introduction", or "Overview"
-- Section headings: max 5 words, start with a noun or verb, include an emoji
-- Target 380-500 words total
-"""
+6. Final paragraph — One-sentence takeaway in **bold**, capturing the biggest idea."""
 
 
 async def generate_step_content(
@@ -89,9 +66,11 @@ async def generate_step_content(
         f"Age group: {age_group}\n\n"
         "Generate the lesson content JSON."
     )
+    cfg = get_config("step_content")
+    system = f"{cfg['style_prompt']}\n\n{_STEP_CONTENT_CONTRACT}"
     raw, in_tok, out_tok, _ = await complete_text(
         interaction_type="step_content",
-        system=STEP_CONTENT_SYSTEM,
+        system=system,
         user_content=user_content,
         max_tokens=1500,
     )
@@ -155,9 +134,11 @@ async def warm_journey_steps(
 async def generate_journey(question: str, age_group: str = "all") -> tuple[Journey, int, int]:
     """Returns (journey, estimated_input_tokens, estimated_output_tokens)."""
     user_content = f"Question: {question}\nTarget age group: {age_group}\n\nGenerate the learning journey JSON."
+    cfg = get_config("journey")
+    system = f"{cfg['style_prompt']}\n\n{_JOURNEY_CONTRACT}"
     raw, in_tok, out_tok, _ = await complete_text(
         interaction_type="journey",
-        system=SYSTEM_PROMPT,
+        system=system,
         user_content=user_content,
         max_tokens=2048,
     )

@@ -33,15 +33,17 @@ export const FEATURE_COLORS = ['bg-violet-500', 'bg-emerald-500', 'bg-amber-400'
 export const OTHER_COLOR = 'bg-slate-400'
 
 export const TABS = [
-  { id: 'overview',   label: 'Overview' },
-  { id: 'plans',      label: 'Pricing Plans' },
-  { id: 'ai',         label: 'AI Providers' },
-  { id: 'users',      label: 'Users' },
-  { id: 'coupons',    label: 'Coupons' },
-  { id: 'revenue',    label: 'Revenue' },
-  { id: 'retention',  label: 'Retention' },
-  { id: 'funnel',     label: 'Funnel' },
-  { id: 'content',    label: 'Content' },
+  { id: 'overview',                label: 'Overview' },
+  { id: 'plans',                   label: 'Pricing Plans' },
+  { id: 'ai',                      label: 'AI Providers' },
+  { id: 'prompts',                 label: 'AI Prompts' },
+  { id: 'notification-templates',  label: 'Notif Templates' },
+  { id: 'users',                   label: 'Users' },
+  { id: 'coupons',                 label: 'Coupons' },
+  { id: 'revenue',                 label: 'Revenue' },
+  { id: 'retention',               label: 'Retention' },
+  { id: 'funnel',                  label: 'Funnel' },
+  { id: 'content',                 label: 'Content' },
 ] as const
 
 export type TabId = typeof TABS[number]['id']

@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from typing import Optional
 
 from app.core.auth import get_required_user, get_admin_user
@@ -9,7 +9,10 @@ from app.services.subscription_service import (
     get_usage_breakdown as svc_usage_breakdown,
 )
 from app.services.provider_service import (
-    AVAILABLE_MODELS, get_all_configs, set_config
+    AVAILABLE_MODELS, DEFAULT_CONFIG,
+    get_all_configs, set_config,
+    set_style_prompt, get_prompt_history,
+    get_all_notification_templates, set_notification_template,
 )
 
 router = APIRouter()
@@ -1136,3 +1139,196 @@ def toggle_admin(target_uid: str, acting_uid: str = Depends(get_admin_user)):
             if not row:
                 raise HTTPException(status_code=404, detail="User not found")
     return {"user": dict(row)}
+
+
+# ── Prompt management ─────────────────────────────────────────────────────────
+
+class PromptRead(BaseModel):
+    interaction_type:        str
+    style_prompt:            Optional[str]   # None = using hardcoded default
+    style_prompt_is_default: bool
+    default_style_prompt:    str
+    output_contract_hint:    str
+    style_prompt_updated_at: Optional[str]
+    style_prompt_updated_by: Optional[str]
+    provider:                str
+    model:                   str
+
+
+class PromptUpdate(BaseModel):
+    style_prompt: str = Field(..., min_length=10, max_length=8000)
+
+
+class PromptHistoryEntry(BaseModel):
+    id:               int
+    interaction_type: str
+    old_style_prompt: Optional[str]
+    new_style_prompt: str
+    changed_by:       str
+    changed_at:       str
+    reset_to_default: bool
+
+
+_CONTRACT_HINTS: dict[str, str] = {
+    "journey":              "JSON: title, description, age_group, difficulty, steps[]",
+    "step_content":         "JSON: content (structured markdown)",
+    "spark":                "JSON: answer, mission{title, steps[]}",
+    "knowledge_extraction": "JSON array: [{concept, domain}]",
+    "daily_chat":           "Free-form conversational response",
+    "mind_signature":       "3 plain-text paragraphs",
+    "nudge":                "JSON: subject, body_html, short_message",
+    "daily_spark":          "Free-form single question string",
+    "onboarding":           "Not yet implemented",
+    "fingerprint":          "Not yet implemented",
+}
+
+
+def _to_prompt_read(c: dict) -> PromptRead:
+    return PromptRead(
+        interaction_type=c["interaction_type"],
+        style_prompt=c["style_prompt"],
+        style_prompt_is_default=c["style_prompt_is_default"],
+        default_style_prompt=c["default_style_prompt"],
+        output_contract_hint=_CONTRACT_HINTS.get(c["interaction_type"], ""),
+        style_prompt_updated_at=(
+            c["style_prompt_updated_at"].isoformat()
+            if c["style_prompt_updated_at"] else None
+        ),
+        style_prompt_updated_by=c["style_prompt_updated_by"],
+        provider=c["provider"],
+        model=c["model"],
+    )
+
+
+@router.get("/prompts", response_model=list[PromptRead])
+def list_prompts(_uid: str = Depends(get_admin_user)):
+    return [_to_prompt_read(c) for c in get_all_configs()]
+
+
+@router.get("/prompts/{interaction_type}", response_model=PromptRead)
+def get_prompt(interaction_type: str, _uid: str = Depends(get_admin_user)):
+    cfg = next((c for c in get_all_configs() if c["interaction_type"] == interaction_type), None)
+    if not cfg:
+        raise HTTPException(status_code=404, detail="Unknown interaction type")
+    return _to_prompt_read(cfg)
+
+
+@router.put("/prompts/{interaction_type}", status_code=204)
+def update_prompt(
+    interaction_type: str,
+    body: PromptUpdate,
+    uid: str = Depends(get_admin_user),
+):
+    if interaction_type not in DEFAULT_CONFIG:
+        raise HTTPException(status_code=404, detail="Unknown interaction type")
+    set_style_prompt(
+        interaction_type=interaction_type,
+        style_prompt=body.style_prompt,
+        changed_by=uid,
+        reset_to_default=False,
+    )
+
+
+@router.post("/prompts/{interaction_type}/reset", status_code=204)
+def reset_prompt(interaction_type: str, uid: str = Depends(get_admin_user)):
+    if interaction_type not in DEFAULT_CONFIG:
+        raise HTTPException(status_code=404, detail="Unknown interaction type")
+    set_style_prompt(
+        interaction_type=interaction_type,
+        style_prompt="",
+        changed_by=uid,
+        reset_to_default=True,
+    )
+
+
+@router.get("/prompts/{interaction_type}/history", response_model=list[PromptHistoryEntry])
+def prompt_history(
+    interaction_type: str,
+    limit: int = Query(20, ge=1, le=100),
+    _uid: str = Depends(get_admin_user),
+):
+    rows = get_prompt_history(interaction_type, limit=limit)
+    return [
+        PromptHistoryEntry(
+            id=r["id"],
+            interaction_type=r["interaction_type"],
+            old_style_prompt=r["old_style_prompt"],
+            new_style_prompt=r["new_style_prompt"],
+            changed_by=r["changed_by"],
+            changed_at=r["changed_at"].isoformat(),
+            reset_to_default=r["reset_to_default"],
+        )
+        for r in rows
+    ]
+
+
+# ── Notification template management ─────────────────────────────────────────
+
+class NotificationTemplateRead(BaseModel):
+    notification_type: str
+    template:          str
+    updated_at:        Optional[str]
+    updated_by:        Optional[str]
+
+
+class NotificationTemplateUpdate(BaseModel):
+    template: str = Field(..., min_length=10, max_length=4000)
+
+
+_VALID_NOTIFICATION_TYPES: frozenset[str] = frozenset({
+    "daily_spark", "re_engagement", "cliffhanger_return", "connection_alert",
+    "milestone_approach", "mind_signature_ready", "mind_signature_nudge",
+    "world_event_hook", "streak_at_risk", "streak_lost", "streak_milestone",
+    "journey_almost_done", "weekly_digest", "family_highlight",
+})
+
+TEMPLATE_VARIABLES: dict[str, list[str]] = {
+    "daily_spark":          ["name", "topics", "angle"],
+    "re_engagement":        ["name", "days_inactive", "domain"],
+    "cliffhanger_return":   ["name", "topic"],
+    "connection_alert":     ["name", "topic_a", "topic_b", "connection"],
+    "milestone_approach":   ["name", "steps_remaining", "journey_title"],
+    "mind_signature_ready": ["name", "domain"],
+    "mind_signature_nudge": ["name", "mastery_pct", "domain"],
+    "world_event_hook":     ["name", "event", "topic"],
+    "streak_at_risk":       ["name", "streak_days"],
+    "streak_lost":          ["name", "streak_days"],
+    "streak_milestone":     ["name", "streak_days"],
+    "journey_almost_done":  ["name", "steps_remaining", "journey_title"],
+    "weekly_digest":        ["name", "new_concepts", "active_domains", "domains", "journeys_touched"],
+    "family_highlight":     ["name", "summary"],
+}
+
+
+@router.get("/notification-templates/variables")
+def template_variables(_uid: str = Depends(get_admin_user)):
+    return TEMPLATE_VARIABLES
+
+
+@router.get("/notification-templates", response_model=list[NotificationTemplateRead])
+def list_notification_templates(_uid: str = Depends(get_admin_user)):
+    rows = get_all_notification_templates()
+    return [
+        NotificationTemplateRead(
+            notification_type=r["notification_type"],
+            template=r["template"],
+            updated_at=r["updated_at"].isoformat() if r["updated_at"] else None,
+            updated_by=r["updated_by"],
+        )
+        for r in rows
+    ]
+
+
+@router.put("/notification-templates/{notification_type}", status_code=204)
+def update_notification_template(
+    notification_type: str,
+    body: NotificationTemplateUpdate,
+    uid: str = Depends(get_admin_user),
+):
+    if notification_type not in _VALID_NOTIFICATION_TYPES:
+        raise HTTPException(status_code=404, detail="Unknown notification type")
+    set_notification_template(
+        notification_type=notification_type,
+        template=body.template,
+        updated_by=uid,
+    )

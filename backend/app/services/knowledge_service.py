@@ -1,23 +1,15 @@
 import json
 
 from app.core.database import get_db
-from app.services.provider_service import complete_text
+from app.services.provider_service import complete_text, get_config
 
 
-_EXTRACT_SYSTEM = """\
-Extract learnable concept-domain pairs from this learning conversation.
-
+_KNOWLEDGE_CONTRACT = """\
 Return ONLY a valid JSON array — no markdown, no explanation, just the JSON.
 
 [{"concept": "photosynthesis", "domain": "biology"}, ...]
 
-Rules:
-- Extract 0–8 concrete, learnable concepts maximum
-- Skip vague words ("things", "stuff", "ideas", "concept")
-- Domain must be exactly one of: biology, physics, chemistry, math, history, \
-technology, psychology, philosophy, arts, language, economics, engineering, astronomy, medicine
-- Return [] if no clear concepts are discussed
-"""
+Domain must be exactly one of: biology, physics, chemistry, math, history, technology, psychology, philosophy, arts, language, economics, engineering, astronomy, medicine"""
 
 _VALID_DOMAINS = {
     "biology", "physics", "chemistry", "math", "history", "technology",
@@ -30,9 +22,11 @@ async def extract_knowledge_nodes(uid: str, user_message: str, assistant_respons
     """Extract concept-domain pairs from a conversation turn and upsert into knowledge_nodes."""
     excerpt = f"Learner: {user_message[:300]}\nResponse: {assistant_response[:400]}"
 
+    cfg = get_config("knowledge_extraction")
+    system = f"{cfg['style_prompt']}\n\n{_KNOWLEDGE_CONTRACT}"
     raw, _, _, _ = await complete_text(
         interaction_type="knowledge_extraction",
-        system=_EXTRACT_SYSTEM,
+        system=system,
         user_content=f"[CONVERSATION]:\n{excerpt}",
         max_tokens=300,
     )

@@ -22,7 +22,7 @@ _BLOCKED_PATTERNS = [
     "you are actually",
 ]
 
-_CHAT_SYSTEM = """\
+_CHAT_SYSTEM_DEFAULT = """\
 [SYSTEM INSTRUCTIONS — NOT PART OF CONVERSATION]
 You are ECALT, a warm and brilliant learning companion. Make every exchange feel \
 like talking with the smartest, most curious friend the learner knows.
@@ -145,7 +145,7 @@ async def stream_chat(
     output_tokens = 0
     cached_input_tokens = 0
     try:
-        async for text, in_tok, out_tok, cached_tok in stream_completion(provider, model, _CHAT_SYSTEM, messages):
+        async for text, in_tok, out_tok, cached_tok in stream_completion(provider, model, cfg["style_prompt"], messages):
             if text:
                 full_response += text
                 yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"

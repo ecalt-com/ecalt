@@ -4,7 +4,7 @@ import { useAuth } from '../../../lib/AuthContext'
 import type {
   PlanRow, Stats, UserRow, AIConfig, ModelOption, UsageByModel, DailyUsage,
   RevenueData, CostAnalysis, RetentionData, FeatureUsageData, FunnelData,
-  ContentData, CouponRow,
+  ContentData, CouponRow, PromptRow, NotificationTemplateRow,
 } from '../types'
 
 export function useAdminData() {
@@ -24,7 +24,10 @@ export function useAdminData() {
   const [featureUsage, setFeatureUsage] = useState<FeatureUsageData | null>(null)
   const [funnelData, setFunnelData]     = useState<FunnelData | null>(null)
   const [contentData, setContentData]   = useState<ContentData | null>(null)
-  const [coupons, setCoupons]           = useState<CouponRow[]>([])
+  const [coupons, setCoupons]                         = useState<CouponRow[]>([])
+  const [prompts, setPrompts]                         = useState<PromptRow[]>([])
+  const [notificationTemplates, setNotificationTemplates] = useState<NotificationTemplateRow[]>([])
+  const [templateVariables, setTemplateVariables]     = useState<Record<string, string[]>>({})
 
   useEffect(() => {
     if (!user) return
@@ -33,19 +36,23 @@ export function useAdminData() {
       const token = await getToken()
       if (!token) return
 
-      const [pRes, sRes, uRes, aiRes, usageRes, cRes, revRes, costRes, retRes, fuRes, fnRes, csRes] = await Promise.all([
-        fetch('/api/v1/admin/plans',         { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/stats',         { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/users',         { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/ai-config',     { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/usage',         { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/coupons/admin',       { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/revenue',       { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/cost-analysis', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/retention',     { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/feature-usage', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/funnel',        { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/admin/content-stats', { headers: { Authorization: `Bearer ${token}` } }),
+      const h = { Authorization: `Bearer ${token}` }
+      const [pRes, sRes, uRes, aiRes, usageRes, cRes, revRes, costRes, retRes, fuRes, fnRes, csRes, prRes, ntRes, tvRes] = await Promise.all([
+        fetch('/api/v1/admin/plans',                            { headers: h }),
+        fetch('/api/v1/admin/stats',                            { headers: h }),
+        fetch('/api/v1/admin/users',                            { headers: h }),
+        fetch('/api/v1/admin/ai-config',                        { headers: h }),
+        fetch('/api/v1/admin/usage',                            { headers: h }),
+        fetch('/api/v1/coupons/admin',                          { headers: h }),
+        fetch('/api/v1/admin/revenue',                          { headers: h }),
+        fetch('/api/v1/admin/cost-analysis',                    { headers: h }),
+        fetch('/api/v1/admin/retention',                        { headers: h }),
+        fetch('/api/v1/admin/feature-usage',                    { headers: h }),
+        fetch('/api/v1/admin/funnel',                           { headers: h }),
+        fetch('/api/v1/admin/content-stats',                    { headers: h }),
+        fetch('/api/v1/admin/prompts',                          { headers: h }),
+        fetch('/api/v1/admin/notification-templates',           { headers: h }),
+        fetch('/api/v1/admin/notification-templates/variables', { headers: h }),
       ])
 
       if (pRes.status === 403) { navigate('/'); return }
@@ -69,6 +76,9 @@ export function useAdminData() {
       if (!cancelled && fuRes.ok) setFeatureUsage(await fuRes.json())
       if (!cancelled && fnRes.ok) setFunnelData(await fnRes.json())
       if (!cancelled && csRes.ok) setContentData(await csRes.json())
+      if (!cancelled && prRes.ok) setPrompts(await prRes.json())
+      if (!cancelled && ntRes.ok) setNotificationTemplates(await ntRes.json())
+      if (!cancelled && tvRes.ok) setTemplateVariables(await tvRes.json())
     }
     load().catch(() => navigate('/'))
     return () => { cancelled = true }
@@ -78,6 +88,8 @@ export function useAdminData() {
     plans, stats, users, aiConfigs, availableModels,
     usageByModel, dailyUsage, revenue, costAnalysis,
     retentionData, featureUsage, funnelData, contentData, coupons,
+    prompts, notificationTemplates, templateVariables,
     setPlans, setUsers, setAiConfigs, setCoupons,
+    setPrompts, setNotificationTemplates,
   }
 }

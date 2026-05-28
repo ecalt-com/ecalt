@@ -2,11 +2,11 @@
 import json
 import logging
 
-from app.services.provider_service import complete_text
+from app.services.provider_service import complete_text, get_config, get_notification_template
 
 logger = logging.getLogger("app.services.copy_generator")
 
-_SYSTEM = """\
+_NUDGE_SYSTEM_DEFAULT = """\
 You are the voice of ECALT — an AI-powered curiosity learning platform.
 Write a notification message that feels like it's coming from a brilliant friend, not a marketing bot.
 
@@ -25,7 +25,7 @@ Return a JSON object with exactly these keys:
 
 Return ONLY the raw JSON. No markdown fences. No explanation."""
 
-_TEMPLATES: dict[str, str] = {
+_TEMPLATES_FALLBACK: dict[str, str] = {
     "daily_spark": (
         "User's name: {name}. Recent topics: {topics}. Today's angle: {angle}. "
         "Send a personalised daily curiosity nudge that connects to what they've been exploring. "
@@ -102,6 +102,16 @@ _TEMPLATES: dict[str, str] = {
     ),
 }
 
+def _get_template(notification_type: str) -> str:
+    db_template = get_notification_template(notification_type)
+    if db_template:
+        return db_template
+    return _TEMPLATES_FALLBACK.get(
+        notification_type,
+        "User's name: {name}. Generate a {type} notification using this context: {context}.",
+    )
+
+
 _FALLBACK = {
     "subject": "Something interesting for you",
     "body_html": "<p>Come explore something new today on <strong>ECALT</strong>.</p>",
@@ -118,12 +128,9 @@ async def generate_copy(notification_type: str, context: dict) -> dict:
     first = _first_name(raw_name)
     ctx = {**context, "name": first}
 
-    system = _SYSTEM
-
-    template = _TEMPLATES.get(
-        notification_type,
-        "User's name: {name}. Generate a {type} notification using this context: {context}.",
-    )
+    cfg = get_config("nudge")
+    system = cfg["style_prompt"]
+    template = _get_template(notification_type)
     try:
         user_prompt = template.format(type=notification_type, context=json.dumps(ctx), **ctx)
     except (KeyError, ValueError):

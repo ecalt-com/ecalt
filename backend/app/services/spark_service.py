@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.database import get_db
 from app.models.schemas import Mission, MissionStep
-from app.services.provider_service import complete_text
+from app.services.provider_service import complete_text, get_config
 
 logger = logging.getLogger(__name__)
 
@@ -74,11 +74,9 @@ def get_session_status(key: str) -> tuple[int, int]:
         return 0, FREE_SPARK_LIMIT
 
 
-# ── Prompt ────────────────────────────────────────────────────────────────────
+# ── Prompts ───────────────────────────────────────────────────────────────────
 
-_SYSTEM = """\
-You are ECALT's curiosity engine. Your job: give a SHORT vivid answer, then propose a mission.
-
+_SPARK_CONTRACT = """\
 Return ONLY a valid JSON object. No markdown, no explanation, no extra text — just the JSON.
 
 {
@@ -94,14 +92,12 @@ Return ONLY a valid JSON object. No markdown, no explanation, no extra text — 
       {"title": "Step title — start with a verb (Build, Decode, Wire, Map...)", "type": "concept|practice|challenge|explore", "minutes": 10}
     ]
   }
-}
+}"""
 
-Strict rules:
-- answer: 2-3 sentences, ≤ 120 words. Vivid, concrete, surprising. No filler phrases.
-- mission.steps: exactly 4-5 steps that progress logically from the question.
-- estimated_minutes must equal the exact sum of all step minutes.
-- Every step title must start with an action verb.
-"""
+_DAILY_SPARK_SYSTEM_DEFAULT = (
+    "Generate a single fascinating curiosity question that would make someone want to learn immediately. "
+    "Return ONLY the question — nothing else, no quotes, no preamble."
+)
 
 
 # ── Generator ─────────────────────────────────────────────────────────────────
@@ -137,12 +133,10 @@ async def generate_daily_spark(uid: str) -> str:
 
     topic_hint = ", ".join(topics[:3]) if topics else "science, history, or technology"
 
+    cfg = get_config("daily_spark")
     spark_text, _, _, _ = await complete_text(
         interaction_type="daily_spark",
-        system=(
-            "Generate a single fascinating curiosity question that would make someone want to learn immediately. "
-            "Return ONLY the question — nothing else, no quotes, no preamble."
-        ),
+        system=cfg["style_prompt"],
         user_content=f"Topics the learner loves: {topic_hint}",
         max_tokens=120,
     )
@@ -166,9 +160,11 @@ async def generate_daily_spark(uid: str) -> str:
 
 
 async def generate_spark(question: str) -> tuple[str, Mission, int, int]:
+    cfg = get_config("spark")
+    system = f"{cfg['style_prompt']}\n\n{_SPARK_CONTRACT}"
     raw, in_tok, out_tok, _ = await complete_text(
         interaction_type="spark",
-        system=_SYSTEM,
+        system=system,
         user_content=f"Question: {question}",
         max_tokens=750,
     )

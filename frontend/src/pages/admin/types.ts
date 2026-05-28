@@ -351,3 +351,32 @@ export interface CouponStats {
   total_credit_applied_cents: number
   unique_redeemers: number
 }
+
+export interface PromptRow {
+  interaction_type:        string
+  style_prompt:            string | null
+  style_prompt_is_default: boolean
+  default_style_prompt:    string
+  output_contract_hint:    string
+  style_prompt_updated_at: string | null
+  style_prompt_updated_by: string | null
+  provider:                string
+  model:                   string
+}
+
+export interface PromptHistoryEntry {
+  id:               number
+  interaction_type: string
+  old_style_prompt: string | null
+  new_style_prompt: string
+  changed_by:       string
+  changed_at:       string
+  reset_to_default: boolean
+}
+
+export interface NotificationTemplateRow {
+  notification_type: string
+  template:          string
+  updated_at:        string | null
+  updated_by:        string | null
+}
