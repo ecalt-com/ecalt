@@ -2,6 +2,9 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from app.core.auth import get_required_user
 from app.core.database import get_db
+from app.api.v1.endpoints.journeys import SAMPLE_JOURNEYS
+
+_CURATED_MAP = {j.id: j for j in SAMPLE_JOURNEYS}
 
 router = APIRouter()
 
@@ -65,6 +68,8 @@ async def get_passport(uid: str = Depends(get_required_user)):
             journey_rows = cur.fetchall()
 
     passport_journeys: list[PassportJourney] = []
+
+    # DB journeys (user-generated via /explore)
     for j in journey_rows:
         completed_steps = len(by_journey[j["id"]]["steps"])
         total_steps = len(j.get("steps") or [])
@@ -82,7 +87,29 @@ async def get_passport(uid: str = Depends(get_required_user)):
             fully_completed=completed_steps >= total_steps and total_steps > 0,
         ))
 
-    # Also handle journeys that are in progress but not in DB (curated ones)
+    # Curated journeys — not stored in DB, resolved from the static catalogue
+    found_ids = {j["id"] for j in journey_rows}
+    for jid in journey_ids:
+        if jid in found_ids:
+            continue
+        curated = _CURATED_MAP.get(jid)
+        if not curated:
+            continue
+        completed_steps = len(by_journey[jid]["steps"])
+        total_steps = len(curated.steps)
+        category = curated.tags[0] if curated.tags else "general"
+        latest = by_journey[jid]["latest"]
+        passport_journeys.append(PassportJourney(
+            id=jid,
+            title=curated.title,
+            icon=curated.icon,
+            category=category,
+            completed_steps=completed_steps,
+            total_steps=total_steps,
+            completed_at=str(latest),
+            fully_completed=completed_steps >= total_steps and total_steps > 0,
+        ))
+
     fully_done = [j for j in passport_journeys if j.fully_completed]
     in_progress = [j for j in passport_journeys if not j.fully_completed]
     categories = list({j.category for j in fully_done})
