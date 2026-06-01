@@ -5,6 +5,7 @@ import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2 } from 'luc
 import type { JourneyStep } from '../lib/types'
 import { getStepContent } from '../lib/api'
 import MarkdownContent from './MarkdownContent'
+import QuizCard from './QuizCard'
 
 const typeConfig = {
   concept:   { icon: BookOpen, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 border-violet-200 dark:bg-violet-400/10 dark:border-violet-400/20', label: 'Learn' },
@@ -41,6 +42,9 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
         const token = await getToken()
         const res = await getStepContent(journeyId, step.id, token ?? undefined)
         setContent(res.content)
+        // Viewing content = completing the step — same behaviour as Coursera/LinkedIn Learning.
+        // Only fires on the first load (content === null guard above), never double-marks.
+        if (!step.completed) onToggle?.(step.id)
       } catch (e: any) {
         if (e?.status === 402) {
           setBudgetExceeded(true)
@@ -133,6 +137,11 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
               {content && !loadingContent && (
                 <div className="pt-4">
                   <MarkdownContent content={content} />
+                  <QuizCard
+                    concept={step.title}
+                    context={content}
+                    getToken={getToken}
+                  />
                 </div>
               )}
             </div>

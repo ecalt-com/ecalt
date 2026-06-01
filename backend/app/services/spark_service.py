@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.database import get_db
 from app.models.schemas import Mission, MissionStep
+from app.services.fingerprint_service import inject_fingerprint
 from app.services.provider_service import complete_text, get_config
 
 logger = logging.getLogger(__name__)
@@ -134,9 +135,10 @@ async def generate_daily_spark(uid: str) -> str:
     topic_hint = ", ".join(topics[:3]) if topics else "science, history, or technology"
 
     cfg = get_config("daily_spark")
+    system = inject_fingerprint(uid, cfg["style_prompt"])
     spark_text, _, _, _ = await complete_text(
         interaction_type="daily_spark",
-        system=cfg["style_prompt"],
+        system=system,
         user_content=f"Topics the learner loves: {topic_hint}",
         max_tokens=120,
     )
@@ -159,9 +161,9 @@ async def generate_daily_spark(uid: str) -> str:
     return spark
 
 
-async def generate_spark(question: str) -> tuple[str, Mission, int, int]:
+async def generate_spark(question: str, uid: str | None = None) -> tuple[str, Mission, int, int]:
     cfg = get_config("spark")
-    system = f"{cfg['style_prompt']}\n\n{_SPARK_CONTRACT}"
+    system = f"{inject_fingerprint(uid, cfg['style_prompt'])}\n\n{_SPARK_CONTRACT}"
     raw, in_tok, out_tok, _ = await complete_text(
         interaction_type="spark",
         system=system,

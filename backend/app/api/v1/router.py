@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import (
     health, spark, explore, journeys, session, users, progress, passport, sitemap,
-    chat, knowledge, subscriptions, admin, mind_signature, coupons, notifications, geo,
+    chat, knowledge, subscriptions, admin, mind_signature, coupons, notifications, geo, quiz,
 )
 
 api_router = APIRouter()
@@ -23,3 +23,4 @@ api_router.include_router(mind_signature.router, prefix="/mind-signature", tags=
 api_router.include_router(coupons.router,       prefix="/coupons",        tags=["coupons"])
 api_router.include_router(notifications.router, prefix="/notifications",  tags=["notifications"])
 api_router.include_router(geo.router,           prefix="/geo",            tags=["geo"])
+api_router.include_router(quiz.router,          prefix="/quiz",           tags=["quiz"])

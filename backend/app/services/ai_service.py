@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from app.models.schemas import Journey, JourneyStep
+from app.services.fingerprint_service import inject_fingerprint
 from app.services.provider_service import complete_text, get_config
 
 
@@ -55,6 +56,7 @@ async def generate_step_content(
     journey_title: str,
     journey_question: str,
     age_group: str = "all",
+    uid: str | None = None,
 ) -> tuple[str, int, int]:
     """Returns (content, estimated_input_tokens, estimated_output_tokens)."""
     user_content = (
@@ -67,7 +69,7 @@ async def generate_step_content(
         "Generate the lesson content JSON."
     )
     cfg = get_config("step_content")
-    system = f"{cfg['style_prompt']}\n\n{_STEP_CONTENT_CONTRACT}"
+    system = f"{inject_fingerprint(uid, cfg['style_prompt'])}\n\n{_STEP_CONTENT_CONTRACT}"
     raw, in_tok, out_tok, _ = await complete_text(
         interaction_type="step_content",
         system=system,
@@ -114,6 +116,7 @@ async def warm_journey_steps(
                 journey_title=journey_title,
                 journey_question=journey_question,
                 age_group=age_group,
+                uid=uid,
             )
             with get_db() as conn:
                 with conn.cursor() as cur:
@@ -131,11 +134,11 @@ async def warm_journey_steps(
             pass
 
 
-async def generate_journey(question: str, age_group: str = "all") -> tuple[Journey, int, int]:
+async def generate_journey(question: str, age_group: str = "all", uid: str | None = None) -> tuple[Journey, int, int]:
     """Returns (journey, estimated_input_tokens, estimated_output_tokens)."""
     user_content = f"Question: {question}\nTarget age group: {age_group}\n\nGenerate the learning journey JSON."
     cfg = get_config("journey")
-    system = f"{cfg['style_prompt']}\n\n{_JOURNEY_CONTRACT}"
+    system = f"{inject_fingerprint(uid, cfg['style_prompt'])}\n\n{_JOURNEY_CONTRACT}"
     raw, in_tok, out_tok, _ = await complete_text(
         interaction_type="journey",
         system=system,

@@ -362,6 +362,7 @@ export interface PromptRow {
   style_prompt_updated_by: string | null
   provider:                string
   model:                   string
+  version:                 string | null
 }
 
 export interface PromptHistoryEntry {

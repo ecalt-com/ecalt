@@ -39,6 +39,7 @@ async def explore(
         journey, in_tok, out_tok = await generate_journey(
             question=request.question.strip(),
             age_group=request.age_group or "all",
+            uid=uid,
         )
     except ValueError as e:
         logger.warning("explore upstream error", extra={"question": request.question[:120], "error": str(e)})

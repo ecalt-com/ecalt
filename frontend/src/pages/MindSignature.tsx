@@ -5,6 +5,7 @@ import { useAuth } from '../lib/AuthContext'
 import PageMeta from '../components/PageMeta'
 import ConstellationMap from '../components/constellation/ConstellationMap'
 import { MindSignatureDisclaimer } from '../components/MindSignatureDisclaimer'
+import type { CapabilityIndicators } from '../lib/types'
 
 interface Domain {
   domain: string
@@ -18,10 +19,34 @@ interface Signature {
   display_name: string
   verification_hash: string
   capability_narrative: string
+  capability_indicators?: CapabilityIndicators
   domains: Domain[]
   constellation_data: { nodes: any[]; links: any[] }
   generated_at: string
 }
+
+const INDICATOR_META: { key: keyof CapabilityIndicators; label: string; tooltip: string }[] = [
+  {
+    key: 'conceptual_depth',
+    label: 'Conceptual Depth',
+    tooltip: 'Average mastery across concepts you have genuinely strengthened',
+  },
+  {
+    key: 'cross_domain_reach',
+    label: 'Cross-Domain Reach',
+    tooltip: 'How many distinct domains you have explored out of 14 possible',
+  },
+  {
+    key: 'applied_reasoning',
+    label: 'Applied Reasoning',
+    tooltip: 'How often your curiosity connects to real-world use and consequence',
+  },
+  {
+    key: 'emerging_frontiers',
+    label: 'Frontier Curiosity',
+    tooltip: 'Proportion of your concepts mastered to a level that touches contested territory',
+  },
+]
 
 export default function MindSignature() {
   const navigate = useNavigate()
@@ -149,6 +174,53 @@ export default function MindSignature() {
                 </div>
                 <MindSignatureDisclaimer />
               </div>
+
+              {/* Capability indicators */}
+              {signature.capability_indicators && (
+                <div className="glass-card rounded-2xl p-6">
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-4">
+                    Capability Indicators
+                  </h2>
+                  <div className="space-y-4">
+                    {INDICATOR_META.map(({ key, label, tooltip }) => {
+                      const value = signature.capability_indicators![key]
+                      const pct = Math.round(value * 100)
+                      return (
+                        <div key={key}>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{label}</span>
+                              <span
+                                title={tooltip}
+                                className="text-[10px] text-slate-400 dark:text-slate-600 cursor-help select-none"
+                              >ⓘ</span>
+                            </div>
+                            <span className="text-[11px] tabular-nums text-slate-500 dark:text-slate-400 font-medium">
+                              {pct}%
+                            </span>
+                          </div>
+                          <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-700"
+                              style={{
+                                width: `${pct}%`,
+                                background: pct >= 70
+                                  ? 'linear-gradient(90deg, #7c3aed, #06b6d4)'
+                                  : pct >= 40
+                                    ? 'linear-gradient(90deg, #7c3aed, #a78bfa)'
+                                    : 'linear-gradient(90deg, #a78bfa, #c4b5fd)',
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                  <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-4">
+                    Derived from your learning graph — not self-reported.
+                  </p>
+                </div>
+              )}
 
               {/* Verification + actions */}
               <div className="glass-card rounded-2xl p-6">

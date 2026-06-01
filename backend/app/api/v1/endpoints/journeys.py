@@ -239,6 +239,7 @@ async def get_step_content(
             journey_title=journey.title,
             journey_question=journey.question,
             age_group=journey.age_group,
+            uid=uid,
         )
     except ValueError as e:
         logger.warning("step content upstream error", extra={"journey_id": journey_id, "step_id": step_id, "error": str(e)})

@@ -174,6 +174,11 @@ export function PromptsTab({ prompts, setPrompts, getToken }: Props) {
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {selectedRow.model} · {selectedRow.provider}
+                {selectedRow.version && (
+                  <span className="ml-1.5 text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                    v{selectedRow.version}
+                  </span>
+                )}
                 {selectedRow.style_prompt_updated_at && (
                   <> · Last edited {relativeTime(selectedRow.style_prompt_updated_at)}
                     {selectedRow.style_prompt_updated_by && ` by ${selectedRow.style_prompt_updated_by}`}

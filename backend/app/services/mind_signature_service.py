@@ -3,6 +3,7 @@ import json
 from datetime import datetime, timezone
 
 from app.core.database import get_db
+from app.services.fingerprint_service import get_fingerprint
 from app.services.mastery_service import get_domain_mastery, update_domain_mastery
 from app.services.provider_service import complete_text, get_config
 
@@ -24,6 +25,51 @@ Paragraph 1: What domains they've explored and the intellectual range that revea
 Paragraph 2: How their strongest domains connect or complement each other.
 Paragraph 3: What this pattern suggests about how they think and learn.
 """
+
+
+def _derive_capability_indicators(
+    domains: list[dict],
+    knowledge_nodes: list[dict],
+    fingerprint: dict | None,
+) -> dict:
+    """
+    Derive the four capability indicators from real data rather than arbitrary scores.
+
+    conceptual_depth    = avg strength of mastered concepts (strength >= 0.6)
+    cross_domain_reach  = distinct domains explored / 14 possible domains (capped at 1.0)
+    applied_reasoning   = fingerprint.application_focus if available, else domain-mix proxy
+    emerging_frontiers  = proportion of concepts with strength > 0.7 (high mastery = frontier reached)
+    """
+    total_concepts  = len(knowledge_nodes)
+    strong_concepts = [n for n in knowledge_nodes if n.get("strength", 0) >= 0.6]
+    frontier_concepts = [n for n in knowledge_nodes if n.get("strength", 0) > 0.7]
+
+    conceptual_depth = (
+        sum(n["strength"] for n in strong_concepts) / len(strong_concepts)
+        if strong_concepts else 0.0
+    )
+
+    domain_count       = len(domains)
+    cross_domain_reach = min(domain_count / 14.0, 1.0)
+
+    if fingerprint and "application_focus" in fingerprint:
+        applied_reasoning = float(fingerprint["application_focus"])
+    else:
+        # Proxy: applied domains (technology, engineering, medicine, economics) / total
+        applied_domains = {"technology", "engineering", "medicine", "economics"}
+        applied_count   = sum(1 for d in domains if d["domain"] in applied_domains)
+        applied_reasoning = min(applied_count / max(domain_count, 1), 1.0)
+
+    emerging_frontiers = (
+        len(frontier_concepts) / total_concepts if total_concepts > 0 else 0.0
+    )
+
+    return {
+        "conceptual_depth":   round(conceptual_depth,   3),
+        "cross_domain_reach": round(cross_domain_reach, 3),
+        "applied_reasoning":  round(applied_reasoning,  3),
+        "emerging_frontiers": round(emerging_frontiers, 3),
+    }
 
 
 def _build_constellation(domains: list[dict], knowledge_nodes: list[dict]) -> dict:
@@ -102,6 +148,8 @@ async def generate_mind_signature(uid: str) -> dict:
         max_tokens=600,
     )
 
+    fingerprint        = get_fingerprint(uid)
+    capability_indicators = _derive_capability_indicators(domains, knowledge_nodes, fingerprint)
     constellation_data = _build_constellation(domains, knowledge_nodes)
 
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -131,6 +179,7 @@ async def generate_mind_signature(uid: str) -> dict:
         "display_name": display_name,
         "verification_hash": verification_hash,
         "capability_narrative": narrative,
+        "capability_indicators": capability_indicators,
         "domains": domains,
         "constellation_data": constellation_data,
         "generated_at": row["generated_at"].isoformat(),

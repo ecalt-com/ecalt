@@ -4,6 +4,7 @@ import uuid
 from typing import AsyncGenerator
 
 from app.core.database import get_db
+from app.services.fingerprint_service import inject_fingerprint, update_fingerprint
 from app.services.provider_service import get_config, stream_completion
 
 
@@ -138,6 +139,8 @@ async def stream_chat(
         },
     ]
 
+    system = inject_fingerprint(uid, cfg["style_prompt"])
+
     yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id})}\n\n"
 
     full_response = ""
@@ -145,7 +148,7 @@ async def stream_chat(
     output_tokens = 0
     cached_input_tokens = 0
     try:
-        async for text, in_tok, out_tok, cached_tok in stream_completion(provider, model, cfg["style_prompt"], messages):
+        async for text, in_tok, out_tok, cached_tok in stream_completion(provider, model, system, messages):
             if text:
                 full_response += text
                 yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
@@ -164,11 +167,12 @@ async def stream_chat(
 
     yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
 
-    asyncio.ensure_future(_post_stream_bg(uid, user_message, validated, model, input_tokens, output_tokens, cached_input_tokens))
+    asyncio.ensure_future(_post_stream_bg(uid, conv_id, user_message, validated, model, input_tokens, output_tokens, cached_input_tokens))
 
 
 async def _post_stream_bg(
     uid: str,
+    conv_id: str,
     user_message: str,
     assistant_response: str,
     model: str,
@@ -187,12 +191,29 @@ async def _post_stream_bg(
     except Exception:
         pass
     try:
-        await _queue_cliffhanger(uid, user_message)
+        from app.services.fingerprint_service import get_fingerprint
+        fp = get_fingerprint(uid)
+        curiosity_type = fp.get("curiosity_type", "conceptual") if fp else "conceptual"
+        await _queue_cliffhanger(uid, user_message, curiosity_type)
+    except Exception:
+        pass
+    # Update cognitive fingerprint every 2nd message in the conversation
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT COUNT(*) AS cnt FROM conversation_messages WHERE conversation_id = %s",
+                    (conv_id,),
+                )
+                row = cur.fetchone()
+                msg_count = row["cnt"] if row else 0
+        if msg_count >= 2 and msg_count % 2 == 0:
+            await update_fingerprint(uid)
     except Exception:
         pass
 
 
-async def _queue_cliffhanger(uid: str, user_message: str) -> None:
+async def _queue_cliffhanger(uid: str, user_message: str, curiosity_type: str = "conceptual") -> None:
     """After every chat turn, cancel the old cliffhanger and queue a fresh one for 2h later.
 
     Only the last message in a session fires — each new turn cancels the previous pending queue row.
@@ -243,7 +264,7 @@ async def _queue_cliffhanger(uid: str, user_message: str) -> None:
                         (uid, notification_type, channel, scheduled_for, payload)
                     VALUES (%s, 'cliffhanger_return', %s, now() + interval '2 hours', %s)
                     """,
-                    (uid, channel, json.dumps({"topic": topic})),
+                    (uid, channel, json.dumps({"topic": topic, "curiosity_type": curiosity_type})),
                 )
     except Exception:
         pass

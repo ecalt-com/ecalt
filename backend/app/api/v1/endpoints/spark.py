@@ -52,7 +52,7 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
         )
 
     try:
-        answer, mission, in_tok, out_tok = await generate_spark(body.question.strip())
+        answer, mission, in_tok, out_tok = await generate_spark(body.question.strip(), uid=uid)
     except ValueError as e:
         logger.error("spark parse error [%s]: %s", body.question[:80], e, exc_info=True)
         raise HTTPException(status_code=502, detail=str(e))

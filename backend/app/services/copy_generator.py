@@ -1,7 +1,8 @@
-"""Generates notification copy using the nudge AI interaction type (Claude Haiku by default)."""
+"""Generates notification copy using the nudge AI interaction type."""
 import json
 import logging
 
+from app.services.fingerprint_service import inject_fingerprint
 from app.services.provider_service import complete_text, get_config, get_notification_template
 
 logger = logging.getLogger("app.services.copy_generator")
@@ -33,15 +34,24 @@ _TEMPLATES_FALLBACK: dict[str, str] = {
     ),
     "re_engagement": (
         "User's name: {name}. Inactive for {days_inactive} days. Favourite domain: {domain}. "
-        "Write a warm, non-pushy message that sparks curiosity about {domain} — "
-        "give them one specific surprising fact or question about it right in the message body. "
-        "Don't say 'we miss you', just make them curious."
+        "Write a warm, non-pushy message that sparks curiosity about {domain}. "
+        "Give them one specific surprising fact, open question, or contested idea in that domain right in the message body — "
+        "something genuinely unresolved that makes them want to think about it. "
+        "NEVER say 'we miss you', 'come back', 'don't miss out', or 'limited time'. "
+        "THREE LAWS: never use lesson/course/curriculum/study/education; end on unresolved tension; be specific to {domain}."
     ),
     "cliffhanger_return": (
         "User's name: {name}. They left a learning conversation about '{topic}' without resolving it. "
-        "Reference the specific topic and tease the unresolved angle — "
-        "make them feel like they'd genuinely regret not finding the answer. "
-        "The short_message should feel like a friend texting: 'hey wait, did you ever figure out why...?'"
+        "Their curiosity type is: {curiosity_type}. "
+        "Calibrate the hook to their curiosity type:\n"
+        "- factual: give a specific number or measurement they don't know yet\n"
+        "- conceptual: hint at the deeper principle they almost reached\n"
+        "- applied: show the real-world consequence they missed\n"
+        "- philosophical: surface the implication that reframes everything\n"
+        "- cross_domain: tease the connection to a completely different field\n"
+        "The short_message must feel like a friend texting: 'hey wait, did you ever figure out why...?' "
+        "NEVER say 'we miss you' or 'come back'. Just make them curious. "
+        "THREE LAWS: never use lesson/course/curriculum/study/education; end on unresolved tension; be specific to this topic."
     ),
     "connection_alert": (
         "User's name: {name}. Their topics '{topic_a}' and '{topic_b}' share a surprising connection: {connection}. "
@@ -123,13 +133,13 @@ def _first_name(name: str) -> str:
     return (name or "").strip().split()[0] if name else "there"
 
 
-async def generate_copy(notification_type: str, context: dict) -> dict:
+async def generate_copy(notification_type: str, context: dict, uid: str | None = None) -> dict:
     raw_name = context.get("name") or context.get("display_name") or ""
     first = _first_name(raw_name)
-    ctx = {**context, "name": first}
+    ctx = {**context, "name": first, "curiosity_type": context.get("curiosity_type", "conceptual")}
 
     cfg = get_config("nudge")
-    system = cfg["style_prompt"]
+    system = inject_fingerprint(uid, cfg["style_prompt"])
     template = _get_template(notification_type)
     try:
         user_prompt = template.format(type=notification_type, context=json.dumps(ctx), **ctx)

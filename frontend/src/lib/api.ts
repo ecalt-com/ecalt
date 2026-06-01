@@ -1,4 +1,4 @@
-import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus } from './types'
+import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus, QuizQuestion, QuizHint, QuizResult } from './types'
 
 // In production, Vercel rewrites /api/* → Railway (no env var needed, no mixed-content).
 // In local dev, the Vite proxy forwards /api/* → localhost:8000.
@@ -173,3 +173,21 @@ export const getKnowledgeNodes = (token: string): Promise<{ nodes: KnowledgeNode
 
 export const getDailySpark = (token: string): Promise<{ spark: string }> =>
   request('/api/v1/knowledge/spark', undefined, token)
+
+// ── Quiz ─────────────────────────────────────────────────────────────────────
+
+export const generateQuiz = (
+  body: { concept: string; context: string; base_depth?: string },
+  token: string,
+): Promise<QuizQuestion> =>
+  request('/api/v1/quiz', { method: 'POST', body: JSON.stringify(body) }, token)
+
+export const getQuizHint = (quizId: string, token: string): Promise<QuizHint> =>
+  request(`/api/v1/quiz/${quizId}/hint`, { method: 'POST' }, token)
+
+export const submitQuizAnswer = (
+  quizId: string,
+  body: { user_answer: string },
+  token: string,
+): Promise<QuizResult> =>
+  request(`/api/v1/quiz/${quizId}/submit`, { method: 'POST', body: JSON.stringify(body) }, token)

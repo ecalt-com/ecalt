@@ -17,6 +17,83 @@ _VALID_DOMAINS = {
     "engineering", "astronomy", "medicine",
 }
 
+# Maps journey tags (and common synonyms) → canonical domain.
+# Lowercase keys; values must all be members of _VALID_DOMAINS.
+_TAG_DOMAIN_MAP: dict[str, str] = {
+    # direct matches
+    "biology": "biology", "physics": "physics", "chemistry": "chemistry",
+    "math": "math", "history": "history", "technology": "technology",
+    "psychology": "psychology", "philosophy": "philosophy", "arts": "arts",
+    "language": "language", "economics": "economics", "engineering": "engineering",
+    "astronomy": "astronomy", "medicine": "medicine",
+    # biology adjacent
+    "genetics": "biology", "molecules": "biology", "ecology": "biology",
+    "evolution": "biology", "neuroscience": "medicine",
+    # physics / engineering adjacent
+    "acoustics": "physics", "quantum": "physics", "thermodynamics": "physics",
+    "optics": "physics", "mechanics": "engineering", "electronics": "engineering",
+    "rockets": "engineering", "space": "astronomy", "astrophysics": "astronomy",
+    "cosmology": "astronomy",
+    # technology / math adjacent
+    "ai": "technology", "machine learning": "technology", "computing": "technology",
+    "software": "technology", "programming": "technology",
+    "statistics": "math", "algebra": "math", "calculus": "math",
+    # economics adjacent
+    "finance": "economics", "investing": "economics", "economy": "economics",
+    # arts / language adjacent
+    "music": "arts", "art": "arts", "creativity": "arts", "literature": "arts",
+    "writing": "language", "linguistics": "language", "grammar": "language",
+    # philosophy / psychology adjacent
+    "logic": "philosophy", "ethics": "philosophy",
+    "sociology": "psychology", "behavior": "psychology", "cognitive science": "psychology",
+    # environment / climate → chemistry (atmospheric science)
+    "climate": "chemistry", "environment": "biology",
+}
+
+# Strength credit per step type — reflects cognitive engagement depth.
+# Chat extraction starts at 0.3; journey steps are intentionally lower
+# (structured exposure) but accumulate across a full journey.
+_STEP_TYPE_STRENGTH: dict[str, float] = {
+    "concept":   0.15,   # reading / understanding
+    "explore":   0.20,   # self-directed discovery
+    "practice":  0.25,   # hands-on application
+    "challenge": 0.30,   # active problem solving
+}
+
+
+def credit_step_knowledge(uid: str, step_title: str, step_type: str, tags: list[str]) -> None:
+    """Upsert knowledge nodes when a journey step is freshly completed.
+
+    Maps journey tags to canonical domains, then inserts/reinforces one
+    knowledge node per domain using the step title as the concept name.
+    Strength delta is weighted by step type so active steps count more.
+    Silently no-ops if no valid domain can be resolved from the tags.
+    """
+    domains: list[str] = list({
+        mapped
+        for tag in tags
+        if (mapped := _TAG_DOMAIN_MAP.get(tag.strip().lower())) and mapped in _VALID_DOMAINS
+    })
+    if not domains:
+        return
+
+    concept = step_title.strip()[:100]
+    delta = _STEP_TYPE_STRENGTH.get(step_type, 0.15)
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            for domain in domains:
+                cur.execute(
+                    """
+                    INSERT INTO knowledge_nodes (uid, concept, domain, strength)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (uid, concept) DO UPDATE SET
+                        strength        = LEAST(knowledge_nodes.strength + %s, 1.0),
+                        last_reinforced = now()
+                    """,
+                    (uid, concept, domain, delta, delta),
+                )
+
 
 async def extract_knowledge_nodes(uid: str, user_message: str, assistant_response: str) -> None:
     """Extract concept-domain pairs from a conversation turn and upsert into knowledge_nodes."""

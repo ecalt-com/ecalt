@@ -26,6 +26,7 @@ export const INTERACTION_LABELS: Record<string, string> = {
   spark:                'Spark',
   daily_spark:          'Daily Spark',
   knowledge_extraction: 'Knowledge',
+  quiz:                 'Quiz',
   unknown:              'Other',
 }
 

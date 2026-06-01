@@ -1,12 +1,55 @@
+import json
 import logging
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends
 from pydantic import BaseModel
 from typing import Optional
 from app.core.auth import get_required_user
 from app.core.database import get_db
+from app.services.knowledge_service import credit_step_knowledge
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _resolve_step_meta(journey_id: str, step_id: str) -> tuple[str, str, list[str]] | None:
+    """Return (step_title, step_type, journey_tags) for a given step, or None.
+
+    Tries the journeys DB table first, then falls back to the in-process
+    static journey catalogue so curated journeys are always covered.
+    """
+    # --- DB journeys (user-generated via /explore) ---
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT steps, tags FROM journeys WHERE id = %s",
+                    (journey_id,),
+                )
+                row = cur.fetchone()
+                if row:
+                    steps_raw = row["steps"]
+                    if isinstance(steps_raw, str):
+                        steps_raw = json.loads(steps_raw)
+                    for s in (steps_raw or []):
+                        if s.get("id") == step_id:
+                            tags = list(row["tags"] or [])
+                            return s["title"], s.get("type", "concept"), tags
+    except Exception:
+        pass
+
+    # --- Static / curated journeys ---
+    # Lazy import avoids a circular dependency at module load time.
+    try:
+        from app.api.v1.endpoints.journeys import SAMPLE_JOURNEYS
+        for journey in SAMPLE_JOURNEYS:
+            if journey.id == journey_id:
+                for step in journey.steps:
+                    if step.id == step_id:
+                        return step.title, step.type, journey.tags
+    except Exception:
+        pass
+
+    return None
 
 
 class ProgressResponse(BaseModel):
@@ -61,9 +104,12 @@ async def get_progress(journey_id: str, uid: str = Depends(get_required_user)):
 
 @router.post("/{journey_id}/{step_id}", response_model=ProgressResponse)
 async def mark_step_complete(
-    journey_id: str, step_id: str, uid: str = Depends(get_required_user)
+    journey_id: str,
+    step_id: str,
+    background_tasks: BackgroundTasks,
+    uid: str = Depends(get_required_user),
 ):
-    """Mark a step as complete. Idempotent. Updates daily streak."""
+    """Mark a step as complete. Idempotent. Updates daily streak and knowledge graph."""
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -78,6 +124,15 @@ async def mark_step_complete(
             row = cur.fetchone()
 
     _update_streak(uid)
+
+    # Only credit knowledge on a genuinely fresh completion.
+    # ON CONFLICT DO NOTHING means row=None for duplicate calls, so we
+    # never double-count the same step.
+    if row:
+        meta = _resolve_step_meta(journey_id, step_id)
+        if meta:
+            step_title, step_type, tags = meta
+            background_tasks.add_task(credit_step_knowledge, uid, step_title, step_type, tags)
 
     return ProgressResponse(
         journey_id=journey_id,
