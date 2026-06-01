@@ -99,14 +99,8 @@ export default function Journey() {
 
     const completing = !step.completed
 
-    // Optimistic update + check for journey completion
-    setSteps(prev => {
-      const updated = prev.map(s => s.id === stepId ? { ...s, completed: completing } : s)
-      if (completing && updated.every(s => s.completed)) {
-        setShowCompletion(true)
-      }
-      return updated
-    })
+    // Optimistic update
+    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: completing } : s))
 
     addToast(completing ? 'Step complete ✓' : 'Step unmarked')
 
@@ -258,6 +252,32 @@ export default function Journey() {
                 onToggle={toggleStep}
               />
             ))}
+
+            {/* Completion card — appears when every step is read */}
+            {completed === steps.length && steps.length > 0 && (
+              <div className="mt-8 animate-in">
+                <div className="rounded-2xl border border-violet-200 dark:border-violet-500/25 bg-gradient-to-br from-violet-50 via-white to-cyan-50/40 dark:from-violet-950/50 dark:via-slate-900/60 dark:to-cyan-950/20 p-7 text-center">
+                  <div className="text-5xl mb-3">{journey.icon}</div>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 text-xs font-semibold mb-3">
+                    <Award size={11} />
+                    All steps complete
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 mb-1">
+                    You've covered everything in this journey.
+                  </h3>
+                  <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">
+                    Ready to add it to your Passport?
+                  </p>
+                  <button
+                    onClick={() => setShowCompletion(true)}
+                    className="btn-primary flex items-center justify-center gap-2 mx-auto"
+                  >
+                    <Award size={14} />
+                    Complete Journey
+                  </button>
+                </div>
+              </div>
+            )}
 
             {related.length > 0 && (
               <div className="mt-16 pt-8 border-t border-slate-200 dark:border-slate-800/50">
