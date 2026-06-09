@@ -167,7 +167,7 @@ async def stream_chat(
 
     yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
 
-    asyncio.ensure_future(_post_stream_bg(uid, conv_id, user_message, validated, model, input_tokens, output_tokens, cached_input_tokens))
+    asyncio.ensure_future(_post_stream_bg(uid, conv_id, user_message, validated, model, input_tokens, output_tokens, cached_input_tokens, interaction_type))
 
 
 async def _post_stream_bg(
@@ -179,11 +179,12 @@ async def _post_stream_bg(
     input_tokens: int,
     output_tokens: int,
     cached_input_tokens: int = 0,
+    interaction_type: str = "daily_chat",
 ) -> None:
     from app.services.knowledge_service import extract_knowledge_nodes
     from app.services.subscription_service import record_usage
     try:
-        record_usage(uid, input_tokens, output_tokens, model, interaction_type="daily_chat", cached_input_tokens=cached_input_tokens)
+        record_usage(uid, input_tokens, output_tokens, model, interaction_type=interaction_type, cached_input_tokens=cached_input_tokens)
     except Exception:
         pass
     try:

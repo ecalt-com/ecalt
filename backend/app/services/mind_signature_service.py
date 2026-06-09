@@ -108,7 +108,7 @@ def _build_constellation(domains: list[dict], knowledge_nodes: list[dict]) -> di
     return {"nodes": nodes, "links": links}
 
 
-async def generate_mind_signature(uid: str) -> dict:
+async def generate_mind_signature(uid: str) -> tuple[dict, int, int]:
     """Full pipeline: recalculate mastery → narrative → constellation → store → return."""
     update_domain_mastery(uid)
     domains = get_domain_mastery(uid)
@@ -135,7 +135,7 @@ async def generate_mind_signature(uid: str) -> dict:
     )
 
     cfg = get_config("mind_signature")
-    narrative, _, _, _ = await complete_text(
+    narrative, in_tok, out_tok, _ = await complete_text(
         interaction_type="mind_signature",
         system=cfg["style_prompt"],
         user_content=(
@@ -184,7 +184,7 @@ async def generate_mind_signature(uid: str) -> dict:
         "constellation_data": constellation_data,
         "generated_at": row["generated_at"].isoformat(),
         "legal_disclaimer": LEGAL_DISCLAIMER,
-    }
+    }, in_tok, out_tok
 
 
 def get_latest_signature(uid: str) -> dict | None:

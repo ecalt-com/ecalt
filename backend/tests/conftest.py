@@ -22,8 +22,8 @@ FREE_TRIAL = {
 INDIVIDUAL = {
     "plan_id": "individual",
     "name": "Individual",
-    "base_price_cents": 1900,
-    "token_budget_cents": 760.0,  # $7.60 = 40% of $19
+    "base_price_cents": 1000,
+    "token_budget_cents": 760.0,
     "lifetime_message_limit": None,
     "max_seats": 1,
     "is_active": True,
@@ -32,12 +32,46 @@ INDIVIDUAL = {
 STUDENT = {
     "plan_id": "student",
     "name": "Student",
-    "base_price_cents": 900,
+    "base_price_cents": 500,
     "token_budget_cents": 360.0,
     "lifetime_message_limit": None,
     "max_seats": 1,
     "is_active": True,
 }
+
+FAMILY = {
+    "plan_id": "family",
+    "name": "Family",
+    "base_price_cents": 3000,
+    "token_budget_cents": 1560.0,
+    "lifetime_message_limit": None,
+    "max_seats": 5,
+    "is_active": True,
+}
+
+UNIVERSITY = {
+    "plan_id": "university",
+    "name": "University",
+    "base_price_cents": 29900,
+    "token_budget_cents": 11960.0,
+    "lifetime_message_limit": None,
+    "max_seats": 50,
+    "is_active": True,
+}
+
+ENTERPRISE = {
+    "plan_id": "enterprise",
+    "name": "Enterprise",
+    "base_price_cents": 49900,
+    "token_budget_cents": 19900.0,
+    "lifetime_message_limit": None,
+    "max_seats": 200,
+    "is_active": True,
+}
+
+INDIVIDUAL_INR = {**INDIVIDUAL, "payment_gateway": "razorpay", "base_price_inr_paise": 69900}
+STUDENT_INR    = {**STUDENT,    "payment_gateway": "razorpay", "base_price_inr_paise": 39900}
+FAMILY_INR     = {**FAMILY,     "payment_gateway": "razorpay", "base_price_inr_paise": 199900}
 
 # ── Usage fixtures ─────────────────────────────────────────────────────────────
 

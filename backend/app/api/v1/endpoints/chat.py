@@ -6,7 +6,7 @@ from typing import Optional
 from app.core.auth import get_required_user
 from app.core.database import get_db
 from app.services.chat_service import stream_chat
-from app.services.subscription_service import check_budget, record_usage
+from app.services.subscription_service import check_budget
 
 router = APIRouter()
 

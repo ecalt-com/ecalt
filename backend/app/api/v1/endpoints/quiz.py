@@ -36,7 +36,7 @@ async def generate_quiz_endpoint(
         raise HTTPException(status_code=400, detail="context cannot be empty")
 
     try:
-        quiz = await generate_quiz(
+        quiz, in_tok, out_tok = await generate_quiz(
             uid=uid,
             concept=body.concept.strip(),
             context=body.context.strip(),
@@ -49,7 +49,7 @@ async def generate_quiz_endpoint(
         raise HTTPException(status_code=500, detail="Failed to generate quiz")
 
     cfg = get_config("quiz")
-    record_usage(uid, 0, 0, cfg["model"], interaction_type="quiz")
+    record_usage(uid, in_tok, out_tok, cfg["model"], interaction_type="quiz")
     return quiz
 
 

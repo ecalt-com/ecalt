@@ -248,7 +248,8 @@ async def get_step_content(
         logger.exception("step content generation failed", extra={"journey_id": journey_id, "step_id": step_id})
         raise HTTPException(status_code=500, detail="Failed to generate step content.")
 
-    record_usage(uid, in_tok, out_tok, get_config("step_content")["model"])
+    record_usage(uid, in_tok, out_tok, get_config("step_content")["model"],
+                 interaction_type="step_content")
 
     # Cache result
     try:

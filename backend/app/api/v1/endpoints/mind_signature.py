@@ -7,6 +7,8 @@ from app.services.mind_signature_service import (
     get_latest_signature,
     get_signature_by_hash,
 )
+from app.services.subscription_service import check_budget, record_usage
+from app.services.provider_service import get_config
 
 router = APIRouter()
 
@@ -21,21 +23,33 @@ async def get_my_signature(uid: str = Depends(get_required_user)):
 
 @router.post("/generate")
 async def trigger_generate(uid: str = Depends(get_required_user)):
+    allowed, reason = check_budget(uid, context="ai")
+    if not allowed:
+        raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
+
     update_domain_mastery(uid)
     if not should_generate_signature(uid):
         raise HTTPException(
             status_code=422,
             detail="Not enough domain mastery yet, or a signature was generated recently.",
         )
-    sig = await generate_mind_signature(uid)
+    sig, in_tok, out_tok = await generate_mind_signature(uid)
+    record_usage(uid, in_tok, out_tok, get_config("mind_signature")["model"],
+                 interaction_type="mind_signature")
     return {"signature": sig}
 
 
 @router.post("/generate/force")
 async def force_generate(uid: str = Depends(get_required_user)):
     """Generate unconditionally — useful for manual refresh or testing."""
+    allowed, reason = check_budget(uid, context="ai")
+    if not allowed:
+        raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
+
     update_domain_mastery(uid)
-    sig = await generate_mind_signature(uid)
+    sig, in_tok, out_tok = await generate_mind_signature(uid)
+    record_usage(uid, in_tok, out_tok, get_config("mind_signature")["model"],
+                 interaction_type="mind_signature")
     return {"signature": sig}
 
 

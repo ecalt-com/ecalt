@@ -384,10 +384,10 @@ class TestRecordUsage:
         with patch("app.services.subscription_service.get_db", spy_db):
             record_usage(TEST_UID, input_tokens=100, output_tokens=200, model="gpt-4o-mini")
 
-        assert len(captured_sql) == 1
-        sql = captured_sql[0]
-        assert "INSERT INTO token_usage" in sql
-        assert "ON CONFLICT" in sql
+        # record_usage writes to token_usage AND usage_by_interaction
+        upsert_sqls = [s for s in captured_sql if "ON CONFLICT" in s]
+        assert any("token_usage" in s for s in upsert_sqls), "token_usage upsert missing"
+        assert len(upsert_sqls) >= 2, "Expected upserts for both tables"
 
     def test_correct_cost_calculated(self):
         from app.services.subscription_service import record_usage
@@ -456,9 +456,9 @@ class TestRecordUsage:
             record_usage(TEST_UID, 100, 100, "gpt-4o-mini")
             record_usage(TEST_UID, 200, 200, "gpt-4o-mini")
 
-        # Both calls should use upsert
-        assert all("ON CONFLICT" in sql for sql in executed)
-        assert len(executed) == 2
+        # Both calls must produce upsert statements for both tables
+        upsert_sqls = [s for s in executed if "ON CONFLICT" in s]
+        assert len(upsert_sqls) >= 4, "Two calls × two tables = at least 4 upserts"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

@@ -135,6 +135,90 @@ class TestChatStream:
 
         assert res.status_code == 200
 
+    def test_custom_interaction_type_passed_to_stream_chat(self, client):
+        """
+        Regression: interaction_type was dropped and hardcoded to 'daily_chat' in
+        _post_stream_bg. Verify the endpoint forwards what the caller sends.
+        """
+        captured = {}
+
+        async def fake_stream(uid, user_message, conversation_id=None, interaction_type="daily_chat"):
+            captured["interaction_type"] = interaction_type
+            yield b'data: {"type":"done"}\n\n'
+
+        with patch("app.api.v1.endpoints.chat.check_budget", return_value=(True, "ok")), \
+             patch("app.api.v1.endpoints.chat.stream_chat", side_effect=fake_stream):
+            client.post("/api/v1/chat/stream",
+                        json={"message": "hello", "interaction_type": "onboarding"})
+
+        assert captured.get("interaction_type") == "onboarding", \
+            "interaction_type must be forwarded to stream_chat, not defaulted to daily_chat"
+
+
+class TestChatServiceInteractionTypeThreading:
+    """Unit tests for the interaction_type threading fix in chat_service.py."""
+
+    def test_post_stream_bg_uses_passed_interaction_type(self):
+        """_post_stream_bg must pass interaction_type through to record_usage, not hardcode it."""
+        import asyncio
+        from unittest.mock import patch, AsyncMock
+
+        recorded = []
+
+        async def run():
+            from app.services.chat_service import _post_stream_bg
+            # Both record_usage and extract_knowledge_nodes are locally imported inside
+            # _post_stream_bg — patch at the source module, not at chat_service.
+            with patch("app.services.subscription_service.record_usage",
+                       side_effect=lambda uid, in_t, out_t, model,
+                       interaction_type="daily_chat", **kw: recorded.append(interaction_type)), \
+                 patch("app.services.knowledge_service.extract_knowledge_nodes",
+                       new_callable=AsyncMock), \
+                 patch("app.services.fingerprint_service.get_fingerprint",
+                       return_value=None, create=True):
+                await _post_stream_bg(
+                    uid=TEST_UID,
+                    conv_id="conv-1",
+                    user_message="hi",
+                    assistant_response="hello",
+                    model="gpt-4o-mini",
+                    input_tokens=100,
+                    output_tokens=50,
+                    cached_input_tokens=0,
+                    interaction_type="onboarding",
+                )
+
+        asyncio.run(run())
+        assert recorded == ["onboarding"], \
+            f"Expected 'onboarding' but got {recorded} — interaction_type was not threaded through"
+
+    def test_post_stream_bg_defaults_to_daily_chat(self):
+        """Without explicit interaction_type, default is 'daily_chat'."""
+        import asyncio
+        from unittest.mock import patch, AsyncMock
+
+        recorded = []
+
+        async def run():
+            from app.services.chat_service import _post_stream_bg
+            with patch("app.services.subscription_service.record_usage",
+                       side_effect=lambda uid, in_t, out_t, model,
+                       interaction_type="daily_chat", **kw: recorded.append(interaction_type)), \
+                 patch("app.services.knowledge_service.extract_knowledge_nodes",
+                       new_callable=AsyncMock):
+                await _post_stream_bg(
+                    uid=TEST_UID,
+                    conv_id="conv-1",
+                    user_message="hi",
+                    assistant_response="hello",
+                    model="gpt-4o-mini",
+                    input_tokens=100,
+                    output_tokens=50,
+                )
+
+        asyncio.run(run())
+        assert recorded == ["daily_chat"]
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # POST /api/v1/explore
@@ -189,7 +273,7 @@ class TestExplore:
         )
 
         usage_recorded = []
-        def fake_record(uid, in_tok, out_tok, model):
+        def fake_record(uid, in_tok, out_tok, model, **kwargs):
             usage_recorded.append((uid, in_tok, out_tok, model))
 
         with patch("app.api.v1.endpoints.explore.check_budget", return_value=(True, "ok")), \
@@ -258,7 +342,7 @@ class TestJourneyStepContent:
         """On cache miss with budget ok: generates content, records usage, stores in cache."""
         usage_recorded = []
 
-        def fake_record(uid, in_tok, out_tok, model):
+        def fake_record(uid, in_tok, out_tok, model, **kwargs):
             usage_recorded.append((uid, in_tok, out_tok, model))
 
         with patch("app.api.v1.endpoints.journeys.get_db",         mock_db(None, None)), \
@@ -374,30 +458,29 @@ class TestCouponApplyEndpoint:
 
 class TestSubscriptionMe:
 
-    def _mock_sub_deps(self, plan, cost, coupon_credits=0.0, coupon_msgs=0, msg_count=0):
-        return (
-            patch("app.api.v1.endpoints.subscriptions.get_user_plan",          return_value=plan),
-            patch("app.api.v1.endpoints.subscriptions.get_current_usage",       return_value=usage(cost)),
-            patch("app.api.v1.endpoints.subscriptions.get_coupon_extras",       return_value=extras(coupon_credits, coupon_msgs)),
-            patch("app.api.v1.endpoints.subscriptions.count_lifetime_messages", return_value=msg_count),
-            patch("app.api.v1.endpoints.subscriptions.get_db",                  mock_db({"is_admin": False})),
-        )
+    def _me_row(self, plan, cost, coupon_credits=0.0, coupon_msgs=0, msg_count=0):
+        """Build a fake _ME_QUERY result row matching what _build_me_response expects."""
+        row = dict(plan)
+        row["_usage_input_tokens"]  = 0
+        row["_usage_output_tokens"] = 0
+        row["_usage_cost_cents"]    = cost
+        row["_usage_message_count"] = 1
+        row["_extra_credits_cents"] = coupon_credits
+        row["_bonus_messages"]      = coupon_msgs
+        row["_is_admin"]            = False
+        row["_lifetime_messages"]   = msg_count
+        return row
+
+    def _get_me(self, client, plan, cost, coupon_credits=0.0, coupon_msgs=0, msg_count=0):
+        row = self._me_row(plan, cost, coupon_credits, coupon_msgs, msg_count)
+        with patch("app.api.v1.endpoints.subscriptions.get_db", mock_db(row)):
+            return client.get("/api/v1/subscriptions/me")
 
     def test_total_budget_includes_coupon_credits(self, client):
-        with self._mock_sub_deps(FREE_TRIAL, cost=0.0, coupon_credits=10.0)[0], \
-             self._mock_sub_deps(FREE_TRIAL, cost=0.0, coupon_credits=10.0)[1], \
-             self._mock_sub_deps(FREE_TRIAL, cost=0.0, coupon_credits=10.0)[2], \
-             self._mock_sub_deps(FREE_TRIAL, cost=0.0, coupon_credits=10.0)[3], \
-             self._mock_sub_deps(FREE_TRIAL, cost=0.0, coupon_credits=10.0)[4]:
-            res = client.get("/api/v1/subscriptions/me")
+        res = self._get_me(client, FREE_TRIAL, cost=0.0, coupon_credits=10.0)
         assert res.status_code == 200
         # 20 (plan) + 10 (coupon) = 30
         assert res.json()["total_budget_cents"] == 30.0
-
-    def _get_me(self, client, plan, cost, coupon_credits=0.0, coupon_msgs=0, msg_count=0):
-        patches = self._mock_sub_deps(plan, cost, coupon_credits, coupon_msgs, msg_count)
-        with patches[0], patches[1], patches[2], patches[3], patches[4]:
-            return client.get("/api/v1/subscriptions/me")
 
     def test_is_limited_false_when_under_budget(self, client):
         res = self._get_me(client, FREE_TRIAL, cost=10.0)

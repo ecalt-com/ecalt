@@ -103,8 +103,9 @@ _DAILY_SPARK_SYSTEM_DEFAULT = (
 
 # ── Generator ─────────────────────────────────────────────────────────────────
 
-async def generate_daily_spark(uid: str) -> str:
-    """Return today's personalized curiosity prompt, generating and caching it if needed."""
+async def generate_daily_spark(uid: str) -> tuple[str, int, int]:
+    """Return today's personalized curiosity prompt, generating and caching it if needed.
+    Returns (spark_text, input_tokens, output_tokens). Tokens are 0 on a cache hit."""
     from datetime import date
     today = date.today()
 
@@ -117,7 +118,7 @@ async def generate_daily_spark(uid: str) -> str:
                 )
                 row = cur.fetchone()
                 if row:
-                    return row["prompt"]
+                    return row["prompt"], 0, 0
     except Exception as e:
         logger.error("daily_sparks cache read failed: %s", e, exc_info=True)
 
@@ -136,7 +137,7 @@ async def generate_daily_spark(uid: str) -> str:
 
     cfg = get_config("daily_spark")
     system = inject_fingerprint(uid, cfg["style_prompt"])
-    spark_text, _, _, _ = await complete_text(
+    spark_text, in_tok, out_tok, _ = await complete_text(
         interaction_type="daily_spark",
         system=system,
         user_content=f"Topics the learner loves: {topic_hint}",
@@ -158,7 +159,7 @@ async def generate_daily_spark(uid: str) -> str:
     except Exception as e:
         logger.error("daily_sparks cache write failed: %s", e, exc_info=True)
 
-    return spark
+    return spark, in_tok, out_tok
 
 
 async def generate_spark(question: str, uid: str | None = None) -> tuple[str, Mission, int, int]:

@@ -118,7 +118,7 @@ async def generate_quiz(
     concept: str,
     context: str,
     base_depth: str = "exploratory",
-) -> dict:
+) -> tuple[dict, int, int]:
     """
     Generate a quiz question for a concept. Stores session server-side.
     Returns public quiz data (no correct_answer).
@@ -152,7 +152,7 @@ async def generate_quiz(
     )
 
     try:
-        raw, _, _, _ = await complete_text(
+        raw, in_tok, out_tok, _ = await complete_text(
             interaction_type="quiz",
             system=system,
             user_content=user_content,
@@ -192,7 +192,7 @@ async def generate_quiz(
         "intro_phrase": quiz_data.get("intro_phrase", ""),
         "question":    quiz_data.get("question", ""),
         "hint_available": 3,
-    }
+    }, in_tok, out_tok
 
 
 def get_hint(quiz_id: str, uid: str) -> dict:
