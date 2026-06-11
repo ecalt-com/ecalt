@@ -1,8 +1,12 @@
-"""SendGrid transactional email service."""
+"""SMTP transactional email service (provider-agnostic via aiosmtplib)."""
 import hashlib
 import hmac
 import logging
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import Optional
+
+import aiosmtplib
 
 from app.core.config import settings
 
@@ -91,36 +95,36 @@ async def send_email(
     uid: str,
     log_id: Optional[str] = None,
 ) -> bool:
-    """Send a transactional email via SendGrid. Returns True on success."""
-    if not settings.SENDGRID_API_KEY:
-        logger.warning("SENDGRID_API_KEY not configured — skipping email to %s", to)
+    """Send a transactional email via SMTP. Returns True on success."""
+    if not settings.SMTP_HOST or not settings.SMTP_LOGIN:
+        logger.warning("SMTP not configured — skipping email to %s", to)
         return False
 
     try:
-        import sendgrid as sg_module
-        from sendgrid.helpers.mail import Mail
-
         unsub_token = make_unsubscribe_token(uid)
         footer = _FOOTER_TPL.format(frontend_url=settings.FRONTEND_URL, token=unsub_token)
         full_html = html_body + footer
         if log_id:
             full_html += _PIXEL_TPL.format(frontend_url=settings.FRONTEND_URL, log_id=log_id)
 
-        message = Mail(
-            from_email=settings.SENDGRID_FROM_EMAIL,
-            to_emails=to,
-            subject=subject,
-            html_content=full_html,
-            plain_text_content=text_body,
-        )
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = subject
+        msg["From"] = f"ECALT <{settings.SMTP_FROM_EMAIL}>"
+        msg["To"] = to
+        msg.attach(MIMEText(text_body, "plain"))
+        msg.attach(MIMEText(full_html, "html"))
 
-        client = sg_module.SendGridAPIClient(api_key=settings.SENDGRID_API_KEY)
-        resp = client.send(message)
-        if resp.status_code in (200, 201, 202):
-            logger.info("email sent to=%s status=%s", to, resp.status_code)
-            return True
-        logger.error("SendGrid error status=%s to=%s", resp.status_code, to)
-        return False
+        await aiosmtplib.send(
+            msg,
+            hostname=settings.SMTP_HOST,
+            port=settings.SMTP_PORT,
+            username=settings.SMTP_LOGIN,
+            password=settings.SMTP_PASSWORD,
+            start_tls=True,
+        )
+        logger.info("email sent to=%s via SMTP host=%s", to, settings.SMTP_HOST)
+        return True
+
     except Exception as e:
         logger.error("send_email failed to=%s: %s", to, e)
         return False

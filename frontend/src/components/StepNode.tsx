@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
-import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2 } from 'lucide-react'
+import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2, Lock } from 'lucide-react'
 import type { JourneyStep } from '../lib/types'
 import { getStepContent } from '../lib/api'
 import MarkdownContent from './MarkdownContent'
@@ -21,56 +21,79 @@ interface StepNodeProps {
   journeyId: string
   getToken: () => Promise<string | null>
   onToggle?: (id: string) => void | Promise<void>
+  // Controlled expansion — when provided, the parent owns open/closed state
+  // (e.g. so a "Start Journey" button can open a step). Omit both for the
+  // original self-managed behaviour.
+  expanded?: boolean
+  onExpandToggle?: (id: string) => void
+  // Sequential gating: a locked step can't be expanded or completed until the
+  // previous step is done.
+  locked?: boolean
 }
 
-export default function StepNode({ step, index, isLast, journeyId, getToken, onToggle }: StepNodeProps) {
+export default function StepNode({ step, index, isLast, journeyId, getToken, onToggle, expanded: controlledExpanded, onExpandToggle, locked = false }: StepNodeProps) {
   const config = typeConfig[step.type]
   const Icon = config.icon
-  const [expanded, setExpanded] = useState(false)
+  const [internalExpanded, setInternalExpanded] = useState(false)
+  const expanded = controlledExpanded ?? internalExpanded
   const [content, setContent] = useState<string | null>(null)
   const [loadingContent, setLoadingContent] = useState(false)
   const [contentError, setContentError] = useState<string | null>(null)
   const [budgetExceeded, setBudgetExceeded] = useState(false)
 
-  const handleExpand = async () => {
-    const next = !expanded
-    setExpanded(next)
-    if (next && content === null && !loadingContent) {
-      setLoadingContent(true)
-      setContentError(null)
-      try {
-        const token = await getToken()
-        const res = await getStepContent(journeyId, step.id, token ?? undefined)
-        setContent(res.content)
-        // Viewing content = completing the step — same behaviour as Coursera/LinkedIn Learning.
-        // Only fires on the first load (content === null guard above), never double-marks.
-        if (!step.completed) onToggle?.(step.id)
-      } catch (e: any) {
-        if (e?.status === 402) {
-          setBudgetExceeded(true)
-        } else {
-          setContentError('Could not load lesson content. Try again.')
-        }
-      } finally {
-        setLoadingContent(false)
+  const handleExpand = () => {
+    if (locked) return
+    if (onExpandToggle) onExpandToggle(step.id)
+    else setInternalExpanded(prev => !prev)
+  }
+
+  const loadContent = async () => {
+    setLoadingContent(true)
+    setContentError(null)
+    try {
+      const token = await getToken()
+      const res = await getStepContent(journeyId, step.id, token ?? undefined)
+      setContent(res.content)
+      // Viewing content = completing the step — same behaviour as Coursera/LinkedIn Learning.
+      // Only fires on the first load (content === null guard below), never double-marks.
+      if (!step.completed) onToggle?.(step.id)
+    } catch (e: any) {
+      if (e?.status === 402) {
+        setBudgetExceeded(true)
+      } else {
+        setContentError('Could not load lesson content. Try again.')
       }
+    } finally {
+      setLoadingContent(false)
     }
   }
 
+  // Fetch on first expansion, whether triggered by a click here or by the
+  // parent (Start Journey / Continue). Errors don't refetch automatically —
+  // the Retry button below drives that explicitly.
+  useEffect(() => {
+    if (expanded && !locked && content === null && !loadingContent && !budgetExceeded) {
+      loadContent()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded])
+
   return (
-    <div className="flex gap-4">
+    <div id={`step-${step.id}`} className="flex gap-4 scroll-mt-24">
       <div className="flex flex-col items-center">
-        <button
-          onClick={() => onToggle?.(step.id)}
+        {/* Status indicator — completion happens through the step flow, not by clicking here */}
+        <div
           className={clsx(
             'w-10 h-10 rounded-full border-2 flex items-center justify-center shrink-0 transition-all duration-200',
             step.completed
               ? 'bg-violet-600 border-violet-600 text-white'
-              : 'border-slate-200 bg-white text-slate-500 hover:border-violet-400 hover:text-violet-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500 dark:hover:border-violet-500/50 dark:hover:text-violet-400'
+              : locked
+                ? 'border-slate-200 bg-slate-50 text-slate-300 dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-700'
+                : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-500'
           )}
         >
-          {step.completed ? <Check size={16} /> : <span className="text-xs font-bold">{index + 1}</span>}
-        </button>
+          {step.completed ? <Check size={16} /> : locked ? <Lock size={13} /> : <span className="text-xs font-bold">{index + 1}</span>}
+        </div>
         {!isLast && <div className="step-connector flex-1 my-1" />}
       </div>
 
@@ -78,13 +101,16 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
         <div
           className={clsx(
             'glass-card rounded-xl transition-all duration-200',
-            expanded ? 'border-violet-200 dark:border-violet-500/30' : 'hover:border-slate-300 dark:hover:border-slate-600 cursor-pointer'
+            locked
+              ? 'opacity-60'
+              : expanded ? 'border-violet-200 dark:border-violet-500/30' : 'hover:border-slate-300 dark:hover:border-slate-600 cursor-pointer'
           )}
         >
           {/* Header row */}
           <button
             onClick={handleExpand}
-            className="w-full p-4 flex items-start gap-3 text-left"
+            disabled={locked}
+            className={clsx('w-full p-4 flex items-start gap-3 text-left', locked && 'cursor-not-allowed')}
           >
             <div className={clsx('p-1.5 rounded-lg border shrink-0', config.bg)}>
               <Icon size={14} className={config.color} />
@@ -96,14 +122,23 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
               </div>
               <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1 leading-snug">{step.title}</h4>
               <p className="text-xs text-slate-500 leading-relaxed">{step.description}</p>
-            </div>
-            <ChevronDown
-              size={14}
-              className={clsx(
-                'text-slate-400 shrink-0 mt-1 transition-transform duration-200',
-                expanded && 'rotate-180'
+              {locked && (
+                <p className="text-[11px] text-slate-400 dark:text-slate-600 mt-1.5 flex items-center gap-1">
+                  <Lock size={10} />Complete the previous step to unlock
+                </p>
               )}
-            />
+            </div>
+            {locked ? (
+              <Lock size={14} className="text-slate-300 dark:text-slate-700 shrink-0 mt-1" />
+            ) : (
+              <ChevronDown
+                size={14}
+                className={clsx(
+                  'text-slate-400 shrink-0 mt-1 transition-transform duration-200',
+                  expanded && 'rotate-180'
+                )}
+              />
+            )}
           </button>
 
           {/* Expanded content */}
@@ -127,7 +162,7 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
                 <div className="py-4 text-center">
                   <p className="text-xs text-rose-500 mb-2">{contentError}</p>
                   <button
-                    onClick={() => { setContent(null); setContentError(null); handleExpand() }}
+                    onClick={() => { setContent(null); setContentError(null); loadContent() }}
                     className="text-xs text-violet-500 hover:underline"
                   >
                     Retry

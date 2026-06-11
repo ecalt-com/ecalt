@@ -4,7 +4,7 @@ import { ArrowLeft, Clock, BookOpen, Share2, Award } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import StepNode from '../components/StepNode'
 import PageMeta from '../components/PageMeta'
-import { getJourney, getJourneys, getProgress, markStepComplete, markStepIncomplete } from '../lib/api'
+import { getJourney, getJourneys, getProgress, markStepComplete } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useToast } from '../lib/ToastContext'
 import type { Journey as JourneyType, JourneyStep } from '../lib/types'
@@ -54,6 +54,7 @@ export default function Journey() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCompletion, setShowCompletion] = useState(false)
+  const [expandedStepId, setExpandedStepId] = useState<string | null>(null)
 
   useEffect(() => {
     if (!id) return
@@ -93,33 +94,48 @@ export default function Journey() {
     load()
   }, [id])
 
-  const toggleStep = async (stepId: string) => {
-    const step = steps.find(s => s.id === stepId)
-    if (!step || !id) return
+  // Step i is locked until every earlier step is complete (matches the backend
+  // 409 gate, which checks all prior steps — not just the previous one).
+  const isStepLocked = (index: number) => steps.slice(0, index).some(s => !s.completed)
 
-    const completing = !step.completed
+  // Forward-only: steps are completed through the step flow and never unmarked.
+  const completeStep = async (stepId: string) => {
+    const index = steps.findIndex(s => s.id === stepId)
+    if (index === -1 || !id) return
+    if (steps[index].completed) return
+    if (isStepLocked(index)) {
+      addToast('Finish the earlier steps first', 'error')
+      return
+    }
 
     // Optimistic update
-    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: completing } : s))
-
-    addToast(completing ? 'Step complete ✓' : 'Step unmarked')
+    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: true } : s))
+    addToast('Step complete ✓')
 
     if (user) {
       const token = await getToken()
       if (token) {
         try {
-          if (step.completed) {
-            await markStepIncomplete(id, stepId, token)
-          } else {
-            await markStepComplete(id, stepId, token)
-          }
-        } catch {
+          await markStepComplete(id, stepId, token)
+        } catch (err: unknown) {
           // Revert on failure
-          setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: step.completed } : s))
-          addToast("Couldn't save — try again", 'error')
+          setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: false } : s))
+          const status = (err as { status?: number })?.status
+          addToast(status === 409 ? 'Finish the earlier steps first' : "Couldn't save — try again", 'error')
         }
       }
     }
+  }
+
+  const toggleExpanded = (stepId: string) =>
+    setExpandedStepId(prev => (prev === stepId ? null : stepId))
+
+  // Start Journey / Continue — open the first incomplete step and scroll to it.
+  const startJourney = () => {
+    const target = steps.find(s => !s.completed) ?? steps[0]
+    if (!target) return
+    setExpandedStepId(target.id)
+    document.getElementById(`step-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const completed = steps.filter(s => s.completed).length
@@ -214,7 +230,7 @@ export default function Journey() {
               </div>
 
               <div className="flex flex-col sm:flex-row gap-3">
-                <button className="btn-primary text-center">
+                <button onClick={startJourney} className="btn-primary text-center">
                   {completed === 0 ? 'Start Journey' : 'Continue'}
                 </button>
                 <button
@@ -249,7 +265,10 @@ export default function Journey() {
                 isLast={i === steps.length - 1}
                 journeyId={id!}
                 getToken={getToken}
-                onToggle={toggleStep}
+                onToggle={completeStep}
+                expanded={expandedStepId === step.id}
+                onExpandToggle={toggleExpanded}
+                locked={isStepLocked(i)}
               />
             ))}
 

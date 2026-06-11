@@ -544,7 +544,6 @@ export default function Home() {
                       You have <strong>{sparksRemaining}</strong> of 5 free sparks left
                     </span>
                   </div>
-                  <p className="text-xs text-slate-400">Short Haiku responses only · Create account to save path</p>
                 </div>
               ) : (
                 /* First visit — session intro badge */
@@ -553,7 +552,6 @@ export default function Home() {
                     <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-pulse" />
                     Free Curiosity Session · 5 sparks included
                   </div>
-                  <p className="text-xs text-slate-400">Short Haiku responses only · No sign-up needed</p>
                 </div>
               )}
             </>

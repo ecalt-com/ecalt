@@ -4,7 +4,7 @@ import { ArrowLeft, Clock, BookOpen, Zap } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import CuriosityInput from '../components/CuriosityInput'
 import StepNode from '../components/StepNode'
-import { exploreQuestion, markStepComplete, markStepIncomplete } from '../lib/api'
+import { exploreQuestion, markStepComplete } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { usePageTitle } from '../lib/usePageTitle'
 import type { Journey, JourneyStep } from '../lib/types'
@@ -18,6 +18,7 @@ export default function Explore() {
   const [steps, setSteps] = useState<JourneyStep[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [expandedStepId, setExpandedStepId] = useState<string | null>(null)
 
   const q = searchParams.get('q') || ''
 
@@ -49,19 +50,35 @@ export default function Explore() {
 
   const goExplore = (question: string) => navigate(`/explore?q=${encodeURIComponent(question)}`)
 
-  const toggleStep = async (stepId: string) => {
-    const step = steps.find(s => s.id === stepId)
-    if (!step || !journey) return
-    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: !s.completed } : s))
+  // Step i is locked until every earlier step is complete (matches the backend
+  // 409 gate, which checks all prior steps — not just the previous one).
+  const isStepLocked = (index: number) => steps.slice(0, index).some(s => !s.completed)
+
+  // Forward-only: steps are completed through the step flow and never unmarked.
+  const completeStep = async (stepId: string) => {
+    const index = steps.findIndex(s => s.id === stepId)
+    if (index === -1 || !journey) return
+    if (steps[index].completed || isStepLocked(index)) return
+    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: true } : s))
     const token = await getToken()
     if (token) {
       try {
-        if (step.completed) await markStepIncomplete(journey.id, stepId, token)
-        else await markStepComplete(journey.id, stepId, token)
+        await markStepComplete(journey.id, stepId, token)
       } catch {
-        setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: step.completed } : s))
+        setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: false } : s))
       }
     }
+  }
+
+  const toggleExpanded = (stepId: string) =>
+    setExpandedStepId(prev => (prev === stepId ? null : stepId))
+
+  // Begin Journey — open the first incomplete step and scroll to it.
+  const beginJourney = () => {
+    const target = steps.find(s => !s.completed) ?? steps[0]
+    if (!target) return
+    setExpandedStepId(target.id)
+    document.getElementById(`step-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const completed = steps.filter(s => s.completed).length
@@ -164,7 +181,7 @@ export default function Explore() {
                 )}
 
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-                  <button className="btn-primary flex items-center justify-center gap-2">
+                  <button onClick={beginJourney} className="btn-primary flex items-center justify-center gap-2">
                     <Zap size={14} fill="currentColor" />Begin Journey
                   </button>
                   <button onClick={() => goExplore('')} className="btn-ghost text-center">Ask something else</button>
@@ -185,7 +202,10 @@ export default function Explore() {
                   isLast={i === steps.length - 1}
                   journeyId={journey!.id}
                   getToken={getToken}
-                  onToggle={toggleStep}
+                  onToggle={completeStep}
+                  expanded={expandedStepId === step.id}
+                  onExpandToggle={toggleExpanded}
+                  locked={isStepLocked(i)}
                 />
               ))}
 

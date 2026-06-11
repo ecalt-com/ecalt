@@ -1,6 +1,6 @@
 import json
 import logging
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
 from app.core.auth import get_required_user
@@ -11,8 +11,8 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-def _resolve_step_meta(journey_id: str, step_id: str) -> tuple[str, str, list[str]] | None:
-    """Return (step_title, step_type, journey_tags) for a given step, or None.
+def _journey_steps(journey_id: str) -> tuple[list[dict], list[str]] | None:
+    """Return (ordered step dicts, journey tags) for a journey, or None if unknown.
 
     Tries the journeys DB table first, then falls back to the in-process
     static journey catalogue so curated journeys are always covered.
@@ -30,10 +30,7 @@ def _resolve_step_meta(journey_id: str, step_id: str) -> tuple[str, str, list[st
                     steps_raw = row["steps"]
                     if isinstance(steps_raw, str):
                         steps_raw = json.loads(steps_raw)
-                    for s in (steps_raw or []):
-                        if s.get("id") == step_id:
-                            tags = list(row["tags"] or [])
-                            return s["title"], s.get("type", "concept"), tags
+                    return list(steps_raw or []), list(row["tags"] or [])
     except Exception:
         pass
 
@@ -43,13 +40,59 @@ def _resolve_step_meta(journey_id: str, step_id: str) -> tuple[str, str, list[st
         from app.api.v1.endpoints.journeys import SAMPLE_JOURNEYS
         for journey in SAMPLE_JOURNEYS:
             if journey.id == journey_id:
-                for step in journey.steps:
-                    if step.id == step_id:
-                        return step.title, step.type, journey.tags
+                return [s.model_dump() for s in journey.steps], list(journey.tags)
     except Exception:
         pass
 
     return None
+
+
+def _resolve_step_meta(journey_id: str, step_id: str) -> tuple[str, str, list[str]] | None:
+    """Return (step_title, step_type, journey_tags) for a given step, or None."""
+    resolved = _journey_steps(journey_id)
+    if not resolved:
+        return None
+    steps, tags = resolved
+    for s in steps:
+        if s.get("id") == step_id:
+            return s["title"], s.get("type", "concept"), tags
+    return None
+
+
+def _check_previous_steps_complete(uid: str, journey_id: str, step_id: str) -> None:
+    """Raise 409 if any step before step_id is not yet completed by this user.
+
+    Permissive when the journey or step can't be resolved (deleted journeys,
+    legacy links): the insert proceeds as before. Existing out-of-order rows
+    are grandfathered — only new completions are constrained.
+    """
+    resolved = _journey_steps(journey_id)
+    if not resolved:
+        return
+    step_ids = [s.get("id") for s in resolved[0]]
+    if step_id not in step_ids:
+        return
+    prior_ids = step_ids[: step_ids.index(step_id)]
+    if not prior_ids:
+        return
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT step_id FROM user_progress WHERE uid = %s AND journey_id = %s",
+                (uid, journey_id),
+            )
+            done = {r["step_id"] for r in cur.fetchall()}
+
+    missing = [s for s in prior_ids if s not in done]
+    if missing:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "previous_steps_incomplete",
+                "missing_step_ids": missing,
+            },
+        )
 
 
 class ProgressResponse(BaseModel):
@@ -109,7 +152,13 @@ async def mark_step_complete(
     background_tasks: BackgroundTasks,
     uid: str = Depends(get_required_user),
 ):
-    """Mark a step as complete. Idempotent. Updates daily streak and knowledge graph."""
+    """Mark a step as complete. Idempotent. Updates daily streak and knowledge graph.
+
+    Steps must be completed in order: returns 409 with the missing step IDs if
+    any earlier step in the journey is still incomplete.
+    """
+    _check_previous_steps_complete(uid, journey_id, step_id)
+
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
