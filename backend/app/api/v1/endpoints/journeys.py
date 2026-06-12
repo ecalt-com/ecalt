@@ -1,6 +1,7 @@
 import json
 import logging
 from fastapi import APIRouter, HTTPException, Depends, Response
+from pydantic import BaseModel
 from typing import Optional
 from app.models.schemas import Journey, JourneyStep, JourneysResponse, StepContentResponse
 from app.core.auth import get_optional_user, get_required_user
@@ -8,6 +9,7 @@ from app.core.database import get_db
 from app.services.ai_service import generate_step_content
 from app.services.subscription_service import check_budget, record_usage
 from app.services.provider_service import get_config
+from app.services.suggestion_service import generate_next_level, pick_suggestions
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -188,6 +190,84 @@ async def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional
     if not journey:
         raise HTTPException(status_code=404, detail="Journey not found")
     return journey
+
+
+class SuggestionsResponse(BaseModel):
+    next_level: Optional[Journey] = None
+    similar: list[Journey] = []
+    next_level_generated: bool = False
+
+
+@router.get(
+    "/{journey_id}/suggestions",
+    response_model=SuggestionsResponse,
+    summary="Post-completion suggestions: next level + similar journeys, unique to the user",
+)
+async def journey_suggestions(journey_id: str, uid: str = Depends(get_required_user)):
+    source = _db_journey(journey_id) or _journey_map.get(journey_id)
+    if not source:
+        raise HTTPException(status_code=404, detail="Journey not found")
+
+    # Candidate pool: every stored journey + the curated catalogue.
+    pool: list[Journey] = []
+    authored_ids: set[str] = set()
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT * FROM journeys")
+                for r in cur.fetchall():
+                    row = dict(r)
+                    try:
+                        pool.append(_row_to_journey(row))
+                    except Exception:
+                        continue
+                    if row.get("uid") == uid:
+                        authored_ids.add(row["id"])
+    except Exception:
+        logger.exception("suggestions: failed to load journey pool")
+    pool.extend(SAMPLE_JOURNEYS)
+
+    # Anything the user has touched is off the table.
+    started_ids: set[str] = set()
+    source_steps_done = 0
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT journey_id, COUNT(DISTINCT step_id) AS done
+                    FROM user_progress WHERE uid = %s GROUP BY journey_id
+                    """,
+                    (uid,),
+                )
+                for r in cur.fetchall():
+                    started_ids.add(r["journey_id"])
+                    if r["journey_id"] == journey_id:
+                        source_steps_done = int(r["done"])
+    except Exception:
+        logger.exception("suggestions: failed to load user progress")
+    source_completed = len(source.steps) > 0 and source_steps_done >= len(source.steps)
+
+    next_level, similar = pick_suggestions(
+        source=source,
+        pool=pool,
+        started_ids=started_ids,
+        authored_ids=authored_ids,
+        curated_ids=set(_journey_map.keys()),
+    )
+
+    # On-demand generation costs tokens — only do it once the user has
+    # actually finished this journey ("More like this" calls land here too).
+    generated = False
+    if next_level is None and source_completed:
+        next_level = await generate_next_level(uid, source)
+        generated = next_level is not None
+
+    return SuggestionsResponse(
+        next_level=next_level,
+        similar=similar,
+        next_level_generated=generated,
+    )
 
 
 @router.get(

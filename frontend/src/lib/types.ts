@@ -88,6 +88,12 @@ export interface QuizQuestion {
   hint_available: number
 }
 
+export interface QuizSet {
+  quiz_set_id: string
+  questions: QuizQuestion[]
+  pass_threshold: number
+}
+
 export interface QuizHint {
   hint_num: number
   hint_text: string

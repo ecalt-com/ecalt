@@ -1,4 +1,4 @@
-import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus, QuizQuestion, QuizHint, QuizResult } from './types'
+import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus, QuizQuestion, QuizSet, QuizHint, QuizResult } from './types'
 
 // In production, Vercel rewrites /api/* → Railway (no env var needed, no mixed-content).
 // In local dev, the Vite proxy forwards /api/* → localhost:8000.
@@ -39,6 +39,17 @@ export const getJourneys = (token?: string): Promise<JourneysResponse> =>
 
 export const getJourney = (id: string, token?: string): Promise<Journey> =>
   request(`/api/v1/journeys/${id}`, undefined, token)
+
+export interface JourneySuggestions {
+  next_level: Journey | null
+  similar: Journey[]
+  next_level_generated: boolean
+}
+
+// Post-completion suggestions — next level of the same course + similar courses,
+// excluding everything the user has completed, started, or authored.
+export const getJourneySuggestions = (journeyId: string, token: string): Promise<JourneySuggestions> =>
+  request(`/api/v1/journeys/${journeyId}/suggestions`, undefined, token)
 
 export const getProgress = (journeyId: string, token: string): Promise<{ journey_id: string; completed_step_ids: string[] }> =>
   request(`/api/v1/progress/${journeyId}`, undefined, token)
@@ -182,8 +193,26 @@ export const generateQuiz = (
 ): Promise<QuizQuestion> =>
   request('/api/v1/quiz', { method: 'POST', body: JSON.stringify(body) }, token)
 
+// Multi-question quiz set for a journey step — passing it is what completes the step.
+export const generateQuizSet = (
+  body: {
+    concept: string
+    context: string
+    journey_id: string
+    step_id: string
+    base_depth?: string
+    num_questions?: number
+  },
+  token: string,
+): Promise<QuizSet> =>
+  request('/api/v1/quiz', { method: 'POST', body: JSON.stringify(body) }, token)
+
 export const getQuizHint = (quizId: string, token: string): Promise<QuizHint> =>
   request(`/api/v1/quiz/${quizId}/hint`, { method: 'POST' }, token)
+
+// Explicitly skip a step's quiz — opens the step's completion gate server-side.
+export const skipStepQuiz = (journeyId: string, stepId: string, token: string): Promise<{ skipped: boolean }> =>
+  request(`/api/v1/quiz/step-skip/${journeyId}/${stepId}`, { method: 'POST' }, token)
 
 export const submitQuizAnswer = (
   quizId: string,

@@ -6,6 +6,7 @@ from typing import Optional
 from app.core.auth import get_required_user
 from app.core.database import get_db
 from app.services.knowledge_service import credit_step_knowledge
+from app.services.quiz_service import step_quiz_passed
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -47,9 +48,10 @@ def _journey_steps(journey_id: str) -> tuple[list[dict], list[str]] | None:
     return None
 
 
-def _resolve_step_meta(journey_id: str, step_id: str) -> tuple[str, str, list[str]] | None:
+def _resolve_step_meta(
+    step_id: str, resolved: tuple[list[dict], list[str]] | None
+) -> tuple[str, str, list[str]] | None:
     """Return (step_title, step_type, journey_tags) for a given step, or None."""
-    resolved = _journey_steps(journey_id)
     if not resolved:
         return None
     steps, tags = resolved
@@ -59,14 +61,18 @@ def _resolve_step_meta(journey_id: str, step_id: str) -> tuple[str, str, list[st
     return None
 
 
-def _check_previous_steps_complete(uid: str, journey_id: str, step_id: str) -> None:
+def _check_previous_steps_complete(
+    uid: str,
+    journey_id: str,
+    step_id: str,
+    resolved: tuple[list[dict], list[str]] | None,
+) -> None:
     """Raise 409 if any step before step_id is not yet completed by this user.
 
     Permissive when the journey or step can't be resolved (deleted journeys,
     legacy links): the insert proceeds as before. Existing out-of-order rows
     are grandfathered — only new completions are constrained.
     """
-    resolved = _journey_steps(journey_id)
     if not resolved:
         return
     step_ids = [s.get("id") for s in resolved[0]]
@@ -92,6 +98,28 @@ def _check_previous_steps_complete(uid: str, journey_id: str, step_id: str) -> N
                 "message": "previous_steps_incomplete",
                 "missing_step_ids": missing,
             },
+        )
+
+
+def _check_quiz_passed(
+    uid: str,
+    journey_id: str,
+    step_id: str,
+    resolved: tuple[list[dict], list[str]] | None,
+) -> None:
+    """Raise 412 unless the user has passed the quiz for this step.
+
+    Same permissive fallback as the order check: unresolvable journeys/steps
+    are not gated, so legacy links keep working.
+    """
+    if not resolved:
+        return
+    if step_id not in [s.get("id") for s in resolved[0]]:
+        return
+    if not step_quiz_passed(uid, journey_id, step_id):
+        raise HTTPException(
+            status_code=412,
+            detail={"message": "quiz_not_passed"},
         )
 
 
@@ -154,10 +182,12 @@ async def mark_step_complete(
 ):
     """Mark a step as complete. Idempotent. Updates daily streak and knowledge graph.
 
-    Steps must be completed in order: returns 409 with the missing step IDs if
-    any earlier step in the journey is still incomplete.
+    Steps must be completed in order (409 with the missing step IDs otherwise)
+    and the step's quiz must be passed first (412 quiz_not_passed otherwise).
     """
-    _check_previous_steps_complete(uid, journey_id, step_id)
+    resolved = _journey_steps(journey_id)
+    _check_previous_steps_complete(uid, journey_id, step_id, resolved)
+    _check_quiz_passed(uid, journey_id, step_id, resolved)
 
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -178,7 +208,7 @@ async def mark_step_complete(
     # ON CONFLICT DO NOTHING means row=None for duplicate calls, so we
     # never double-count the same step.
     if row:
-        meta = _resolve_step_meta(journey_id, step_id)
+        meta = _resolve_step_meta(step_id, resolved)
         if meta:
             step_title, step_type, tags = meta
             background_tasks.add_task(credit_step_knowledge, uid, step_title, step_type, tags)
