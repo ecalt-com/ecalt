@@ -571,6 +571,12 @@ function ToggleRow({
   )
 }
 
+function to12h(h: number): string {
+  if (h === 0) return '12:00 AM'
+  if (h === 12) return '12:00 PM'
+  return h < 12 ? `${h}:00 AM` : `${h - 12}:00 PM`
+}
+
 function HourSelect({ value, onChange, disabled }: { value: number; onChange: (v: number) => void; disabled?: boolean }) {
   return (
     <select
@@ -579,7 +585,7 @@ function HourSelect({ value, onChange, disabled }: { value: number; onChange: (v
       disabled={disabled}
       className="px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-violet-400"
     >
-      {HOURS.map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}
+      {HOURS.map(h => <option key={h} value={h}>{to12h(h)}</option>)}
     </select>
   )
 }

@@ -27,6 +27,7 @@ class UserProfile(BaseModel):
     has_notification_prefs: bool = False
     account_status: str = "active"
     consent_given_at: Optional[str] = None
+    needs_birth_year: bool = False
 
 
 class UserUpsertRequest(BaseModel):
@@ -141,7 +142,8 @@ async def upsert_user(body: UserUpsertRequest, uid: str = Depends(get_required_u
                 (uid, body.email, body.display_name, body.photo_url),
             )
             row = cur.fetchone()
-    return UserProfile(**dict(row))
+    needs = dict(row).get('birth_year') is None
+    return UserProfile(**{**dict(row), 'needs_birth_year': needs})
 
 
 @router.get("/me", response_model=UserProfile, summary="Get current user profile")

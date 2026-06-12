@@ -7,7 +7,7 @@ interface Props {
 }
 
 export default function ParentalConsentForm({ onSent }: Props) {
-  const { getToken, signOut } = useAuth()
+  const { submitParentalConsent, signOut } = useAuth()
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -21,20 +21,10 @@ export default function ParentalConsentForm({ onSent }: Props) {
     setError(null)
     setLoading(true)
     try {
-      const token = await getToken()
-      const res = await fetch('/api/v1/users/me/parental-consent', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ parent_email: trimmed }),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}))
-        setError(typeof data.detail === 'string' ? data.detail : 'Something went wrong. Try again.')
-        return
-      }
+      await submitParentalConsent(trimmed)
       onSent(trimmed)
-    } catch {
-      setError('Something went wrong. Try again.')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong. Try again.')
     } finally {
       setLoading(false)
     }
