@@ -31,6 +31,10 @@ const Profile       = lazy(() => import('./pages/Profile'))
 const ConsentConfirm = lazy(() => import('./pages/ConsentConfirm'))
 const Welcome       = lazy(() => import('./pages/Welcome'))
 const ComingSoon    = lazy(() => import('./pages/ComingSoon'))
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
+const Terms         = lazy(() => import('./pages/Terms'))
+const Parents       = lazy(() => import('./pages/Parents'))
+const Contact       = lazy(() => import('./pages/Contact'))
 
 function PageSkeleton() {
   return (
@@ -59,6 +63,10 @@ function AppShell() {
           <Route path="/passport" element={<ErrorBoundary><Passport /></ErrorBoundary>} />
           <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />
           <Route path="/privacy" element={<Navigate to="/profile" replace />} />
+          <Route path="/privacy-policy" element={<ErrorBoundary><PrivacyPolicy /></ErrorBoundary>} />
+          <Route path="/terms" element={<ErrorBoundary><Terms /></ErrorBoundary>} />
+          <Route path="/parents" element={<ErrorBoundary><Parents /></ErrorBoundary>} />
+          <Route path="/contact" element={<ErrorBoundary><Contact /></ErrorBoundary>} />
           <Route path="/welcome" element={<ErrorBoundary><Welcome /></ErrorBoundary>} />
           <Route path="/consent/confirm" element={<ErrorBoundary><ConsentConfirm /></ErrorBoundary>} />
           <Route

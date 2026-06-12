@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useCallback, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import {
   Zap, ArrowRight, Loader2, Sparkles,
   BookOpen, Wrench, Compass, Check,
@@ -695,8 +695,13 @@ export default function Home() {
                 <span>© {new Date().getFullYear()}</span>
               </div>
               <div className="flex items-center gap-6">
-                {['Privacy', 'Terms', 'Parents', 'Contact'].map(l => (
-                  <a key={l} href="#" className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">{l}</a>
+                {[
+                  { label: 'Privacy', to: '/privacy-policy' },
+                  { label: 'Terms', to: '/terms' },
+                  { label: 'Parents', to: '/parents' },
+                  { label: 'Contact', to: '/contact' },
+                ].map(({ label, to }) => (
+                  <Link key={to} to={to} className="hover:text-slate-600 dark:hover:text-slate-300 transition-colors">{label}</Link>
                 ))}
               </div>
             </div>

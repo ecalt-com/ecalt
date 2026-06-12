@@ -168,11 +168,9 @@ export default function Privacy() {
               )}
               <a
                 href="/privacy-policy"
-                target="_blank"
-                rel="noopener noreferrer"
                 className="inline-block mt-3 text-xs text-violet-600 dark:text-violet-400 hover:underline"
               >
-                Update consent preferences →
+                Read our full Privacy Policy →
               </a>
             </div>
           </section>
