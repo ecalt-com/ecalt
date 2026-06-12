@@ -431,13 +431,13 @@ export default function Admin() {
             <h1 className="text-xl font-bold text-slate-800 dark:text-slate-100">Admin Panel</h1>
           </div>
 
-          <div className="flex gap-1 mb-8 p-1 glass-card rounded-xl w-fit flex-wrap">
+          <div className="flex gap-1 mb-8 p-1 glass-card rounded-xl overflow-x-auto flex-nowrap">
             {TABS.map(t => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 className={clsx(
-                  'px-4 py-1.5 rounded-lg text-xs font-semibold transition-all',
+                  'px-4 py-1.5 rounded-lg text-xs font-semibold transition-all shrink-0',
                   tab === t.id
                     ? 'bg-violet-600 text-white'
                     : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-300'

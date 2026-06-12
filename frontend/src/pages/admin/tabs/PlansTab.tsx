@@ -44,24 +44,24 @@ export function PlansTab({
                 </div>
                 <div>
                   <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{plan.name}</p>
-                  {plan.max_seats > 1 && <p className="text-[10px] text-slate-500">Up to {plan.max_seats} users</p>}
+                  {plan.max_seats > 1 && <p className="text-xs text-slate-500">Up to {plan.max_seats} users</p>}
                 </div>
               </div>
               <div className="mb-3">
                 {plan.base_price_cents === 0
                   ? <span className="text-lg font-bold text-slate-800 dark:text-slate-100">Free</span>
-                  : <><span className="text-lg font-bold text-slate-800 dark:text-slate-100">${(plan.base_price_cents / 100).toFixed(0)}</span><span className="text-[10px] text-slate-400">/mo</span></>
+                  : <><span className="text-lg font-bold text-slate-800 dark:text-slate-100">${(plan.base_price_cents / 100).toFixed(0)}</span><span className="text-xs text-slate-400">/mo</span></>
                 }
               </div>
               <ul className="space-y-1.5 flex-1">
                 {features.map(f => (
-                  <li key={f} className="flex items-start gap-1.5 text-[11px] text-slate-600 dark:text-slate-400">
+                  <li key={f} className="flex items-start gap-1.5 text-xs text-slate-600 dark:text-slate-400">
                     <Check size={10} className="text-violet-500 dark:text-violet-400 mt-0.5 shrink-0" />{f}
                   </li>
                 ))}
               </ul>
               {!plan.is_active && (
-                <span className="mt-2 text-[10px] text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded self-start">inactive</span>
+                <span className="mt-2 text-xs text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded self-start">inactive</span>
               )}
             </div>
           )
@@ -120,9 +120,9 @@ export function PlansTab({
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">{plan.name}</span>
-                  <span className="text-[10px] text-slate-400 font-mono">{plan.plan_id}</span>
+                  <span className="text-xs text-slate-400 font-mono">{plan.plan_id}</span>
                   {!plan.is_active && (
-                    <span className="text-[10px] text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded">inactive</span>
+                    <span className="text-xs text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded">inactive</span>
                   )}
                 </div>
                 {isDirty && (
@@ -151,7 +151,7 @@ export function PlansTab({
                   Token budget (cents)
                   <input type="number" defaultValue={plan.token_budget_cents} onChange={e => onSetEdit(plan.plan_id, 'token_budget_cents', parseInt(e.target.value))} className={inputCls} />
                   {currentTokenBudget > 0 && (
-                    <span className="text-[10px] text-slate-400 mt-0.5 block">≈ ${(currentTokenBudget / 10000).toFixed(2)} of AI spend / month</span>
+                    <span className="text-xs text-slate-400 mt-0.5 block">≈ ${(currentTokenBudget / 10000).toFixed(2)} of AI spend / month</span>
                   )}
                 </label>
                 <label className="text-xs text-slate-500">
@@ -174,14 +174,14 @@ export function PlansTab({
                           ? <Check size={11} className="text-emerald-500 shrink-0" />
                           : <AlertTriangle size={11} className="text-amber-500 shrink-0" />
                         }
-                        <span className="text-[10px] font-mono text-slate-600 dark:text-slate-400 truncate">
+                        <span className="text-xs font-mono text-slate-600 dark:text-slate-400 truncate">
                           {plan.stripe_price_id ? `Stripe ${plan.stripe_price_id}` : 'Stripe: Not provisioned'}
                         </span>
                       </div>
                       <button
                         onClick={() => onProvision(plan.plan_id, 'stripe')}
                         disabled={!!provisioning[plan.plan_id]}
-                        className="text-[10px] shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-500/25 transition-colors disabled:opacity-50"
+                        className="text-xs shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-500/25 transition-colors disabled:opacity-50"
                       >
                         {provisioning[plan.plan_id] === 'stripe' && <Loader2 size={9} className="animate-spin" />}
                         {plan.stripe_price_id ? 'Re-provision' : 'Provision'}
@@ -193,14 +193,14 @@ export function PlansTab({
                           ? <Check size={11} className="text-emerald-500 shrink-0" />
                           : <AlertTriangle size={11} className="text-amber-500 shrink-0" />
                         }
-                        <span className="text-[10px] font-mono text-slate-600 dark:text-slate-400 truncate">
+                        <span className="text-xs font-mono text-slate-600 dark:text-slate-400 truncate">
                           {plan.razorpay_plan_id ? `Razorpay ${plan.razorpay_plan_id}` : 'Razorpay: Not provisioned'}
                         </span>
                       </div>
                       <button
                         onClick={() => onProvision(plan.plan_id, 'razorpay')}
                         disabled={!!provisioning[plan.plan_id]}
-                        className="text-[10px] shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-500/25 transition-colors disabled:opacity-50"
+                        className="text-xs shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-violet-100 dark:bg-violet-500/15 text-violet-600 dark:text-violet-400 hover:bg-violet-200 dark:hover:bg-violet-500/25 transition-colors disabled:opacity-50"
                       >
                         {provisioning[plan.plan_id] === 'razorpay' && <Loader2 size={9} className="animate-spin" />}
                         {plan.razorpay_plan_id ? 'Re-provision' : 'Provision'}
@@ -210,7 +210,7 @@ export function PlansTab({
                   <button
                     onClick={() => onProvision(plan.plan_id, 'both')}
                     disabled={!!provisioning[plan.plan_id]}
-                    className="w-full text-[10px] flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:border-violet-400 dark:hover:border-violet-500/50 transition-colors disabled:opacity-50"
+                    className="w-full text-xs flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-400 hover:border-violet-400 dark:hover:border-violet-500/50 transition-colors disabled:opacity-50"
                   >
                     {provisioning[plan.plan_id] === 'both' && <Loader2 size={9} className="animate-spin" />}
                     Provision Both Gateways

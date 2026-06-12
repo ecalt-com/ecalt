@@ -126,6 +126,11 @@ body {
            transition-all duration-200 text-sm font-medium;
   }
 
+  /* Shared touch-target utility — extend hit area to 44px without changing visual size */
+  .btn-touch {
+    @apply min-h-[44px] inline-flex items-center justify-center;
+  }
+
   .step-connector {
     width: 2px;
     background: linear-gradient(to bottom, #8b5cf6, #22d3ee);
@@ -160,6 +165,22 @@ body {
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position:  200% 0; }
+}
+
+/* ── Safe-area insets (notched phones / Dynamic Island) ─────────────────────── */
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-top {
+    /* Replaces py-4 top component; stays 1rem on normal devices */
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+  .safe-bottom {
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ── Modal overscroll — prevent background scroll-chain ──────────────────────── */
+.modal-overlay {
+  overscroll-behavior-y: none;
 }
 
 /* ── Utilities ───────────────────────────────────────────────────────────────── */

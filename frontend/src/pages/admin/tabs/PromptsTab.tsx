@@ -123,9 +123,9 @@ export function PromptsTab({ prompts, setPrompts, getToken }: Props) {
   const charCount = editText.length
 
   return (
-    <div className="flex gap-4 h-full min-h-[600px]">
+    <div className="flex flex-col md:flex-row gap-4 h-full min-h-0 md:min-h-[600px]">
       {/* Left: list */}
-      <div className="w-52 shrink-0 flex flex-col gap-1">
+      <div className="w-full md:w-52 md:shrink-0 flex flex-col gap-1">
         <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">
           Interaction type
         </p>
@@ -147,7 +147,7 @@ export function PromptsTab({ prompts, setPrompts, getToken }: Props) {
             <span className="truncate">{INTERACTION_LABELS[row.interaction_type] ?? row.interaction_type}</span>
             {row.style_prompt_is_default && (
               <span className={clsx(
-                'ml-auto text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0',
+                'ml-auto text-xs px-1.5 py-0.5 rounded font-medium shrink-0',
                 selected === row.interaction_type
                   ? 'bg-violet-500 text-violet-100'
                   : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
@@ -175,7 +175,7 @@ export function PromptsTab({ prompts, setPrompts, getToken }: Props) {
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {selectedRow.model} · {selectedRow.provider}
                 {selectedRow.version && (
-                  <span className="ml-1.5 text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+                  <span className="ml-1.5 text-xs font-mono px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
                     v{selectedRow.version}
                   </span>
                 )}
@@ -194,7 +194,7 @@ export function PromptsTab({ prompts, setPrompts, getToken }: Props) {
                   Style Prompt
                 </label>
                 {selectedRow.style_prompt_is_default && (
-                  <span className="text-[10px] text-slate-400 dark:text-slate-500">
+                  <span className="text-xs text-slate-400 dark:text-slate-500">
                     Using hardcoded default — save to persist custom text
                   </span>
                 )}
@@ -212,7 +212,7 @@ export function PromptsTab({ prompts, setPrompts, getToken }: Props) {
                 )}
               />
               <p className={clsx(
-                'text-[10px] mt-1',
+                'text-xs mt-1',
                 charCount > 6000 ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500'
               )}>
                 {charCount.toLocaleString()} chars{charCount > 6000 && ' — long prompts cost more tokens'}
@@ -231,7 +231,7 @@ export function PromptsTab({ prompts, setPrompts, getToken }: Props) {
               </button>
               {showContract && (
                 <div className="mt-2">
-                  <p className="text-[10px] text-slate-400 dark:text-slate-500 mb-1.5">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 mb-1.5">
                     This is what the parser expects. It is not editable here — change it in code.
                   </p>
                   <pre className="bg-slate-100 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 p-3 rounded-lg text-xs font-mono overflow-auto max-h-40 text-slate-600 dark:text-slate-300 whitespace-pre-wrap">

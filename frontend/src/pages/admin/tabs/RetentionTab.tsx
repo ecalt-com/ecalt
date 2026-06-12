@@ -42,7 +42,7 @@ export function RetentionTab({ retentionData }: RetentionTabProps) {
                 />
               </div>
               <span className="text-xs tabular-nums font-semibold text-violet-600 dark:text-violet-400 w-12 text-right shrink-0">{pct}%</span>
-              <span className="text-[11px] text-slate-400 hidden sm:block">({count} {desc})</span>
+              <span className="text-xs text-slate-400 hidden sm:block">({count} {desc})</span>
             </div>
           ))}
         </div>
@@ -100,15 +100,15 @@ export function RetentionTab({ retentionData }: RetentionTabProps) {
                 <div key={u.uid} className="px-5 py-3 flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{u.display_name ?? u.email ?? u.uid}</p>
-                    <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
+                    <p className="text-xs text-slate-500 truncate">{u.email}</p>
                   </div>
-                  <span className="text-[10px] font-mono text-slate-400 shrink-0 hidden sm:block">{u.plan_id}</span>
+                  <span className="text-xs font-mono text-slate-400 shrink-0 hidden sm:block">{u.plan_id}</span>
                   <div className="shrink-0 text-right">
-                    <p className="text-[10px] text-slate-500">{daysSinceSignup !== null ? `joined ${daysSinceSignup}d ago` : '—'}</p>
-                    <p className="text-[10px] text-amber-500">{daysSinceActive !== null ? `inactive ${daysSinceActive}d` : 'never active'}</p>
+                    <p className="text-xs text-slate-500">{daysSinceSignup !== null ? `joined ${daysSinceSignup}d ago` : '—'}</p>
+                    <p className="text-xs text-amber-500">{daysSinceActive !== null ? `inactive ${daysSinceActive}d` : 'never active'}</p>
                   </div>
                   <div className="shrink-0 text-right w-14 hidden md:block">
-                    <p className="text-[10px] text-slate-400">{u.ai_requests_ever} req</p>
+                    <p className="text-xs text-slate-400">{u.ai_requests_ever} req</p>
                   </div>
                 </div>
               )

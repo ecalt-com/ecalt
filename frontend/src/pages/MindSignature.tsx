@@ -148,7 +148,7 @@ export default function MindSignature() {
                       <div key={d.domain}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-medium text-slate-700 dark:text-slate-300 capitalize">{d.domain}</span>
-                          <span className="text-[10px] text-slate-500">{d.concept_count} concepts · {Math.round(d.mastery_level * 100)}%</span>
+                          <span className="text-xs text-slate-500">{d.concept_count} concepts · {Math.round(d.mastery_level * 100)}%</span>
                         </div>
                         <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                           <div
@@ -192,10 +192,10 @@ export default function MindSignature() {
                               <span className="text-xs font-medium text-slate-700 dark:text-slate-300">{label}</span>
                               <span
                                 title={tooltip}
-                                className="text-[10px] text-slate-400 dark:text-slate-600 cursor-help select-none"
+                                className="text-xs text-slate-400 dark:text-slate-600 cursor-help select-none"
                               >ⓘ</span>
                             </div>
-                            <span className="text-[11px] tabular-nums text-slate-500 dark:text-slate-400 font-medium">
+                            <span className="text-xs tabular-nums text-slate-500 dark:text-slate-400 font-medium">
                               {pct}%
                             </span>
                           </div>
@@ -216,7 +216,7 @@ export default function MindSignature() {
                       )
                     })}
                   </div>
-                  <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-4">
+                  <p className="text-xs text-slate-400 dark:text-slate-600 mt-4">
                     Derived from your learning graph — not self-reported.
                   </p>
                 </div>
@@ -229,10 +229,10 @@ export default function MindSignature() {
                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
                       Verification Hash
                     </p>
-                    <p className="text-[11px] font-mono text-slate-600 dark:text-slate-400 break-all">
+                    <p className="text-xs font-mono text-slate-600 dark:text-slate-400 break-all">
                       {signature.verification_hash}
                     </p>
-                    <p className="text-[10px] text-slate-400 dark:text-slate-600 mt-1">
+                    <p className="text-xs text-slate-400 dark:text-slate-600 mt-1">
                       Generated {new Date(signature.generated_at).toLocaleDateString()}
                     </p>
                   </div>

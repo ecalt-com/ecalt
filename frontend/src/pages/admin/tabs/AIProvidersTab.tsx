@@ -44,7 +44,8 @@ export function AIProvidersTab({
         <>
           <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">Cost vs Revenue by Plan</h2>
           <div className="glass-card rounded-xl overflow-hidden mb-6">
-            <table className="w-full text-xs">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] text-xs">
               <thead>
                 <tr className="border-b border-slate-200 dark:border-slate-700">
                   <th className="text-left px-4 py-2.5 text-slate-500 font-semibold">Plan</th>
@@ -74,14 +75,15 @@ export function AIProvidersTab({
                       </td>
                       <td className="px-4 py-2.5 text-right">
                         {r.price_cents > 0
-                          ? <span className={clsx('text-[10px] font-semibold px-1.5 py-0.5 rounded', health.cls)}>{health.label}</span>
-                          : <span className="text-[10px] text-slate-400">—</span>}
+                          ? <span className={clsx('text-xs font-semibold px-1.5 py-0.5 rounded', health.cls)}>{health.label}</span>
+                          : <span className="text-xs text-slate-400">—</span>}
                       </td>
                     </tr>
                   )
                 })}
               </tbody>
             </table>
+            </div>
           </div>
 
           {costAnalysis.at_risk_users.length > 0 && (
@@ -110,17 +112,17 @@ export function AIProvidersTab({
                         >
                           <div className="min-w-0 flex-1">
                             <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{u.display_name ?? u.email ?? u.uid}</p>
-                            <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
+                            <p className="text-xs text-slate-500 truncate">{u.email}</p>
                           </div>
-                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono shrink-0 hidden sm:block">{u.plan_id}</span>
+                          <span className="text-xs text-slate-500 dark:text-slate-400 font-mono shrink-0 hidden sm:block">{u.plan_id}</span>
                           <div className="shrink-0 flex flex-col items-end gap-0.5 w-32">
                             <div className="flex items-center gap-1.5 w-full">
                               <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                                 <div className={clsx('h-full rounded-full', barColor)} style={{ width: `${pct}%` }} />
                               </div>
-                              <span className={clsx('text-[10px] tabular-nums font-semibold w-10 text-right', txtColor)}>{u.pct_used}%</span>
+                              <span className={clsx('text-xs tabular-nums font-semibold w-10 text-right', txtColor)}>{u.pct_used}%</span>
                             </div>
-                            <span className="text-[10px] text-slate-400 tabular-nums">{fmtCents(u.spent_cents)} / {fmtCents(u.budget_cents)}</span>
+                            <span className="text-xs text-slate-400 tabular-nums">{fmtCents(u.spent_cents)} / {fmtCents(u.budget_cents)}</span>
                           </div>
                           <div className="text-slate-400 shrink-0">
                             {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
@@ -156,7 +158,7 @@ export function AIProvidersTab({
                             <div className="h-full rounded-full bg-violet-500" style={{ width: `${(r.total_cost_cents / maxCost) * 100}%` }} />
                           </div>
                           <span className="text-xs tabular-nums font-medium text-slate-700 dark:text-slate-300 w-14 text-right shrink-0">{fmtCents(r.total_cost_cents)}</span>
-                          <span className="text-[10px] tabular-nums text-slate-400 w-16 text-right shrink-0 hidden sm:block">
+                          <span className="text-xs tabular-nums text-slate-400 w-16 text-right shrink-0 hidden sm:block">
                             {(r.total_requests ?? 0).toLocaleString()} req
                           </span>
                         </div>
@@ -205,7 +207,8 @@ export function AIProvidersTab({
       <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-3">Usage This Month</h2>
       {usageByModel.length > 0 ? (
         <div className="glass-card rounded-xl overflow-hidden mb-8">
-          <table className="w-full text-xs">
+          <div className="overflow-x-auto">
+          <table className="w-full min-w-[560px] text-xs">
             <thead>
               <tr className="border-b border-slate-200 dark:border-slate-700">
                 <th className="text-left px-4 py-2.5 text-slate-500 font-semibold">Model</th>
@@ -248,6 +251,7 @@ export function AIProvidersTab({
               </tr>
             </tfoot>
           </table>
+          </div>
         </div>
       ) : (
         <p className="text-xs text-slate-400 mb-8">No usage data yet this month.</p>
@@ -290,7 +294,7 @@ export function AIProvidersTab({
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                     {INTERACTION_LABELS[cfg.interaction_type] ?? cfg.interaction_type}
                   </p>
-                  <p className="text-[10px] text-slate-400 font-mono">{cfg.interaction_type}</p>
+                  <p className="text-xs text-slate-400 font-mono">{cfg.interaction_type}</p>
                 </div>
                 {isDirty && (
                   <button

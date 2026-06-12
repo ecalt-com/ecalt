@@ -229,7 +229,7 @@ export default function ConversationInterface({
             {isStreaming ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
           </button>
         </div>
-        <p className="text-[10px] text-slate-600 mt-1.5 px-2">Shift+Enter for new line · Enter to send</p>
+        <p className="text-xs text-slate-600 mt-1.5 px-2">Shift+Enter for new line · Enter to send</p>
       </div>
     </div>
   )

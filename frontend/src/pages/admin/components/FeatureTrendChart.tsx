@@ -58,7 +58,7 @@ export function FeatureTrendChart({ trend }: { trend: FeatureTrendPoint[] }) {
         {displayFeatures.map((feat, i) => (
           <div key={feat} className="flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-sm ${feat === '__other__' ? OTHER_COLOR : (FEATURE_COLORS[i] ?? OTHER_COLOR)}`} />
-            <span className="text-[10px] text-slate-500">
+            <span className="text-xs text-slate-500">
               {feat === '__other__' ? 'Other' : (INTERACTION_LABELS[feat] ?? feat)}
             </span>
           </div>

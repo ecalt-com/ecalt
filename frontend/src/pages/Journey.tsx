@@ -1,19 +1,42 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Clock, BookOpen, Share2, Award } from 'lucide-react'
+import { ArrowLeft, Clock, BookOpen, Share2, Award, TrendingUp, Loader2 } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import StepNode from '../components/StepNode'
 import PageMeta from '../components/PageMeta'
-import { getJourney, getJourneys, getProgress, markStepComplete } from '../lib/api'
+import { getJourney, getJourneys, getProgress, getJourneySuggestions, markStepComplete } from '../lib/api'
+import type { JourneySuggestions } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useToast } from '../lib/ToastContext'
 import type { Journey as JourneyType, JourneyStep } from '../lib/types'
 
 function CompletionOverlay({ journey, onDismiss }: { journey: JourneyType; onDismiss: () => void }) {
   const navigate = useNavigate()
+  const { getToken } = useAuth()
+  const [suggestions, setSuggestions] = useState<JourneySuggestions | null>(null)
+  const [loadingSuggestions, setLoadingSuggestions] = useState(true)
+
+  // What's next — fetched while the celebration shows. May AI-generate the
+  // next level server-side, so this can take a few seconds; the overlay is
+  // fully usable without it.
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      try {
+        const token = await getToken()
+        if (!token) return
+        const s = await getJourneySuggestions(journey.id, token)
+        if (alive) setSuggestions(s)
+      } catch { /* fall back to the default buttons */ }
+      finally { if (alive) setLoadingSuggestions(false) }
+    })()
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [journey.id])
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="animate-celebration glass-card rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto modal-overlay">
+      <div className="animate-celebration glass-card rounded-3xl p-8 max-w-sm w-full text-center shadow-2xl my-8">
         <div className="text-6xl mb-4">{journey.icon}</div>
         <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 text-xs font-semibold mb-4">
           <Award size={12} />
@@ -23,10 +46,51 @@ function CompletionOverlay({ journey, onDismiss }: { journey: JourneyType; onDis
         <p className="text-sm text-slate-500 mb-6">
           You've finished <span className="font-semibold text-slate-700 dark:text-slate-300">{journey.title}</span> and earned a capability badge.
         </p>
+
+        {loadingSuggestions && (
+          <div className="flex items-center justify-center gap-2 text-xs text-slate-400 mb-6">
+            <Loader2 size={12} className="animate-spin" />
+            Finding what's next…
+          </div>
+        )}
+
+        {suggestions?.next_level && (
+          <button
+            onClick={() => navigate(`/journey/${suggestions.next_level!.id}`)}
+            className="w-full mb-3 p-4 rounded-2xl border border-violet-300 dark:border-violet-500/40 bg-violet-50 dark:bg-violet-500/10 text-left hover:border-violet-400 dark:hover:border-violet-400 transition-colors group"
+          >
+            <p className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400 mb-1">
+              <TrendingUp size={11} />
+              Level up · {suggestions.next_level.difficulty}
+            </p>
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+              {suggestions.next_level.icon} {suggestions.next_level.title}
+            </p>
+          </button>
+        )}
+
+        {suggestions && suggestions.similar.length > 0 && (
+          <div className="mb-5 text-left">
+            <p className="text-xs font-semibold uppercase tracking-widest text-slate-400 mb-2">Or try something new</p>
+            <div className="space-y-2">
+              {suggestions.similar.map(s => (
+                <button
+                  key={s.id}
+                  onClick={() => navigate(`/journey/${s.id}`)}
+                  className="w-full flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-violet-300 dark:hover:border-violet-600 transition-colors text-left"
+                >
+                  <span className="text-lg shrink-0">{s.icon}</span>
+                  <span className="text-xs font-medium text-slate-700 dark:text-slate-300 truncate">{s.title}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col gap-3">
           <button
             onClick={() => navigate('/passport')}
-            className="btn-primary flex items-center justify-center gap-2"
+            className={suggestions?.next_level ? 'btn-ghost text-sm flex items-center justify-center gap-2' : 'btn-primary flex items-center justify-center gap-2'}
           >
             <Award size={14} />
             View Passport
@@ -58,6 +122,32 @@ export default function Journey() {
 
   useEffect(() => {
     if (!id) return
+    // Reset page state — the completion overlay navigates between journeys
+    // on this same route, so the component instance survives the id change.
+    setJourney(null)
+    setSteps([])
+    setRelated([])
+    setError(null)
+    setLoading(true)
+    setShowCompletion(false)
+    setExpandedStepId(null)
+
+    // Client-side fallback when the suggestions endpoint is unavailable
+    const relatedByTags = (j: JourneyType, token?: string) => {
+      getJourneys(token).then(res => {
+        const scored = res.journeys
+          .filter(r => r.id !== id)
+          .map(r => ({
+            ...r,
+            score: r.tags.filter(t => j.tags.includes(t)).length,
+          }))
+          .filter(r => r.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3)
+        setRelated(scored)
+      }).catch(() => {})
+    }
+
     const load = async () => {
       try {
         const token = await getToken()
@@ -72,19 +162,15 @@ export default function Journey() {
         setJourney(j)
         setSteps(j.steps.map(s => ({ ...s, completed: completedIds.includes(s.id) })))
 
-        // Load related journeys by tag overlap (best-effort, non-blocking)
-        getJourneys(token ?? undefined).then(res => {
-          const scored = res.journeys
-            .filter(r => r.id !== id)
-            .map(r => ({
-              ...r,
-              score: r.tags.filter(t => j.tags.includes(t)).length,
-            }))
-            .filter(r => r.score > 0)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 3)
-          setRelated(scored)
-        }).catch(() => {})
+        // "More like this" (best-effort, non-blocking): signed-in users get
+        // history-aware suggestions; guests get plain tag overlap.
+        if (token) {
+          getJourneySuggestions(id, token)
+            .then(s => setRelated(s.similar))
+            .catch(() => relatedByTags(j, token))
+        } else {
+          relatedByTags(j)
+        }
       } catch (err: unknown) {
         setError((err as Error).message)
       } finally {
@@ -121,7 +207,12 @@ export default function Journey() {
           // Revert on failure
           setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: false } : s))
           const status = (err as { status?: number })?.status
-          addToast(status === 409 ? 'Finish the earlier steps first' : "Couldn't save — try again", 'error')
+          addToast(
+            status === 409 ? 'Finish the earlier steps first'
+            : status === 412 ? 'Pass the quiz to finish this step'
+            : "Couldn't save — try again",
+            'error',
+          )
         }
       }
     }

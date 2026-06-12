@@ -15,7 +15,7 @@ export default function ComingSoon({ title, description }: ComingSoonProps) {
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-violet-500/6 rounded-full blur-[120px] animate-glow-pulse" />
       </div>
 
-      <div className="relative glass rounded-3xl p-12 max-w-md w-full">
+      <div className="relative glass rounded-3xl p-6 sm:p-12 max-w-md w-full">
         <div className="flex justify-center mb-6">
           <div className="w-14 h-14 rounded-2xl bg-violet-50 border border-violet-200 dark:bg-violet-600/20 dark:border-violet-500/30 flex items-center justify-center">
             <Zap size={26} className="text-violet-600 dark:text-violet-400" fill="currentColor" />
@@ -38,7 +38,7 @@ export default function ComingSoon({ title, description }: ComingSoonProps) {
 
         <button
           onClick={() => navigate('/')}
-          className="mt-6 flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-700 dark:text-slate-600 dark:hover:text-slate-400 transition-colors mx-auto group"
+          className="mt-6 inline-flex items-center gap-1.5 min-h-[44px] text-sm text-slate-500 hover:text-slate-700 active:text-slate-700 dark:text-slate-600 dark:hover:text-slate-400 dark:active:text-slate-400 transition-colors mx-auto group"
         >
           <ArrowLeft size={13} className="group-hover:-translate-x-0.5 transition-transform" />
           Back home

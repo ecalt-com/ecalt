@@ -73,7 +73,7 @@ export default function Passport() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-4 gap-3 sm:gap-4 mb-10">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mb-10">
           {[
             { label: 'Missions Complete', value: passport?.total_completed ?? 0,   icon: Award,    color: 'text-violet-600 dark:text-violet-400' },
             { label: 'Topics Explored',   value: passport?.categories.length ?? 0, icon: BookOpen, color: 'text-cyan-600 dark:text-cyan-400' },
@@ -85,7 +85,7 @@ export default function Passport() {
               <p className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-slate-100">
                 {Number.isInteger(value) ? value : (value as number).toFixed(1)}
               </p>
-              <p className="text-[10px] sm:text-xs text-slate-500 mt-1 leading-tight">{label}</p>
+              <p className="text-xs text-slate-500 mt-1 leading-tight">{label}</p>
             </div>
           ))}
         </div>

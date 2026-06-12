@@ -33,14 +33,14 @@ export function FunnelTab({ funnelData }: FunnelTabProps) {
                 <div className="h-full rounded-full bg-violet-500" style={{ width: `${Math.max(pct > 0 ? 1 : 0, pct)}%` }} />
               </div>
               <span className="text-xs tabular-nums font-semibold text-violet-600 dark:text-violet-400 w-12 text-right shrink-0">{pct}%</span>
-              <span className="text-[11px] text-slate-400 hidden sm:block">({count} {desc})</span>
+              <span className="text-xs text-slate-400 hidden sm:block">({count} {desc})</span>
             </div>
           ))}
         </div>
         {funnelData.conversion.avg_days_to_convert != null && (
           <p className="text-xs text-slate-500">
             Avg time to convert: <span className="font-semibold text-slate-700 dark:text-slate-200">{funnelData.conversion.avg_days_to_convert} days</span>
-            <span className="ml-2 text-[10px] text-slate-400">
+            <span className="ml-2 text-xs text-slate-400">
               {funnelData.conversion.avg_days_to_convert < 7 ? '— excellent' : funnelData.conversion.avg_days_to_convert > 30 ? '— consider more nudges' : ''}
             </span>
           </p>
@@ -91,8 +91,8 @@ export function FunnelTab({ funnelData }: FunnelTabProps) {
               </table>
             </div>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-emerald-500" /><span className="text-[10px] text-slate-500">New</span></div>
-              <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-rose-400" /><span className="text-[10px] text-slate-500">Cancelled</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-emerald-500" /><span className="text-xs text-slate-500">New</span></div>
+              <div className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-sm bg-rose-400" /><span className="text-xs text-slate-500">Cancelled</span></div>
             </div>
           </>
         )}
@@ -117,15 +117,15 @@ export function FunnelTab({ funnelData }: FunnelTabProps) {
                 <div key={u.uid} className="px-5 py-3 flex items-center gap-3">
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{u.display_name ?? u.email ?? u.uid}</p>
-                    <p className="text-[11px] text-slate-500 truncate">{u.email}</p>
+                    <p className="text-xs text-slate-500 truncate">{u.email}</p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="text-[10px] text-slate-500">{daysSinceSignup !== null ? `joined ${daysSinceSignup}d ago` : '—'}</p>
-                    <p className="text-[10px] text-slate-400">{u.signup_date ?? '—'}</p>
+                    <p className="text-xs text-slate-500">{daysSinceSignup !== null ? `joined ${daysSinceSignup}d ago` : '—'}</p>
+                    <p className="text-xs text-slate-400">{u.signup_date ?? '—'}</p>
                   </div>
                   <div className="shrink-0 text-right w-20 hidden sm:block">
                     <p className="text-xs tabular-nums font-medium text-amber-600 dark:text-amber-400">{u.lifetime_messages} msgs</p>
-                    <p className="text-[10px] text-slate-400">used</p>
+                    <p className="text-xs text-slate-400">used</p>
                   </div>
                 </div>
               )

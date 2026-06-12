@@ -235,8 +235,8 @@ export default function Profile() {
           <div className="glass-card rounded-2xl p-5 mb-5">
             <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-3">Account</h2>
             <dl className="space-y-2 text-sm">
-              <div className="flex justify-between"><dt className="text-slate-500">Display name</dt><dd className="text-slate-800 dark:text-slate-200">{user.displayName || '—'}</dd></div>
-              <div className="flex justify-between"><dt className="text-slate-500">Email</dt><dd className="text-slate-800 dark:text-slate-200">{user.email || '—'}</dd></div>
+              <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt className="text-slate-500">Display name</dt><dd className="text-slate-800 dark:text-slate-200">{user.displayName || '—'}</dd></div>
+              <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt className="text-slate-500">Email</dt><dd className="text-slate-800 dark:text-slate-200 break-all">{user.email || '—'}</dd></div>
             </dl>
           </div>
 
@@ -247,12 +247,12 @@ export default function Profile() {
               <div className="flex items-center gap-2 text-slate-400 text-xs py-2"><Loader2 size={13} className="animate-spin" /> Loading…</div>
             ) : plan ? (
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <CreditCard size={15} className="text-violet-500" />
                     <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{plan.name}</span>
                     {!plan.is_active && (
-                      <span className="text-[10px] text-rose-500 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded-full">inactive</span>
+                      <span className="text-xs text-rose-500 bg-rose-50 dark:bg-rose-500/10 px-1.5 py-0.5 rounded-full">inactive</span>
                     )}
                   </div>
                   <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
@@ -370,7 +370,7 @@ export default function Profile() {
                     <Clock size={16} className="text-slate-500" />
                     <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Quiet hours</span>
                   </div>
-                  <div className="flex items-center gap-3 text-sm">
+                  <div className="flex items-center flex-wrap gap-3 text-sm">
                     <span className="text-slate-500">From</span>
                     <HourSelect
                       value={prefs.quiet_hours_start}
@@ -422,7 +422,7 @@ export default function Profile() {
                 <button
                   onClick={handleExport}
                   disabled={exporting}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white transition-all disabled:opacity-60"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 active:bg-violet-500 text-white transition-all disabled:opacity-60"
                 >
                   {exporting ? <><Loader2 size={11} className="animate-spin" /> Exporting…</> : <><Download size={11} /> Download</>}
                 </button>
@@ -436,7 +436,7 @@ export default function Profile() {
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Permanently remove your account and all associated data.</p>
                 <button
                   onClick={() => setShowDeleteModal(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white transition-all"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[44px] rounded-lg text-xs font-medium bg-rose-600 hover:bg-rose-500 active:bg-rose-500 text-white transition-all"
                 >
                   <Trash2 size={11} /> Delete account
                 </button>
@@ -467,7 +467,7 @@ export default function Profile() {
       {/* Delete confirmation modal */}
       {showDeleteModal && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm modal-overlay"
           role="dialog"
           aria-modal="true"
           aria-labelledby="delete-modal-title"
@@ -511,14 +511,14 @@ export default function Profile() {
             <div className="flex gap-3">
               <button
                 onClick={() => { setShowDeleteModal(false); setDeleteInput(''); setDeleteError(null) }}
-                className="flex-1 px-4 py-2 rounded-xl text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600 transition-all"
+                className="flex-1 px-4 py-2 min-h-[44px] rounded-xl text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300 active:border-slate-300 dark:hover:border-slate-600 dark:active:border-slate-600 transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteAccount}
                 disabled={deleteInput !== 'DELETE' || deleting}
-                className="flex-1 px-4 py-2 rounded-xl text-sm font-medium bg-rose-600 hover:bg-rose-500 text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                className="flex-1 px-4 py-2 min-h-[44px] rounded-xl text-sm font-medium bg-rose-600 hover:bg-rose-500 active:bg-rose-500 text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
                 {deleting ? <><Loader2 size={14} className="animate-spin" /> Deleting…</> : 'Delete Account'}
               </button>

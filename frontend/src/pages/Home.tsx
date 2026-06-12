@@ -504,7 +504,7 @@ export default function Home() {
           >
             <span className="text-3xl shrink-0">{recentJourney.icon}</span>
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider mb-0.5">Continue where you left off</p>
+              <p className="text-xs font-semibold text-violet-600 dark:text-violet-400 uppercase tracking-wider mb-0.5">Continue where you left off</p>
               <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">{recentJourney.title}</p>
               <div className="mt-1.5 h-1 bg-violet-100 dark:bg-violet-900 rounded-full overflow-hidden w-40">
                 <div

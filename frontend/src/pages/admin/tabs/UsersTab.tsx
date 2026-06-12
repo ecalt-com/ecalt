@@ -68,27 +68,27 @@ export function UsersTab({
                   <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
                     {u.display_name ?? 'Unknown'}
                     {u.is_admin && (
-                      <span className="ml-2 text-[10px] text-violet-600 dark:text-violet-300 bg-violet-100 dark:bg-violet-500/20 px-1.5 py-0.5 rounded-full">admin</span>
+                      <span className="ml-2 text-xs text-violet-600 dark:text-violet-300 bg-violet-100 dark:bg-violet-500/20 px-1.5 py-0.5 rounded-full">admin</span>
                     )}
                   </p>
-                  <p className="text-[11px] text-slate-500 truncate">{u.email ?? u.uid}</p>
+                  <p className="text-xs text-slate-500 truncate">{u.email ?? u.uid}</p>
                 </div>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono shrink-0 hidden sm:block">{u.plan_id}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-mono shrink-0 hidden sm:block">{u.plan_id}</span>
                 <div className="shrink-0 hidden sm:flex flex-col items-end gap-0.5 w-28">
                   <div className="flex items-center gap-1.5 w-full">
                     <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
                       <div className={clsx('h-full rounded-full', barColor)} style={{ width: `${Math.max(pct > 0 ? 2 : 0, pct)}%` }} />
                     </div>
                     <span className={clsx(
-                      'text-[10px] tabular-nums font-medium w-10 text-right',
+                      'text-xs tabular-nums font-medium w-10 text-right',
                       pct >= 90 ? 'text-rose-500' : pct >= 70 ? 'text-amber-500' : 'text-slate-500'
                     )}>{fmtPct(u.spent_cents, u.budget_cents ?? 0)}</span>
                   </div>
-                  <span className="text-[10px] text-slate-400 tabular-nums">
+                  <span className="text-xs text-slate-400 tabular-nums">
                     {fmtCents(u.spent_cents)} / {fmtCents(u.budget_cents ?? 0)}
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400 tabular-nums shrink-0 hidden md:block w-16 text-right">
+                <span className="text-xs text-slate-400 tabular-nums shrink-0 hidden md:block w-16 text-right">
                   {u.message_count} req
                 </span>
                 <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
@@ -97,7 +97,7 @@ export function UsersTab({
                     disabled={togglingUid === u.uid}
                     title={u.is_admin ? 'Revoke admin' : 'Grant admin'}
                     className={clsx(
-                      'flex items-center gap-1 text-[11px] px-2 py-1 rounded-lg transition-all',
+                      'flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all',
                       u.is_admin
                         ? 'text-rose-500 dark:text-rose-400 bg-rose-50 dark:bg-rose-500/10 hover:bg-rose-100 dark:hover:bg-rose-500/20'
                         : 'text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20'

@@ -29,7 +29,7 @@ const DOMAIN_COLORS: Record<string, string> = {
 function nodeSize(strength: number): string {
   if (strength >= 0.8) return 'text-sm'
   if (strength >= 0.55) return 'text-xs'
-  return 'text-[11px]'
+  return 'text-xs'
 }
 
 interface KnowledgeUniverseProps {
@@ -101,14 +101,14 @@ export default function KnowledgeUniverse({ refreshTrigger }: KnowledgeUniverseP
 
           <div className="mt-4 flex items-center justify-between">
             {nodes.length >= 5 && (
-              <p className="text-[10px] text-slate-400 dark:text-slate-600">
+              <p className="text-xs text-slate-400 dark:text-slate-600">
                 {nodes.length} concept{nodes.length !== 1 ? 's' : ''} discovered
               </p>
             )}
             {hasSignature && (
               <button
                 onClick={() => navigate('/mind-signature')}
-                className="flex items-center gap-1 text-[10px] text-violet-500 dark:text-violet-400 hover:text-violet-600 dark:hover:text-violet-300 transition-colors ml-auto"
+                className="flex items-center gap-1 text-xs text-violet-500 dark:text-violet-400 hover:text-violet-600 dark:hover:text-violet-300 transition-colors ml-auto"
               >
                 <Sparkles size={10} />
                 View Mind Signature

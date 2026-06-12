@@ -108,7 +108,7 @@ export function RevenueTab({ revenue }: RevenueTabProps) {
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-xs tabular-nums text-slate-500">{r.subscriptions} subs</p>
-                      <p className="text-[10px] tabular-nums text-slate-400">
+                      <p className="text-xs tabular-nums text-slate-400">
                         {r.total_usd_cents > 0
                           ? `$${(r.total_usd_cents / 100).toFixed(0)}/mo`
                           : r.total_inr_paise > 0

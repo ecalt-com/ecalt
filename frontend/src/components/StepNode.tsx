@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2, Lock } from 'lucide-react'
@@ -40,6 +40,10 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
   const [loadingContent, setLoadingContent] = useState(false)
   const [contentError, setContentError] = useState<string | null>(null)
   const [budgetExceeded, setBudgetExceeded] = useState(false)
+  const [isGuest, setIsGuest] = useState(false)
+  // Whether the quiz is required for this visit: steps completed before this
+  // session never re-quiz, and a step stays mounted through its pass screen.
+  const quizRequired = useRef(!step.completed)
 
   const handleExpand = () => {
     if (locked) return
@@ -54,9 +58,13 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
       const token = await getToken()
       const res = await getStepContent(journeyId, step.id, token ?? undefined)
       setContent(res.content)
-      // Viewing content = completing the step — same behaviour as Coursera/LinkedIn Learning.
-      // Only fires on the first load (content === null guard below), never double-marks.
-      if (!step.completed) onToggle?.(step.id)
+      if (!token) {
+        // Guests can't take quizzes (auth required) — for them, viewing the
+        // content still completes the step locally. Signed-in users complete
+        // a step by passing its quiz instead.
+        setIsGuest(true)
+        if (!step.completed) onToggle?.(step.id)
+      }
     } catch (e: any) {
       if (e?.status === 402) {
         setBudgetExceeded(true)
@@ -79,7 +87,7 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
   }, [expanded])
 
   return (
-    <div id={`step-${step.id}`} className="flex gap-4 scroll-mt-24">
+    <div id={`step-${step.id}`} className="flex gap-3 sm:gap-4 scroll-mt-24">
       <div className="flex flex-col items-center">
         {/* Status indicator — completion happens through the step flow, not by clicking here */}
         <div
@@ -110,7 +118,10 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
           <button
             onClick={handleExpand}
             disabled={locked}
-            className={clsx('w-full p-4 flex items-start gap-3 text-left', locked && 'cursor-not-allowed')}
+            className={clsx(
+              'w-full p-4 flex items-start gap-3 text-left',
+              locked ? 'cursor-not-allowed' : 'active:bg-slate-50 dark:active:bg-slate-800/60',
+            )}
           >
             <div className={clsx('p-1.5 rounded-lg border shrink-0', config.bg)}>
               <Icon size={14} className={config.color} />
@@ -119,11 +130,16 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
               <div className="flex items-center gap-2 mb-1">
                 <span className={clsx('text-xs font-medium', config.color)}>{config.label}</span>
                 <span className="text-xs text-slate-400 dark:text-slate-600">· {step.estimated_minutes} min</span>
+                {!step.completed && (
+                  <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400">
+                    Quiz · 2/3 to pass
+                  </span>
+                )}
               </div>
               <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1 leading-snug">{step.title}</h4>
               <p className="text-xs text-slate-500 leading-relaxed">{step.description}</p>
               {locked && (
-                <p className="text-[11px] text-slate-400 dark:text-slate-600 mt-1.5 flex items-center gap-1">
+                <p className="text-xs text-slate-400 dark:text-slate-600 mt-1.5 flex items-center gap-1">
                   <Lock size={10} />Complete the previous step to unlock
                 </p>
               )}
@@ -172,11 +188,16 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
               {content && !loadingContent && (
                 <div className="pt-4">
                   <MarkdownContent content={content} />
-                  <QuizCard
-                    concept={step.title}
-                    context={content}
-                    getToken={getToken}
-                  />
+                  {!isGuest && quizRequired.current && (
+                    <QuizCard
+                      concept={step.title}
+                      context={content}
+                      getToken={getToken}
+                      journeyId={journeyId}
+                      stepId={step.id}
+                      onPassed={() => onToggle?.(step.id)}
+                    />
+                  )}
                 </div>
               )}
             </div>

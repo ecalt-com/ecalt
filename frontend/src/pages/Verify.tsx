@@ -63,7 +63,7 @@ export default function Verify() {
               <div className="w-8 h-8 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : notFound ? (
-            <div className="glass-card rounded-2xl p-10 flex flex-col items-center text-center gap-4">
+            <div className="glass-card rounded-2xl p-6 sm:p-10 flex flex-col items-center text-center gap-4">
               <ShieldX size={32} className="text-rose-400" />
               <h1 className="text-lg font-semibold text-slate-800 dark:text-slate-100">Signature not found</h1>
               <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -93,7 +93,7 @@ export default function Verify() {
                 </div>
                 <div>
                   <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/15 px-2 py-0.5 rounded-full">
+                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-500/15 px-2 py-0.5 rounded-full">
                       Verified by ECALT
                     </span>
                   </div>
@@ -119,7 +119,7 @@ export default function Verify() {
                       <div key={d.domain}>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-xs font-medium text-slate-700 dark:text-slate-300 capitalize">{d.domain}</span>
-                          <span className="text-[10px] text-slate-500">{d.concept_count} concepts · {Math.round(d.mastery_level * 100)}%</span>
+                          <span className="text-xs text-slate-500">{d.concept_count} concepts · {Math.round(d.mastery_level * 100)}%</span>
                         </div>
                         <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
                           <div
@@ -148,8 +148,8 @@ export default function Verify() {
 
               {/* Hash */}
               <div className="glass-card rounded-2xl p-4">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-1">Verification Hash</p>
-                <p className="text-[10px] font-mono text-slate-500 dark:text-slate-500 break-all">{signature.verification_hash}</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-600 mb-1">Verification Hash</p>
+                <p className="text-xs font-mono text-slate-500 dark:text-slate-500 break-all">{signature.verification_hash}</p>
               </div>
             </div>
           ) : null}

@@ -54,7 +54,8 @@ export function OverviewTab({ stats, plans, featureUsage }: OverviewTabProps) {
               {featureUsage.this_month.length === 0 ? (
                 <p className="text-xs text-slate-400 px-4 py-6 text-center">No feature usage data for this month yet.</p>
               ) : (
-                <table className="w-full text-xs">
+                <div className="overflow-x-auto">
+                <table className="w-full min-w-[560px] text-xs">
                   <thead>
                     <tr className="border-b border-slate-200 dark:border-slate-700">
                       <th className="text-left px-4 py-2.5 text-slate-500 font-semibold">Feature</th>
@@ -85,7 +86,7 @@ export function OverviewTab({ stats, plans, featureUsage }: OverviewTabProps) {
                               <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-700/60 overflow-hidden">
                                 <div className="h-full rounded-full bg-violet-500" style={{ width: `${share}%` }} />
                               </div>
-                              <span className="text-[10px] tabular-nums text-slate-400 w-7 text-right shrink-0">{Math.round(share)}%</span>
+                              <span className="text-xs tabular-nums text-slate-400 w-7 text-right shrink-0">{Math.round(share)}%</span>
                             </div>
                           </td>
                         </tr>
@@ -93,6 +94,7 @@ export function OverviewTab({ stats, plans, featureUsage }: OverviewTabProps) {
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
             </div>
 

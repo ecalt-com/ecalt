@@ -229,12 +229,12 @@ export default function Pricing() {
                   )}
                 >
                   {details?.badge && (
-                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-violet-600 dark:text-violet-300 bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 rounded-full mb-3 self-start">
+                    <span className="inline-block text-xs font-bold uppercase tracking-wider text-violet-600 dark:text-violet-300 bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 rounded-full mb-3 self-start">
                       {details.badge}
                     </span>
                   )}
                   {isCurrent && (
-                    <span className="inline-block text-[10px] font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-300 bg-cyan-100 dark:bg-cyan-500/20 px-2 py-0.5 rounded-full mb-3 self-start">
+                    <span className="inline-block text-xs font-bold uppercase tracking-wider text-cyan-700 dark:text-cyan-300 bg-cyan-100 dark:bg-cyan-500/20 px-2 py-0.5 rounded-full mb-3 self-start">
                       Current plan
                     </span>
                   )}
@@ -246,7 +246,7 @@ export default function Pricing() {
                     <div>
                       <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100">{plan.name}</h3>
                       {plan.max_seats > 1 && (
-                        <p className="text-[10px] text-slate-500">{plan.max_seats} users</p>
+                        <p className="text-xs text-slate-500">{plan.max_seats} users</p>
                       )}
                     </div>
                   </div>

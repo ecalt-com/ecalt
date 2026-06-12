@@ -90,9 +90,9 @@ export function NotificationTemplatesTab({ templates, setTemplates, templateVari
   }
 
   return (
-    <div className="flex gap-4 h-full min-h-[600px]">
+    <div className="flex flex-col md:flex-row gap-4 h-full min-h-0 md:min-h-[600px]">
       {/* Left: list */}
-      <div className="w-52 shrink-0 flex flex-col gap-1">
+      <div className="w-full md:w-52 md:shrink-0 flex flex-col gap-1">
         <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-2">
           Notification type
         </p>
@@ -110,7 +110,7 @@ export function NotificationTemplatesTab({ templates, setTemplates, templateVari
             {displayName(row.notification_type)}
             {row.updated_at && (
               <div className={clsx(
-                'text-[10px] mt-0.5',
+                'text-xs mt-0.5',
                 selected === row.notification_type ? 'text-violet-200' : 'text-slate-400 dark:text-slate-500'
               )}>
                 {relativeTime(row.updated_at)}
@@ -178,7 +178,7 @@ export function NotificationTemplatesTab({ templates, setTemplates, templateVari
                   'focus:outline-none focus:border-violet-400 dark:focus:border-violet-500',
                 )}
               />
-              <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
+              <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
                 {editText.length.toLocaleString()} chars
               </p>
             </div>

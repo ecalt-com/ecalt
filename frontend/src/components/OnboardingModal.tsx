@@ -115,7 +115,7 @@ export default function OnboardingModal() {
   const handleWhatsAppSkip = () => finish({ declined: true })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm modal-overlay">
       <div className="animate-celebration glass-card rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
         {step === 1 ? (
           <>
@@ -125,7 +125,7 @@ export default function OnboardingModal() {
               <p className="text-sm text-slate-500">Pick the topics you'd like to explore — we'll tailor your journeys.</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 mb-6">
+            <div className="grid grid-cols-2 min-[400px]:grid-cols-3 gap-2 mb-6">
               {TOPICS.map(({ emoji, label }) => (
                 <button
                   key={label}
@@ -159,7 +159,7 @@ export default function OnboardingModal() {
               Skip for now
             </button>
 
-            <p className="mt-3 text-[11px] text-center text-slate-400 dark:text-slate-500">
+            <p className="mt-3 text-xs text-center text-slate-400 dark:text-slate-500">
               By continuing you agree to our{' '}
               <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600 dark:hover:text-slate-400">Terms of Service</a>{' '}
               and{' '}
@@ -222,7 +222,7 @@ export default function OnboardingModal() {
               Skip for now
             </button>
 
-            <p className="mt-4 text-[11px] leading-relaxed text-center text-slate-400 dark:text-slate-500">
+            <p className="mt-4 text-xs leading-relaxed text-center text-slate-400 dark:text-slate-500">
               By continuing you agree to receive learning updates on WhatsApp.
               Reply STOP to opt out anytime, or change this in settings.
             </p>

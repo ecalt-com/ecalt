@@ -49,11 +49,15 @@ export default function ConstellationMap({ data, mini = false }: Props) {
   useEffect(() => {
     if (!svgRef.current || !data.nodes.length) return
 
-    const size = mini ? 180 : 400
     const svg = d3.select(svgRef.current)
     svg.selectAll('*').remove()
 
-    svg.attr('viewBox', `0 0 400 400`).attr('width', size).attr('height', size)
+    svg.attr('viewBox', '0 0 400 400')
+    if (mini) {
+      svg.attr('width', 180).attr('height', 180)
+    } else {
+      svg.attr('width', null).attr('height', null)
+    }
 
     // Background glow filter
     const defs = svg.append('defs')
@@ -143,5 +147,10 @@ export default function ConstellationMap({ data, mini = false }: Props) {
     }
   }, [data, mini])
 
-  return <svg ref={svgRef} className="overflow-visible" />
+  return (
+    <svg
+      ref={svgRef}
+      className={mini ? 'overflow-visible' : 'overflow-visible w-full max-w-[400px] h-auto aspect-square'}
+    />
+  )
 }

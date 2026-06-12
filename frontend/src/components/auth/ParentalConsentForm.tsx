@@ -85,7 +85,7 @@ export default function ParentalConsentForm({ onSent }: Props) {
             : 'Send Confirmation Email'}
         </button>
 
-        <p className="mt-4 text-[11px] text-center text-slate-400 dark:text-slate-500">
+        <p className="mt-4 text-xs text-center text-slate-400 dark:text-slate-500">
           By continuing you agree to our{' '}
           <a href="/terms" target="_blank" rel="noopener noreferrer" className="underline hover:text-slate-600 dark:hover:text-slate-400">
             Terms of Service

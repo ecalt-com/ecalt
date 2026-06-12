@@ -58,10 +58,10 @@ export function ContentTab({
                     <div className="flex items-center gap-3 mb-2">
                       {j.icon && <span className="text-base shrink-0">{j.icon}</span>}
                       <p className="text-xs font-medium text-slate-800 dark:text-slate-200 flex-1 truncate">{j.title}</p>
-                      <span className="text-[10px] text-slate-400 shrink-0 hidden sm:block">{j.difficulty ?? '—'}</span>
-                      <span className="text-[10px] tabular-nums text-slate-500 shrink-0">{j.unique_learners} learners</span>
+                      <span className="text-xs text-slate-400 shrink-0 hidden sm:block">{j.difficulty ?? '—'}</span>
+                      <span className="text-xs tabular-nums text-slate-500 shrink-0">{j.unique_learners} learners</span>
                       <span className={clsx(
-                        'text-[10px] tabular-nums font-semibold shrink-0 w-10 text-right',
+                        'text-xs tabular-nums font-semibold shrink-0 w-10 text-right',
                         pct >= 40 ? 'text-violet-600 dark:text-violet-400' : pct >= 20 ? 'text-amber-500' : 'text-rose-500'
                       )}>{pct}%</span>
                       <div className="text-slate-400 shrink-0">
@@ -74,7 +74,7 @@ export function ContentTab({
                   </div>
                   {isExpanded && (
                     <div className="px-5 pb-4 pt-2 border-t border-slate-100 dark:border-slate-700/40 bg-slate-50/40 dark:bg-slate-800/20">
-                      <p className="text-[10px] text-slate-400 uppercase tracking-wide mb-2">Step drop-off</p>
+                      <p className="text-xs text-slate-400 uppercase tracking-wide mb-2">Step drop-off</p>
                       {isLoadingThis && (
                         <div className="flex items-center gap-2 text-slate-400 text-xs py-2">
                           <Loader2 size={12} className="animate-spin" /> Loading…
@@ -87,11 +87,11 @@ export function ContentTab({
                         <div className="space-y-1.5">
                           {dropoff.map(s => (
                             <div key={s.step_id} className="flex items-center gap-2">
-                              <span className="text-[10px] font-mono text-slate-500 w-24 shrink-0 truncate">{s.step_id}</span>
+                              <span className="text-xs font-mono text-slate-500 w-24 shrink-0 truncate">{s.step_id}</span>
                               <div className="flex-1 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700/60 overflow-hidden">
                                 <div className="h-full rounded-full bg-violet-500/70" style={{ width: `${(s.completions / maxCompletions) * 100}%` }} />
                               </div>
-                              <span className="text-[10px] tabular-nums text-slate-500 w-10 text-right shrink-0">{s.completions}</span>
+                              <span className="text-xs tabular-nums text-slate-500 w-10 text-right shrink-0">{s.completions}</span>
                             </div>
                           ))}
                         </div>
@@ -117,11 +117,11 @@ export function ContentTab({
               <div key={c.id} className="px-5 py-3 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">{c.title ?? 'Untitled'}</p>
-                  <p className="text-[11px] text-slate-500 truncate">{c.email ?? c.uid}</p>
+                  <p className="text-xs text-slate-500 truncate">{c.email ?? c.uid}</p>
                 </div>
                 <span className="text-xs tabular-nums font-semibold text-violet-600 dark:text-violet-400 shrink-0">{c.message_count} msgs</span>
                 {c.last_message_at && (
-                  <span className="text-[10px] text-slate-400 shrink-0 hidden sm:block">
+                  <span className="text-xs text-slate-400 shrink-0 hidden sm:block">
                     {new Date(c.last_message_at).toLocaleDateString('default', { month: 'short', day: 'numeric' })}
                   </span>
                 )}

@@ -141,7 +141,7 @@ export default function MarkdownContent({ content }: { content: string }) {
           <div key={i} className="rounded-2xl bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/50 dark:via-slate-900/40 dark:to-slate-900/10 border border-violet-200 dark:border-violet-500/15 px-5 py-4">
             <div className="flex items-center gap-1.5 mb-2.5">
               <Sparkles size={10} className="text-violet-500 dark:text-violet-400" />
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-violet-500 dark:text-violet-400">
+              <span className="text-xs font-semibold uppercase tracking-widest text-violet-500 dark:text-violet-400">
                 Spotlight
               </span>
             </div>
@@ -179,7 +179,7 @@ export default function MarkdownContent({ content }: { content: string }) {
             <div className="flex items-center gap-2.5 px-4 py-3 border-b border-amber-100 dark:border-amber-500/15 bg-amber-100/60 dark:bg-amber-500/10">
               <Target size={13} className="text-amber-600 dark:text-amber-400 shrink-0" />
               <h4 className="font-semibold text-amber-700 dark:text-amber-300 text-sm">Try This</h4>
-              <span className="ml-auto text-[10px] font-semibold uppercase tracking-wider text-amber-500/60 dark:text-amber-400/50">
+              <span className="ml-auto text-xs font-semibold uppercase tracking-wider text-amber-500/60 dark:text-amber-400/50">
                 ~5 min
               </span>
             </div>
