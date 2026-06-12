@@ -102,10 +102,34 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     return _pool
 
 
+def _is_conn_alive(conn) -> bool:
+    """Ping the server to confirm the connection is still usable.
+
+    Supabase's pgBouncer closes idle connections after its server_idle_timeout,
+    but psycopg2's pool doesn't know — it hands out the dead socket and the
+    first real query raises 'server closed the connection unexpectedly'.
+    """
+    if conn.closed:
+        return False
+    try:
+        conn.cursor().execute("SELECT 1")
+        conn.rollback()  # clear the implicit BEGIN so the caller starts clean
+        return True
+    except Exception:
+        return False
+
+
 @contextmanager
 def get_db():
     pool = _get_pool()
     conn = pool.getconn()
+
+    # Replace stale connections before handing them to the caller.
+    if not _is_conn_alive(conn):
+        logger.warning("stale DB connection detected — replacing with fresh one")
+        pool.putconn(conn, close=True)
+        conn = pool.getconn()
+
     conn.cursor_factory = psycopg2.extras.RealDictCursor
     try:
         yield conn
@@ -118,4 +142,5 @@ def get_db():
         logger.error("DB error (%s): %s", type(e).__name__, e)
         raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
     finally:
-        pool.putconn(conn)
+        # Discard broken connections so the pool never reuses a dead socket.
+        pool.putconn(conn, close=bool(conn.closed))
