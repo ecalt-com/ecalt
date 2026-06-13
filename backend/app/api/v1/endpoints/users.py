@@ -26,7 +26,7 @@ class UserProfile(BaseModel):
     whatsapp_opted_in: bool = False
     has_notification_prefs: bool = False
     account_status: str = "active"
-    consent_given_at: Optional[str] = None
+    consent_given_at: Optional[datetime] = None
     needs_birth_year: bool = False
 
 
