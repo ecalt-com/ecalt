@@ -102,8 +102,9 @@ export interface QuizHint {
 
 export interface QuizResult {
   is_correct: boolean
+  user_answer: string
   correct_answer: string
-  answer_explanation: string
+  feedback: string
   hints_used: number
   concept: string
   difficulty: string

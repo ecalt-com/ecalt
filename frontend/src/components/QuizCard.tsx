@@ -364,20 +364,48 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
             const r = results[i]
             if (!r) return null
             return (
-              <div key={q.quiz_id} className="rounded-lg border border-slate-100 dark:border-slate-800 p-3 space-y-1.5">
+              <div
+                key={q.quiz_id}
+                className={clsx(
+                  'rounded-lg border p-3 space-y-2',
+                  r.is_correct
+                    ? 'border-emerald-100 dark:border-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-500/5'
+                    : 'border-rose-100 dark:border-rose-500/20 bg-rose-50/40 dark:bg-rose-500/5',
+                )}
+              >
+                {/* Question + verdict icon */}
                 <div className="flex items-start gap-2">
                   {r.is_correct
                     ? <Check size={13} className="text-emerald-500 mt-0.5 shrink-0" />
                     : <X size={13} className="text-rose-400 mt-0.5 shrink-0" />}
                   <p className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-snug">{q.question}</p>
                 </div>
+
+                {/* User's answer — always shown */}
+                <div className="pl-5 space-y-0.5">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Your answer</p>
+                  <p className={clsx(
+                    'text-xs leading-relaxed',
+                    r.is_correct ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300',
+                  )}>
+                    {r.user_answer}
+                  </p>
+                </div>
+
+                {/* Correct answer — only when wrong */}
                 {!r.is_correct && (
-                  <p className="text-xs text-slate-700 dark:text-slate-300 pl-5">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 mr-1">Answer</span>
-                    {r.correct_answer}
+                  <div className="pl-5 space-y-0.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Correct answer</p>
+                    <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{r.correct_answer}</p>
+                  </div>
+                )}
+
+                {/* Dynamic personalised feedback */}
+                {r.feedback && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed pl-5 border-t border-slate-100 dark:border-slate-700/50 pt-2">
+                    {r.feedback}
                   </p>
                 )}
-                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed pl-5">{r.answer_explanation}</p>
               </div>
             )
           })}
