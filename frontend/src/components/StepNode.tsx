@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2, Lock } from 'lucide-react'
@@ -36,6 +36,27 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
   const Icon = config.icon
   const [internalExpanded, setInternalExpanded] = useState(false)
   const expanded = controlledExpanded ?? internalExpanded
+  const headerRef = useRef<HTMLButtonElement>(null)
+  const prevExpanded = useRef(false)
+
+  // Scroll the step header into view when the step is opened, but only if it
+  // isn't already visible. requestAnimationFrame runs after React paints so the
+  // header has its real position. We target the HEADER button (not the whole
+  // container) so async quiz content loading below never affects the target.
+  useLayoutEffect(() => {
+    if (expanded && !prevExpanded.current && !locked) {
+      requestAnimationFrame(() => {
+        const el = headerRef.current
+        if (!el) return
+        const rect = el.getBoundingClientRect()
+        const navHeight = 80
+        if (rect.top < navHeight || rect.top > window.innerHeight - 80) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      })
+    }
+    prevExpanded.current = expanded
+  }, [expanded, locked])
   const [content, setContent] = useState<string | null>(null)
   const [loadingContent, setLoadingContent] = useState(false)
   const [contentError, setContentError] = useState<string | null>(null)
@@ -116,10 +137,11 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
         >
           {/* Header row */}
           <button
+            ref={headerRef}
             onClick={handleExpand}
             disabled={locked}
             className={clsx(
-              'w-full p-4 flex items-start gap-3 text-left',
+              'w-full p-4 flex items-start gap-3 text-left scroll-mt-24',
               locked ? 'cursor-not-allowed' : 'active:bg-slate-50 dark:active:bg-slate-800/60',
             )}
           >

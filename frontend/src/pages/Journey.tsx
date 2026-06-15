@@ -221,12 +221,12 @@ export default function Journey() {
   const toggleExpanded = (stepId: string) =>
     setExpandedStepId(prev => (prev === stepId ? null : stepId))
 
-  // Start Journey / Continue — open the first incomplete step and scroll to it.
+  // Start Journey / Continue — open the first incomplete step.
+  // Scrolling is handled by StepNode when it detects it has been expanded.
   const startJourney = () => {
     const target = steps.find(s => !s.completed) ?? steps[0]
     if (!target) return
     setExpandedStepId(target.id)
-    document.getElementById(`step-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
   const completed = steps.filter(s => s.completed).length
