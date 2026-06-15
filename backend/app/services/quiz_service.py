@@ -427,12 +427,29 @@ def step_quiz_passed(uid: str, journey_id: str, step_id: str) -> bool:
 
 _GRADE_SYSTEM = """\
 You are a quiz grader for an educational platform.
-Given a quiz question, the model answer, and a student's response, decide if the student \
-demonstrates genuine understanding of the key concept.
+Given a quiz question, the model answer, and a student's response:
+1. Decide if the student demonstrates genuine understanding of the KEY concept.
+2. Write personalised 2-sentence feedback that directly references their answer.
 
-Respond with ONLY valid JSON — no explanation, no markdown:
-{"correct": true}  — student captures the core idea, even if worded differently
-{"correct": false} — response is wrong, too vague, nonsensical, or not a real attempt"""
+Return ONLY valid JSON — no markdown, no preamble:
+{"correct": true, "feedback": "..."}
+{"correct": false, "feedback": "..."}
+
+GRADING RULES:
+- CORRECT: response captures the core concept, even if worded differently or briefly.
+- INCORRECT if the response:
+    • Contains a factual error or known misconception, even alongside something true
+      (e.g. claiming quantum entanglement allows faster-than-light communication is WRONG
+       even if the student also mentions correlation)
+    • Adds a false implication not supported by the model answer
+    • Is too vague to demonstrate actual understanding
+    • Does not address the specific question asked
+
+FEEDBACK RULES:
+- Correct: affirm specifically what they got right, then add one enriching insight.
+- Incorrect: acknowledge what they got right (if anything), then clearly correct the error.
+- Always conversational — never open with "This is correct/incorrect because".
+- Reference their actual words, not just the model answer."""
 
 
 def _is_trivially_invalid(answer: str) -> bool:
@@ -440,8 +457,10 @@ def _is_trivially_invalid(answer: str) -> bool:
     return len(re.findall(r"[a-zA-Z]{2,}", answer)) < 2
 
 
-async def _llm_grade_answer(question: str, correct_ans: str, user_answer: str) -> bool:
-    """Semantically grade a free-text answer via LLM. Returns True if correct."""
+async def _llm_grade_and_explain(
+    question: str, correct_ans: str, user_answer: str
+) -> tuple[bool, str]:
+    """Grade a free-text answer and generate personalised feedback in one LLM call."""
     user_content = (
         f"Question: {question}\n"
         f"Model answer: {correct_ans}\n"
@@ -452,15 +471,16 @@ async def _llm_grade_answer(question: str, correct_ans: str, user_answer: str) -
             interaction_type="quiz",
             system=_GRADE_SYSTEM,
             user_content=user_content,
-            max_tokens=20,
+            max_tokens=150,
         )
         start = raw.find("{")
         end   = raw.rfind("}") + 1
         if start != -1 and end > start:
-            return bool(json.loads(raw[start:end]).get("correct", False))
+            data = json.loads(raw[start:end])
+            return bool(data.get("correct", False)), data.get("feedback", "")
     except Exception as e:
-        logger.warning("quiz grading LLM failed, defaulting incorrect: %s", e)
-    return False
+        logger.warning("quiz grading LLM failed: %s", e)
+    return False, ""
 
 
 def get_hint(quiz_id: str, uid: str) -> dict:
@@ -510,8 +530,9 @@ async def submit_answer(quiz_id: str, uid: str, user_answer: str) -> dict:
 
     if _is_trivially_invalid(user_answer):
         is_correct = False
+        feedback = "That doesn't look like a complete answer — give it another try!"
     else:
-        is_correct = await _llm_grade_answer(question, correct_ans, user_answer)
+        is_correct, feedback = await _llm_grade_and_explain(question, correct_ans, user_answer)
 
     _mark_submitted(quiz_id)
     record_quiz_result(
@@ -522,10 +543,12 @@ async def submit_answer(quiz_id: str, uid: str, user_answer: str) -> dict:
     )
 
     return {
-        "is_correct":        is_correct,
-        "correct_answer":    correct_ans,
-        "answer_explanation": explanation,
-        "hints_used":        hints_used,
-        "concept":           concept,
-        "difficulty":        difficulty,
+        "is_correct":         is_correct,
+        "user_answer":        user_answer,
+        "correct_answer":     correct_ans,
+        "feedback":           feedback,
+        "answer_explanation": explanation,  # kept for backward compat
+        "hints_used":         hints_used,
+        "concept":            concept,
+        "difficulty":         difficulty,
     }
