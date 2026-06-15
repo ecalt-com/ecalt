@@ -284,7 +284,7 @@ CASES: list[Case] = [
 
     Case("PH01", "philosophy", "correct",
          "What ethical tension is the trolley problem designed to highlight?",
-         "It pits consequentialism (actively divert the trolley, kill one to save five) against deontology (actively causing someone's death is wrong regardless of outcomes).",
+         "It pits two major ethical frameworks against each other: consequentialism, which judges actions by their outcomes (save the most lives), and deontology, which holds that certain actions are inherently wrong regardless of consequences (actively causing death is impermissible).",
          "It contrasts consequentialist ethics — maximise lives saved — with deontological ethics — actively causing a death is wrong regardless of consequences.",
          True, "consequentialism vs deontology"),
 
