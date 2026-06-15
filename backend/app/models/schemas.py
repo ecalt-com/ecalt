@@ -117,8 +117,14 @@ class ExploreResponse(BaseModel):
     journey: Journey = Field(..., description="The AI-generated Journey for the submitted question")
 
 
+class JourneyWithProgress(Journey):
+    steps_done: int = Field(0, description="Number of steps the user has completed")
+    last_active_at: Optional[str] = Field(None, description="ISO timestamp of most recent step completion")
+
+
 class JourneysResponse(BaseModel):
     journeys: List[Journey] = Field(..., description="List of Journey objects")
+    in_progress: List[JourneyWithProgress] = Field(default_factory=list, description="Journeys the user has started but not finished")
     total: int = Field(..., description="Total number of journeys returned")
 
 

@@ -86,20 +86,61 @@ def _tag_overlap(a: Journey, b: Journey) -> int:
     return len({t.lower() for t in a.tags} & {t.lower() for t in b.tags})
 
 
+def _profile_score(j: Journey, profile) -> float:
+    """Weighted score boost from the user's interest profile."""
+    if profile is None:
+        return 0.0
+    j_tags = {t.lower() for t in j.tags}
+    score = 0.0
+    for sig in profile.top_topics[:5]:
+        if sig.topic in j_tags:
+            score += float(sig.weight) * 0.4
+    return score
+
+
+def _find_reinforcement(
+    topic: str,
+    pool: list[Journey],
+    started_ids: set[str],
+    already_picked: list[Journey],
+    max_difficulty: str,
+) -> Journey | None:
+    """Find the best candidate to reinforce a topic the user struggles with."""
+    diff_rank = {d: i for i, d in enumerate(_DIFFICULTY_ORDER)}
+    cap = diff_rank.get(max_difficulty, 2)
+    candidates = [
+        j for j in pool
+        if j.id not in started_ids
+        and j not in already_picked
+        and topic in {t.lower() for t in j.tags}
+        and diff_rank.get(j.difficulty, 2) <= cap
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda j: _tag_overlap_raw(j, topic), reverse=True)
+    return candidates[0]
+
+
+def _tag_overlap_raw(j: Journey, topic: str) -> int:
+    return 1 if topic in {t.lower() for t in j.tags} else 0
+
+
 def pick_suggestions(
     source: Journey,
     pool: list[Journey],
     started_ids: set[str],
     authored_ids: set[str],
     curated_ids: set[str] | None = None,
-) -> tuple[Journey | None, list[Journey]]:
-    """Pure selection logic: returns (next_level | None, similar[≤3]).
+    interest_profile=None,
+    in_progress: list | None = None,
+) -> tuple[Journey | None, list[Journey], Journey | None]:
+    """Returns (next_level | None, similar[≤3], resume | None).
 
-    - started/authored journeys and the source never appear.
-    - next_level may reuse an authored-but-unstarted journey, so a previously
-      generated level-up isn't regenerated on every call.
-    - near-duplicates of anything the user has seen (or of an already picked
-      suggestion) are dropped.
+    - started/authored journeys and the source never appear in next_level or similar.
+    - next_level may reuse an authored-but-unstarted journey.
+    - near-duplicates of anything the user has seen are dropped.
+    - resume: the most topically related in-progress journey (shown separately).
+    - interest_profile boosts scoring with the user's full signal history.
     """
     curated_ids = curated_ids or set()
     seen = [j for j in pool if j.id in started_ids or j.id in authored_ids or j.id == source.id]
@@ -116,7 +157,11 @@ def pick_suggestions(
             and (_tag_overlap(source, j) >= 2 or _jaccard(source_toks, _tokens(j)) >= 0.5)
         ]
         candidates.sort(
-            key=lambda j: (_tag_overlap(source, j), j.id in curated_ids, j.created_at or ""),
+            key=lambda j: (
+                _tag_overlap(source, j) + _profile_score(j, interest_profile),
+                j.id in curated_ids,
+                j.created_at or "",
+            ),
             reverse=True,
         )
         next_level = candidates[0] if candidates else None
@@ -129,7 +174,7 @@ def pick_suggestions(
     ]
     sim_candidates.sort(
         key=lambda j: (
-            _tag_overlap(source, j),
+            _tag_overlap(source, j) + _profile_score(j, interest_profile),
             j.difficulty == source.difficulty,
             j.id in curated_ids,
             j.created_at or "",
@@ -139,8 +184,6 @@ def pick_suggestions(
 
     taken: list[Journey] = seen + ([next_level] if next_level else [])
     similar: list[Journey] = []
-    # First pass: topically related. Second pass: anything fresh, so the user
-    # always has something to continue with even in a sparse catalogue.
     for require_overlap in (True, False):
         for j in sim_candidates:
             if len(similar) >= MAX_SIMILAR:
@@ -150,13 +193,36 @@ def pick_suggestions(
             if require_overlap and _tag_overlap(source, j) == 0:
                 continue
             if not require_overlap and _tag_overlap(source, j) > 0:
-                continue  # already considered in the first pass
+                continue
             if is_near_duplicate(j, taken):
                 continue
             similar.append(j)
             taken.append(j)
 
-    return next_level, similar
+    # ── Quiz-struggle reinforcement (inject if similar list is thin) ────────
+    if len(similar) < 2 and interest_profile is not None:
+        struggle_topics = [
+            s.topic for s in interest_profile.top_topics
+            if s.signal_type == "quiz_struggle"
+        ]
+        for topic in struggle_topics:
+            reinforcement = _find_reinforcement(topic, pool, started_ids, similar + ([next_level] if next_level else []), source.difficulty)
+            if reinforcement and not is_near_duplicate(reinforcement, taken):
+                similar.append(reinforcement)
+                taken.append(reinforcement)
+                break
+
+    # ── Resume: most topically related in-progress journey ─────────────────
+    resume = None
+    if in_progress:
+        in_progress_sorted = sorted(
+            in_progress,
+            key=lambda j: _tag_overlap(source, j),
+            reverse=True,
+        )
+        resume = in_progress_sorted[0] if in_progress_sorted else None
+
+    return next_level, similar, resume
 
 
 def _persist_journey(journey: Journey, uid: str) -> None:

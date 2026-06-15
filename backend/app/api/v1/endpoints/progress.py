@@ -7,9 +7,19 @@ from app.core.auth import get_required_user
 from app.core.database import get_db
 from app.services.knowledge_service import credit_step_knowledge
 from app.services.quiz_service import step_quiz_passed
+from app.services.interest_profile_service import invalidate as invalidate_profile
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _invalidate_recommendation_cache(uid: str) -> None:
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM journey_recommendations WHERE uid = %s", (uid,))
+    except Exception:
+        logger.debug("progress: recommendation cache invalidation failed (non-fatal)")
 
 
 def _journey_steps(journey_id: str) -> tuple[list[dict], list[str]] | None:
@@ -203,6 +213,10 @@ async def mark_step_complete(
             row = cur.fetchone()
 
     _update_streak(uid)
+    # Fresh step completion — profile and recommendations may now be stale.
+    if row:
+        invalidate_profile(uid)
+        _invalidate_recommendation_cache(uid)
 
     # Only credit knowledge on a genuinely fresh completion.
     # ON CONFLICT DO NOTHING means row=None for duplicate calls, so we

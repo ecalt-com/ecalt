@@ -7,9 +7,19 @@ from app.core.auth import get_required_user
 from app.core.database import get_db
 from app.services.subscription_service import check_budget, record_usage
 from app.services.provider_service import get_config
+from app.services.interest_profile_service import invalidate as invalidate_profile
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _invalidate_recommendation_cache(uid: str) -> None:
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM journey_recommendations WHERE uid = %s", (uid,))
+    except Exception:
+        logger.debug("explore: recommendation cache invalidation failed (non-fatal)")
 
 
 @router.post(
@@ -49,6 +59,10 @@ async def explore(
         raise HTTPException(status_code=500, detail="Failed to generate journey. Please try again.")
 
     record_usage(uid, in_tok, out_tok, get_config("journey")["model"], interaction_type="journey")
+
+    # New search invalidates the cached interest profile and recommendations.
+    invalidate_profile(uid)
+    _invalidate_recommendation_cache(uid)
 
     # Persist to DB (non-fatal if it fails)
     try:

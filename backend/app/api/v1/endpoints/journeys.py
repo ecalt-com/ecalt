@@ -1,15 +1,17 @@
 import json
 import logging
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Response
 from pydantic import BaseModel
 from typing import Optional
-from app.models.schemas import Journey, JourneyStep, JourneysResponse, StepContentResponse
+from app.models.schemas import Journey, JourneyStep, JourneysResponse, JourneyWithProgress, StepContentResponse
 from app.core.auth import get_optional_user, get_required_user
 from app.core.database import get_db
-from app.services.ai_service import generate_step_content
+from app.services.ai_service import generate_step_content, generate_journey
 from app.services.subscription_service import check_budget, record_usage
 from app.services.provider_service import get_config
 from app.services.suggestion_service import generate_next_level, pick_suggestions
+from app.services.interest_profile_service import get_interest_profile, invalidate as invalidate_profile
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -160,6 +162,8 @@ def _db_journey(journey_id: str) -> Optional[Journey]:
 @router.get("", response_model=JourneysResponse, summary="List all journeys")
 async def list_journeys(response: Response, uid: Optional[str] = Depends(get_optional_user)):
     user_journeys: list[Journey] = []
+    in_progress: list[JourneyWithProgress] = []
+
     if uid:
         response.headers["Cache-Control"] = "private, max-age=0"
         try:
@@ -175,13 +179,272 @@ async def list_journeys(response: Response, uid: Optional[str] = Depends(get_opt
                     )
                     rows = cur.fetchall()
                     user_journeys = [_row_to_journey(dict(r)) for r in rows]
+
+                    # Fetch per-journey step completion counts for this user.
+                    cur.execute(
+                        """
+                        SELECT journey_id,
+                               COUNT(DISTINCT step_id) AS steps_done,
+                               MAX(completed_at)::text  AS last_active_at
+                        FROM user_progress
+                        WHERE uid = %s
+                        GROUP BY journey_id
+                        """,
+                        (uid,),
+                    )
+                    progress_rows = {r["journey_id"]: r for r in cur.fetchall()}
         except Exception:
-            pass
+            progress_rows = {}
+
+        # Build in-progress list: started (steps_done > 0) but not finished.
+        all_candidate_journeys = user_journeys + list(SAMPLE_JOURNEYS)
+        for j in all_candidate_journeys:
+            p = progress_rows.get(j.id)
+            if not p:
+                continue
+            steps_done = int(p["steps_done"])
+            total = len(j.steps)
+            if steps_done > 0 and steps_done < total:
+                in_progress.append(
+                    JourneyWithProgress(
+                        **j.model_dump(),
+                        steps_done=steps_done,
+                        last_active_at=p.get("last_active_at"),
+                    )
+                )
+        # Most recently active first.
+        in_progress.sort(key=lambda x: x.last_active_at or "", reverse=True)
     else:
         response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300"
 
     all_journeys = user_journeys + SAMPLE_JOURNEYS
-    return JourneysResponse(journeys=all_journeys, total=len(all_journeys))
+    return JourneysResponse(journeys=all_journeys, in_progress=in_progress, total=len(all_journeys))
+
+
+_RECOMMENDATION_TTL_HOURS = 24
+_REASON_TEMPLATES = {
+    "interest":        "Based on your interest in {topic}",
+    "declared":        "You said you're interested in {topic}",
+    "mastery_gap":     "Strengthen your understanding of {topic}",
+    "level_up":        "Ready for the next level in {topic}?",
+    "quiz_struggle":   "Solidify your knowledge of {topic}",
+}
+
+
+class RecommendationItem(BaseModel):
+    journey: Journey
+    reason: str
+    reason_type: str
+
+
+class RecommendationsResponse(BaseModel):
+    recommendations: list[RecommendationItem] = []
+    cached: bool = False
+    generated_at: Optional[str] = None
+
+
+def _score_journey(j: Journey, profile, preferred_difficulty: str, curated_ids: set[str]) -> float:
+    from app.services.interest_profile_service import TopicSignal
+    score = 0.0
+    j_tags = {t.lower() for t in j.tags}
+    for sig in profile.top_topics[:5]:
+        if sig.topic in j_tags:
+            score += sig.weight * 0.5
+    if j.difficulty == preferred_difficulty:
+        score += 0.2
+    if j.id in curated_ids:
+        score += 0.1
+    return score
+
+
+def _reason_for(j: Journey, profile) -> tuple[str, str]:
+    """Return (reason_text, reason_type) for a recommended journey."""
+    j_tags = {t.lower() for t in j.tags}
+    for sig in profile.top_topics:
+        if sig.topic in j_tags:
+            template = _REASON_TEMPLATES.get(sig.signal_type, _REASON_TEMPLATES["interest"])
+            return template.format(topic=sig.topic), sig.signal_type
+    return "Picked for you", "interest"
+
+
+@router.get("/recommendations", response_model=RecommendationsResponse, summary="Personalised journey recommendations")
+async def journey_recommendations(uid: str = Depends(get_required_user)):
+    """
+    Returns up to 6 journey recommendations ranked by the user's interest profile.
+    Cached for 24 hours per user; cache is invalidated on new explore calls or
+    journey step completions.
+    """
+    # ── Check DB cache ────────────────────────────────────────────────────────
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT journeys, generated_at FROM journey_recommendations WHERE uid = %s AND expires_at > NOW()",
+                    (uid,),
+                )
+                cached_row = cur.fetchone()
+                if cached_row:
+                    raw = cached_row["journeys"]
+                    if isinstance(raw, str):
+                        raw = json.loads(raw)
+                    recs = []
+                    for item in raw:
+                        try:
+                            recs.append(RecommendationItem(
+                                journey=Journey(**item["journey"]),
+                                reason=item["reason"],
+                                reason_type=item["reason_type"],
+                            ))
+                        except Exception:
+                            continue
+                    return RecommendationsResponse(
+                        recommendations=recs,
+                        cached=True,
+                        generated_at=str(cached_row["generated_at"]),
+                    )
+    except Exception:
+        logger.exception("recommendations: cache read failed")
+
+    # ── Build interest profile ────────────────────────────────────────────────
+    profile = await get_interest_profile(uid)
+
+    # ── Candidate pool ────────────────────────────────────────────────────────
+    pool: list[Journey] = list(SAMPLE_JOURNEYS)
+    started_ids: set[str] = set()
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM journeys WHERE uid != %s OR uid IS NULL",
+                    (uid,),
+                )
+                for r in cur.fetchall():
+                    try:
+                        pool.append(_row_to_journey(dict(r)))
+                    except Exception:
+                        continue
+
+                cur.execute(
+                    "SELECT DISTINCT journey_id FROM user_progress WHERE uid = %s",
+                    (uid,),
+                )
+                started_ids = {r["journey_id"] for r in cur.fetchall()}
+    except Exception:
+        logger.exception("recommendations: failed to load pool / progress")
+
+    curated_ids = set(_journey_map.keys())
+
+    # ── Score and filter ──────────────────────────────────────────────────────
+    candidates = [
+        j for j in pool
+        if j.id not in started_ids
+    ]
+    # Deduplicate by id
+    seen_ids: set[str] = set()
+    unique_candidates: list[Journey] = []
+    for j in candidates:
+        if j.id not in seen_ids:
+            seen_ids.add(j.id)
+            unique_candidates.append(j)
+
+    scored = [
+        (j, _score_journey(j, profile, profile.preferred_difficulty, curated_ids))
+        for j in unique_candidates
+    ]
+    scored.sort(key=lambda x: -x[1])
+
+    strong_matches = [(j, s) for j, s in scored if s >= 0.3]
+    recommendations: list[RecommendationItem] = []
+
+    for j, _ in strong_matches[:6]:
+        reason, reason_type = _reason_for(j, profile)
+        recommendations.append(RecommendationItem(journey=j, reason=reason, reason_type=reason_type))
+
+    # ── AI gap-fill if fewer than 3 strong matches ────────────────────────────
+    if len(recommendations) < 3 and profile.top_topics:
+        gap_topics = [
+            sig for sig in profile.top_topics
+            if not any(sig.topic in {t.lower() for t in rec.journey.tags} for rec in recommendations)
+        ][:2]
+
+        for sig in gap_topics:
+            if len(recommendations) >= 6:
+                break
+            allowed, _ = check_budget(uid)
+            if not allowed:
+                break
+            try:
+                question_map = {
+                    "quiz_struggle": f"Create a clear reinforcement journey on {sig.topic} for a learner who is struggling with it",
+                    "mastery_gap":   f"Teach {sig.topic} to someone who has started learning it but needs to build deeper understanding",
+                    "level_up":      f"What are the advanced aspects of {sig.topic} for someone who already knows the basics?",
+                }
+                question = question_map.get(sig.signal_type, f"How does {sig.topic} work?")
+                journey, in_tok, out_tok = await generate_journey(
+                    question=question,
+                    age_group=profile.age_group,
+                    uid=uid,
+                )
+                record_usage(uid, in_tok, out_tok, get_config("journey")["model"], interaction_type="journey")
+                try:
+                    with get_db() as conn:
+                        with conn.cursor() as cur:
+                            cur.execute(
+                                """
+                                INSERT INTO journeys
+                                    (id, uid, question, title, description, age_group, difficulty,
+                                     estimated_hours, steps, tags, icon, is_curated)
+                                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, FALSE)
+                                ON CONFLICT (id) DO NOTHING
+                                """,
+                                (
+                                    journey.id, uid, journey.question, journey.title,
+                                    journey.description, journey.age_group, journey.difficulty,
+                                    journey.estimated_hours,
+                                    json.dumps([s.model_dump() for s in journey.steps]),
+                                    journey.tags, journey.icon,
+                                ),
+                            )
+                except Exception:
+                    logger.exception("recommendations: failed to persist gap-fill journey")
+                template = _REASON_TEMPLATES.get(sig.signal_type, _REASON_TEMPLATES["interest"])
+                recommendations.append(RecommendationItem(
+                    journey=journey,
+                    reason=template.format(topic=sig.topic),
+                    reason_type=sig.signal_type,
+                ))
+            except Exception:
+                logger.exception("recommendations: gap-fill generation failed for topic %s", sig.topic)
+
+    # ── Persist to cache ──────────────────────────────────────────────────────
+    if recommendations:
+        cache_payload = json.dumps([
+            {"journey": r.journey.model_dump(), "reason": r.reason, "reason_type": r.reason_type}
+            for r in recommendations
+        ])
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=_RECOMMENDATION_TTL_HOURS)
+        try:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO journey_recommendations (uid, journeys, expires_at)
+                        VALUES (%s, %s::jsonb, %s)
+                        ON CONFLICT (uid) DO UPDATE
+                            SET journeys = EXCLUDED.journeys,
+                                generated_at = now(),
+                                expires_at = EXCLUDED.expires_at
+                        """,
+                        (uid, cache_payload, expires_at),
+                    )
+        except Exception:
+            logger.exception("recommendations: failed to write cache")
+
+    return RecommendationsResponse(
+        recommendations=recommendations,
+        cached=False,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+    )
 
 
 @router.get("/{journey_id}", response_model=Journey, summary="Get a journey by ID")
@@ -196,6 +459,7 @@ class SuggestionsResponse(BaseModel):
     next_level: Optional[Journey] = None
     similar: list[Journey] = []
     next_level_generated: bool = False
+    resume: Optional[JourneyWithProgress] = None
 
 
 @router.get(
@@ -227,37 +491,69 @@ async def journey_suggestions(journey_id: str, uid: str = Depends(get_required_u
         logger.exception("suggestions: failed to load journey pool")
     pool.extend(SAMPLE_JOURNEYS)
 
-    # Anything the user has touched is off the table.
+    # Progress: started_ids, in-progress journeys, and source completion state.
     started_ids: set[str] = set()
     source_steps_done = 0
+    in_progress_journeys: list[JourneyWithProgress] = []
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT journey_id, COUNT(DISTINCT step_id) AS done
+                    SELECT journey_id,
+                           COUNT(DISTINCT step_id) AS done,
+                           MAX(completed_at)::text  AS last_active_at
                     FROM user_progress WHERE uid = %s GROUP BY journey_id
                     """,
                     (uid,),
                 )
+                progress_map: dict[str, dict] = {}
                 for r in cur.fetchall():
                     started_ids.add(r["journey_id"])
+                    progress_map[r["journey_id"]] = dict(r)
                     if r["journey_id"] == journey_id:
                         source_steps_done = int(r["done"])
+
+        # Build in-progress list from the full pool (exclude source journey).
+        all_pool = pool + list(SAMPLE_JOURNEYS)
+        seen_ip: set[str] = set()
+        for j in all_pool:
+            if j.id in seen_ip or j.id == journey_id:
+                continue
+            p = progress_map.get(j.id)
+            if not p:
+                continue
+            steps_done = int(p["done"])
+            if 0 < steps_done < len(j.steps):
+                in_progress_journeys.append(
+                    JourneyWithProgress(
+                        **j.model_dump(),
+                        steps_done=steps_done,
+                        last_active_at=p.get("last_active_at"),
+                    )
+                )
+                seen_ip.add(j.id)
     except Exception:
         logger.exception("suggestions: failed to load user progress")
+
     source_completed = len(source.steps) > 0 and source_steps_done >= len(source.steps)
 
-    next_level, similar = pick_suggestions(
+    # Interest profile for weighted scoring (non-fatal if unavailable).
+    try:
+        profile = await get_interest_profile(uid)
+    except Exception:
+        profile = None
+
+    next_level, similar, resume = pick_suggestions(
         source=source,
         pool=pool,
         started_ids=started_ids,
         authored_ids=authored_ids,
         curated_ids=set(_journey_map.keys()),
+        interest_profile=profile,
+        in_progress=in_progress_journeys,
     )
 
-    # On-demand generation costs tokens — only do it once the user has
-    # actually finished this journey ("More like this" calls land here too).
     generated = False
     if next_level is None and source_completed:
         next_level = await generate_next_level(uid, source)
@@ -267,6 +563,7 @@ async def journey_suggestions(journey_id: str, uid: str = Depends(get_required_u
         next_level=next_level,
         similar=similar,
         next_level_generated=generated,
+        resume=resume,
     )
 
 
