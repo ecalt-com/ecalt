@@ -77,9 +77,15 @@ async def upsert_user(body: UserUpsertRequest, uid: str = Depends(get_required_u
                                           birth_year, age_group_flag, account_status)
                         VALUES (%s, %s, %s, %s, %s, 'teen', 'parental_consent_pending')
                         ON CONFLICT (uid) DO UPDATE
-                            SET email        = EXCLUDED.email,
-                                display_name = EXCLUDED.display_name,
-                                photo_url    = EXCLUDED.photo_url
+                            SET email          = EXCLUDED.email,
+                                display_name   = EXCLUDED.display_name,
+                                photo_url      = EXCLUDED.photo_url,
+                                birth_year     = EXCLUDED.birth_year,
+                                age_group_flag = EXCLUDED.age_group_flag,
+                                account_status = CASE
+                                    WHEN users.birth_year IS NULL THEN EXCLUDED.account_status
+                                    ELSE users.account_status
+                                END
                         RETURNING *
                         """,
                         (uid, body.email, body.display_name, body.photo_url, body.birth_year),
@@ -116,9 +122,14 @@ async def upsert_user(body: UserUpsertRequest, uid: str = Depends(get_required_u
                                       consent_given_at, consent_version)
                     VALUES (%s, %s, %s, %s, %s, 'adult', 'active', now(), '1.0')
                     ON CONFLICT (uid) DO UPDATE
-                        SET email        = EXCLUDED.email,
-                            display_name = EXCLUDED.display_name,
-                            photo_url    = EXCLUDED.photo_url
+                        SET email            = EXCLUDED.email,
+                            display_name     = EXCLUDED.display_name,
+                            photo_url        = EXCLUDED.photo_url,
+                            birth_year       = EXCLUDED.birth_year,
+                            age_group_flag   = EXCLUDED.age_group_flag,
+                            account_status   = EXCLUDED.account_status,
+                            consent_given_at = COALESCE(users.consent_given_at, EXCLUDED.consent_given_at),
+                            consent_version  = EXCLUDED.consent_version
                     RETURNING *
                     """,
                     (uid, body.email, body.display_name, body.photo_url, body.birth_year),

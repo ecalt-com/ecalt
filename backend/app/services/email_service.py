@@ -1,4 +1,4 @@
-"""SMTP transactional email service (provider-agnostic via aiosmtplib)."""
+"""Transactional email — Brevo HTTP API (preferred) with SMTP fallback."""
 import hashlib
 import hmac
 import logging
@@ -7,10 +7,14 @@ from email.mime.text import MIMEText
 from typing import Optional
 
 import aiosmtplib
+import httpx
 
 from app.core.config import settings
 
 logger = logging.getLogger("app.services.email_service")
+
+_BREVO_SEND_URL = "https://api.brevo.com/v3/smtp/email"
+_SMTP_TIMEOUT = 10  # seconds — fail fast so the scheduler queue doesn't back up
 
 _FOOTER_TPL = """\
 <br><br>
@@ -35,6 +39,88 @@ def make_unsubscribe_token(uid: str) -> str:
 
 def verify_unsubscribe_token(uid: str, token: str) -> bool:
     return hmac.compare_digest(make_unsubscribe_token(uid), token)
+
+
+async def _send_via_brevo_api(
+    to: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+) -> bool:
+    payload = {
+        "sender": {"name": "ECALT", "email": settings.SMTP_FROM_EMAIL},
+        "to": [{"email": to}],
+        "subject": subject,
+        "htmlContent": html_body,
+        "textContent": text_body,
+    }
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(
+            _BREVO_SEND_URL,
+            json=payload,
+            headers={"api-key": settings.BREVO_API_KEY, "Content-Type": "application/json"},
+        )
+    if resp.status_code in (200, 201):
+        logger.info("email sent to=%s via Brevo API", to)
+        return True
+    logger.error("Brevo API error to=%s status=%s body=%s", to, resp.status_code, resp.text[:200])
+    return False
+
+
+async def _send_via_smtp(
+    to: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+) -> bool:
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"ECALT <{settings.SMTP_FROM_EMAIL}>"
+    msg["To"] = to
+    msg.attach(MIMEText(text_body, "plain"))
+    msg.attach(MIMEText(html_body, "html"))
+
+    await aiosmtplib.send(
+        msg,
+        hostname=settings.SMTP_HOST,
+        port=settings.SMTP_PORT,
+        username=settings.SMTP_LOGIN,
+        password=settings.SMTP_PASSWORD,
+        start_tls=True,
+        timeout=_SMTP_TIMEOUT,
+    )
+    logger.info("email sent to=%s via SMTP host=%s", to, settings.SMTP_HOST)
+    return True
+
+
+async def send_email(
+    to: str,
+    subject: str,
+    html_body: str,
+    text_body: str,
+    uid: str,
+    log_id: Optional[str] = None,
+) -> bool:
+    """Send a transactional email. Returns True on success."""
+    unsub_token = make_unsubscribe_token(uid)
+    footer = _FOOTER_TPL.format(frontend_url=settings.FRONTEND_URL, token=unsub_token)
+    full_html = html_body + footer
+    if log_id:
+        full_html += _PIXEL_TPL.format(frontend_url=settings.FRONTEND_URL, log_id=log_id)
+
+    try:
+        if settings.BREVO_API_KEY:
+            return await _send_via_brevo_api(to, subject, full_html, text_body)
+
+        if settings.SMTP_HOST and settings.SMTP_LOGIN:
+            return await _send_via_smtp(to, subject, full_html, text_body)
+
+        logger.warning("no email transport configured — skipping email to %s", to)
+        return False
+
+    except Exception as e:
+        logger.error("send_email failed to=%s: %s", to, e)
+        return False
 
 
 async def send_parental_consent_email(parent_email: str, uid: str, token: str) -> bool:
@@ -85,46 +171,3 @@ async def send_parental_consent_email(parent_email: str, uid: str, token: str) -
         text_body=text_body,
         uid=uid,
     )
-
-
-async def send_email(
-    to: str,
-    subject: str,
-    html_body: str,
-    text_body: str,
-    uid: str,
-    log_id: Optional[str] = None,
-) -> bool:
-    """Send a transactional email via SMTP. Returns True on success."""
-    if not settings.SMTP_HOST or not settings.SMTP_LOGIN:
-        logger.warning("SMTP not configured — skipping email to %s", to)
-        return False
-
-    try:
-        unsub_token = make_unsubscribe_token(uid)
-        footer = _FOOTER_TPL.format(frontend_url=settings.FRONTEND_URL, token=unsub_token)
-        full_html = html_body + footer
-        if log_id:
-            full_html += _PIXEL_TPL.format(frontend_url=settings.FRONTEND_URL, log_id=log_id)
-
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = f"ECALT <{settings.SMTP_FROM_EMAIL}>"
-        msg["To"] = to
-        msg.attach(MIMEText(text_body, "plain"))
-        msg.attach(MIMEText(full_html, "html"))
-
-        await aiosmtplib.send(
-            msg,
-            hostname=settings.SMTP_HOST,
-            port=settings.SMTP_PORT,
-            username=settings.SMTP_LOGIN,
-            password=settings.SMTP_PASSWORD,
-            start_tls=True,
-        )
-        logger.info("email sent to=%s via SMTP host=%s", to, settings.SMTP_HOST)
-        return True
-
-    except Exception as e:
-        logger.error("send_email failed to=%s: %s", to, e)
-        return False

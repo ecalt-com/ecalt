@@ -33,7 +33,8 @@ class Settings(BaseSettings):
     RAZORPAY_KEY_SECRET: str = ""
     RAZORPAY_WEBHOOK_SECRET: str = ""
 
-    # Notification channels — SMTP (provider-agnostic)
+    # Notification channels — Brevo HTTP API (preferred) or SMTP fallback
+    BREVO_API_KEY: str = ""
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_LOGIN: str = ""
