@@ -8,6 +8,7 @@ and tracks results for adaptive difficulty.
 import json
 import logging
 import math
+import re
 from uuid import UUID, uuid4
 
 from app.core.database import get_db
@@ -424,6 +425,44 @@ def step_quiz_passed(uid: str, journey_id: str, step_id: str) -> bool:
     return step_quiz_status(uid, journey_id, step_id)["passed"]
 
 
+_GRADE_SYSTEM = """\
+You are a quiz grader for an educational platform.
+Given a quiz question, the model answer, and a student's response, decide if the student \
+demonstrates genuine understanding of the key concept.
+
+Respond with ONLY valid JSON — no explanation, no markdown:
+{"correct": true}  — student captures the core idea, even if worded differently
+{"correct": false} — response is wrong, too vague, nonsensical, or not a real attempt"""
+
+
+def _is_trivially_invalid(answer: str) -> bool:
+    """Fewer than 2 real words → not a genuine attempt (catches '.', '!', single chars)."""
+    return len(re.findall(r"[a-zA-Z]{2,}", answer)) < 2
+
+
+async def _llm_grade_answer(question: str, correct_ans: str, user_answer: str) -> bool:
+    """Semantically grade a free-text answer via LLM. Returns True if correct."""
+    user_content = (
+        f"Question: {question}\n"
+        f"Model answer: {correct_ans}\n"
+        f"Student response: {user_answer}"
+    )
+    try:
+        raw, _, _, _ = await complete_text(
+            interaction_type="quiz",
+            system=_GRADE_SYSTEM,
+            user_content=user_content,
+            max_tokens=20,
+        )
+        start = raw.find("{")
+        end   = raw.rfind("}") + 1
+        if start != -1 and end > start:
+            return bool(json.loads(raw[start:end]).get("correct", False))
+    except Exception as e:
+        logger.warning("quiz grading LLM failed, defaulting incorrect: %s", e)
+    return False
+
+
 def get_hint(quiz_id: str, uid: str) -> dict:
     """Return the next hint for a quiz session."""
     session = _get_session(quiz_id, uid)
@@ -450,10 +489,10 @@ def get_hint(quiz_id: str, uid: str) -> dict:
     }
 
 
-def submit_answer(quiz_id: str, uid: str, user_answer: str) -> dict:
+async def submit_answer(quiz_id: str, uid: str, user_answer: str) -> dict:
     """
-    Evaluate a submitted answer, record the result, and return
-    the correct answer + explanation.
+    Evaluate a submitted answer via LLM semantic grading, record the result,
+    and return the correct answer + explanation.
     """
     session = _get_session(quiz_id, uid)
     if not session:
@@ -467,12 +506,12 @@ def submit_answer(quiz_id: str, uid: str, user_answer: str) -> dict:
     explanation = quiz_data.get("answer_explanation", "")
     difficulty  = quiz_data.get("difficulty", "exploratory")
     concept     = session["concept"]
+    question    = quiz_data.get("question", "")
 
-    # Simple correctness check: normalise both and compare
-    # (AI-generated answers evaluated by normalised substring match)
-    norm_user    = user_answer.strip().lower()
-    norm_correct = correct_ans.strip().lower()
-    is_correct   = (norm_user in norm_correct) or (norm_correct in norm_user) or (norm_user == norm_correct)
+    if _is_trivially_invalid(user_answer):
+        is_correct = False
+    else:
+        is_correct = await _llm_grade_answer(question, correct_ans, user_answer)
 
     _mark_submitted(quiz_id)
     record_quiz_result(

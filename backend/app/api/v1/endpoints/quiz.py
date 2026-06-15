@@ -129,7 +129,7 @@ async def submit_answer_endpoint(
     if not body.user_answer.strip():
         raise HTTPException(status_code=400, detail="user_answer cannot be empty")
     try:
-        return submit_answer(quiz_id, uid, body.user_answer.strip())
+        return await submit_answer(quiz_id, uid, body.user_answer.strip())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
