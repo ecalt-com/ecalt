@@ -543,12 +543,11 @@ async def submit_answer(quiz_id: str, uid: str, user_answer: str) -> dict:
     )
 
     return {
-        "is_correct":         is_correct,
-        "user_answer":        user_answer,
-        "correct_answer":     correct_ans,
-        "feedback":           feedback,
-        "answer_explanation": explanation,  # kept for backward compat
-        "hints_used":         hints_used,
-        "concept":            concept,
-        "difficulty":         difficulty,
+        "is_correct":    is_correct,
+        "user_answer":   user_answer,
+        "correct_answer": correct_ans,
+        "feedback":      feedback,
+        "hints_used":    hints_used,
+        "concept":       concept,
+        "difficulty":    difficulty,
     }
