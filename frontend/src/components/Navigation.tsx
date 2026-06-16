@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Zap, Menu, X, LogOut } from 'lucide-react'
+import { Menu, X, LogOut } from 'lucide-react'
 import clsx from 'clsx'
 import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../lib/AuthContext'
@@ -45,10 +45,13 @@ export default function Navigation() {
           <Link
             to="/"
             onClick={() => setOpen(false)}
-            className="glass rounded-xl px-4 py-2 flex items-center gap-2 group"
+            className="flex items-center"
           >
-            <Zap size={18} className="text-violet-600 dark:text-violet-400 group-hover:text-violet-500 dark:group-hover:text-violet-300 transition-colors" fill="currentColor" />
-            <span className="gradient-text font-bold text-lg tracking-tight">ECALT</span>
+            <img
+              src="/logo.png"
+              alt="ECALT"
+              className="h-14 w-auto object-contain dark:brightness-0 dark:invert"
+            />
           </Link>
 
           {/* Desktop nav */}
