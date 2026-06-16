@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import {
   Zap, ArrowRight, Loader2, Sparkles,
   BookOpen, Wrench, Compass, Check,
-  Shield, Map, Star,
+  Shield, Map,
 } from 'lucide-react'
 import clsx from 'clsx'
 import GateModal from '../components/GateModal'
@@ -324,10 +324,6 @@ function TrustRow() {
           {['🧠 Students', '👨‍👩‍👧 Families', '🏫 Educators', '💼 Professionals'].map(label => (
             <span key={label} className="text-sm font-medium text-slate-600 dark:text-slate-400">{label}</span>
           ))}
-        </div>
-        <div className="flex items-center gap-1 text-amber-400">
-          {Array.from({ length: 5 }).map((_, i) => <Star key={i} size={14} fill="currentColor" />)}
-          <span className="text-xs text-slate-400 ml-1">4.9 · 2k+ missions</span>
         </div>
       </div>
     </div>

@@ -13,7 +13,9 @@ const PUBLIC_LINKS = [
 ]
 
 const AUTH_LINKS = [
-  { to: '/learn', label: 'Learn' },
+  { to: '/explore', label: 'Explore' },
+  { to: '/journeys', label: 'Journeys' },
+  { to: '/learn', label: 'Clarify' },
   { to: '/passport', label: 'Passport' },
   { to: '/mind-signature', label: 'Mind Signature' },
 ]
@@ -35,7 +37,7 @@ export default function Navigation() {
   const { user, loading, signIn, signOut } = useAuth()
   const { isAdmin } = useSubscription()
   const [open, setOpen] = useState(false)
-  const baseLinks = user ? [...PUBLIC_LINKS, ...AUTH_LINKS] : PUBLIC_LINKS
+  const baseLinks = user ? AUTH_LINKS : PUBLIC_LINKS
   const visibleLinks = isAdmin ? [...baseLinks, { to: '/admin', label: 'Admin' }] : baseLinks
 
   return (
