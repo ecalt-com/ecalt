@@ -9,6 +9,7 @@ import json
 import logging
 import math
 import re
+from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 from app.core.database import get_db
@@ -18,6 +19,7 @@ from app.services.provider_service import complete_text, get_config
 logger = logging.getLogger(__name__)
 
 _VALID_DIFFICULTIES = {"surface", "exploratory", "deep", "research"}
+_DIFFICULTY_ORDER   = ["surface", "exploratory", "deep", "research"]
 
 
 def pass_threshold(total: int) -> int:
@@ -25,6 +27,50 @@ def pass_threshold(total: int) -> int:
     return max(1, math.ceil(total * 2 / 3))
 _ESCALATE_MAP = {"surface": "exploratory", "exploratory": "deep", "deep": "research", "research": "research"}
 _HOLD_MAP     = {"surface": "surface", "exploratory": "surface", "deep": "exploratory", "research": "deep"}
+
+
+def _progression_difficulties(base: str, n: int) -> list[str]:
+    """Return n difficulty levels starting at base, escalating one step per question."""
+    idx = _DIFFICULTY_ORDER.index(base) if base in _DIFFICULTY_ORDER else 1
+    return [_DIFFICULTY_ORDER[min(idx + i, len(_DIFFICULTY_ORDER) - 1)] for i in range(n)]
+
+
+def _get_user_age_context(uid: str) -> str:
+    """Fetch birth_year / age_group_flag and return an age-calibration line for the prompt."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT birth_year, age_group_flag FROM users WHERE uid = %s",
+                    (uid,),
+                )
+                row = cur.fetchone()
+        if not row:
+            return ""
+        birth_year = row["birth_year"]
+        age_flag   = (row.get("age_group_flag") or "adult")
+        if birth_year:
+            age = datetime.now(timezone.utc).year - int(birth_year)
+            if age <= 12:
+                label, note = "kids",        "Use simple, playful words and concrete everyday examples. No jargon."
+            elif age <= 17:
+                label, note = "teens",       "Energetic, relatable language. Introduce technical terms with a brief natural explanation."
+            elif age <= 25:
+                label, note = "young_adult", "Intellectually direct. Abstract reasoning welcome. Connect to curiosity and possibility."
+            elif age <= 59:
+                label, note = "adult",       "Assume broad life experience. Practical or professional relevance where natural."
+            else:
+                label, note = "senior",      "Clear and respectful. Historical perspective or long-term thinking angles preferred."
+            return f"Learner age: {age} ({label}). {note}"
+        flag_map = {
+            "adult": ("adult", "Assume broad life experience. Practical relevance where natural."),
+            "minor": ("teen",  "Energetic, relatable language. Brief explanations for technical terms."),
+        }
+        lbl, cal = flag_map.get(age_flag, ("adult", "Assume broad life experience."))
+        return f"Learner age group: {lbl}. {cal}"
+    except Exception as e:
+        logger.debug("_get_user_age_context error uid=%s: %s", uid, e)
+        return ""
 
 
 # ── Adaptive difficulty ───────────────────────────────────────────────────────
@@ -143,7 +189,8 @@ async def generate_quiz(
     Generate a quiz question for a concept. Stores session server-side.
     Returns public quiz data (no correct_answer).
     """
-    difficulty = get_adaptive_difficulty(uid, base_depth)
+    difficulty   = get_adaptive_difficulty(uid, base_depth)
+    age_context  = _get_user_age_context(uid)
 
     # Fetch recent results summary for adaptive prompt context
     recent_summary = ""
@@ -164,9 +211,11 @@ async def generate_quiz(
 
     cfg = get_config("quiz")
     system = inject_fingerprint(uid, cfg["style_prompt"])
+    age_line = f"Age context: {age_context}\n" if age_context else ""
     user_content = (
         f"Concept: {concept}\n"
         f"question_depth: {difficulty}\n"
+        f"{age_line}"
         f"{recent_summary}\n\n"
         f"Context from learning session:\n{context[:1500]}"
     )
@@ -231,10 +280,11 @@ async def generate_quiz_set(
     journey/step and a shared quiz_set_id.
     """
     num_questions = max(2, min(int(num_questions), 5))
-    difficulty = get_adaptive_difficulty(uid, base_depth)
+    difficulty    = get_adaptive_difficulty(uid, base_depth)
+    age_context   = _get_user_age_context(uid)
+    # Difficulty escalates across the set: Q1 = base, Q2 = base+1, Q3 = base+2, …
+    difficulties  = _progression_difficulties(difficulty, num_questions)
 
-    # Difficulty is computed once per set — per-question adaptation would
-    # oscillate within a single quiz.
     recent_summary = ""
     try:
         with get_db() as conn:
@@ -253,14 +303,21 @@ async def generate_quiz_set(
 
     cfg = get_config("quiz")
     system = inject_fingerprint(uid, cfg["style_prompt"])
+
+    difficulty_spec = "\n".join(
+        f"  Question {i + 1}: {d} depth" for i, d in enumerate(difficulties)
+    )
+    age_line = f"Age context: {age_context}\n" if age_context else ""
     user_content = (
         f"Concept: {concept}\n"
-        f"question_depth: {difficulty}\n"
+        f"{age_line}"
         f"{recent_summary}\n\n"
-        f"OVERRIDE FOR THIS REQUEST: generate exactly {num_questions} DISTINCT questions, "
-        f"each covering a different aspect of the concept (no two questions may test the "
-        f"same insight). Output a JSON ARRAY of {num_questions} objects, each matching the "
-        f"output format specified above. No markdown, no preamble — the array only.\n\n"
+        f"OVERRIDE FOR THIS REQUEST: generate exactly {num_questions} DISTINCT questions "
+        f"with ESCALATING DIFFICULTY — each question must be harder than the previous one:\n"
+        f"{difficulty_spec}\n"
+        f"Each question must cover a different aspect of the concept (no two questions may "
+        f"test the same insight). Output a JSON ARRAY of {num_questions} objects, each "
+        f"matching the output format above. No markdown, no preamble — the array only.\n\n"
         f"Context from learning session:\n{context[:1500]}"
     )
 
@@ -285,8 +342,8 @@ async def generate_quiz_set(
     public_questions = []
     with get_db() as conn:
         with conn.cursor() as cur:
-            for q in questions:
-                q["difficulty"] = difficulty
+            for i, q in enumerate(questions):
+                q["difficulty"] = difficulties[i] if i < len(difficulties) else difficulty
                 cur.execute(
                     """
                     INSERT INTO quiz_sessions
@@ -300,7 +357,7 @@ async def generate_quiz_set(
                 public_questions.append({
                     "quiz_id":      quiz_id,
                     "concept":      q.get("concept_tested", concept),
-                    "difficulty":   difficulty,
+                    "difficulty":   q["difficulty"],
                     "intro_phrase": q.get("intro_phrase", ""),
                     "question":     q.get("question", ""),
                     "hint_available": 3,

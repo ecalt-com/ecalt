@@ -88,6 +88,7 @@ class TestGenerateQuizSet:
         with patch("app.services.quiz_service.complete_text", return_value=(raw, 10, 20)) as ct, \
              patch("app.services.quiz_service.get_config", return_value={"style_prompt": "SP", "model": "m"}), \
              patch("app.services.quiz_service.inject_fingerprint", side_effect=lambda uid, p: p), \
+             patch("app.services.quiz_service._get_user_age_context", return_value=""), \
              patch("app.services.quiz_service.get_db", quiz_db([], ["id1", "id2", "id3"])):
             ct.return_value = (raw, 10, 20, "m")
             result, in_tok, out_tok = await generate_quiz_set(
@@ -108,6 +109,7 @@ class TestGenerateQuizSet:
         with patch("app.services.quiz_service.complete_text", return_value=(raw, 1, 2, "m")), \
              patch("app.services.quiz_service.get_config", return_value={"style_prompt": "SP", "model": "m"}), \
              patch("app.services.quiz_service.inject_fingerprint", side_effect=lambda uid, p: p), \
+             patch("app.services.quiz_service._get_user_age_context", return_value=""), \
              patch("app.services.quiz_service.get_db", quiz_db([], ["id1"])):
             result, _, _ = await generate_quiz_set("uid", "Concept", "context")
 
@@ -119,6 +121,7 @@ class TestGenerateQuizSet:
         with patch("app.services.quiz_service.complete_text", return_value=("nope", 1, 2, "m")), \
              patch("app.services.quiz_service.get_config", return_value={"style_prompt": "SP", "model": "m"}), \
              patch("app.services.quiz_service.inject_fingerprint", side_effect=lambda uid, p: p), \
+             patch("app.services.quiz_service._get_user_age_context", return_value=""), \
              patch("app.services.quiz_service.get_db", quiz_db([], [])):
             with pytest.raises(ValueError):
                 await generate_quiz_set("uid", "Concept", "context")
