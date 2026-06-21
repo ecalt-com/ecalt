@@ -29,6 +29,7 @@ class QuizGenerateRequest(BaseModel):
     journey_id: Optional[str] = None
     step_id: Optional[str] = None
     num_questions: Optional[int] = None
+    step_type: str = "concept"  # concept | practice | challenge | explore
 
 
 class QuizSubmitRequest(BaseModel):
@@ -61,6 +62,7 @@ async def generate_quiz_endpoint(
                 num_questions=body.num_questions or 3,
                 journey_id=body.journey_id,
                 step_id=body.step_id,
+                step_type=body.step_type,
             )
         else:
             quiz, in_tok, out_tok = await generate_quiz(

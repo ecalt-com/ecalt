@@ -28,6 +28,13 @@ def pass_threshold(total: int) -> int:
 _ESCALATE_MAP = {"surface": "exploratory", "exploratory": "deep", "deep": "research", "research": "research"}
 _HOLD_MAP     = {"surface": "surface", "exploratory": "surface", "deep": "exploratory", "research": "deep"}
 
+_STEP_TYPE_DIFFICULTY_CAP = {
+    "concept":   "exploratory",
+    "practice":  "deep",
+    "challenge": "research",
+    "explore":   "research",
+}
+
 
 def _progression_difficulties(base: str, n: int) -> list[str]:
     """Return n difficulty levels starting at base, escalating one step per question."""
@@ -179,6 +186,22 @@ def _mark_submitted(quiz_id: str) -> None:
 
 # ── Generation ────────────────────────────────────────────────────────────────
 
+def _format_anchors(anchors: list[dict]) -> str:
+    if not anchors:
+        return ""
+    lines = ["QUIZ ANCHORS — draw each question from one of these facts:"]
+    for i, a in enumerate(anchors, 1):
+        lines.append(
+            f"  Anchor {i} [{a.get('testable_as', 'application')}]: "
+            f"{a.get('fact', '')}"
+        )
+    lines.append(
+        "Each question must test a DIFFERENT anchor. "
+        "Do not ask about anything not listed here or explicitly in the context."
+    )
+    return "\n".join(lines)
+
+
 async def generate_quiz(
     uid: str,
     concept: str,
@@ -217,7 +240,7 @@ async def generate_quiz(
         f"question_depth: {difficulty}\n"
         f"{age_line}"
         f"{recent_summary}\n\n"
-        f"Context from learning session:\n{context[:1500]}"
+        f"Context from learning session:\n{context[:4000]}"
     )
 
     try:
@@ -272,6 +295,7 @@ async def generate_quiz_set(
     num_questions: int = 3,
     journey_id: str | None = None,
     step_id: str | None = None,
+    step_type: str = "concept",
 ) -> tuple[dict, int, int]:
     """
     Generate a set of distinct quiz questions for a journey step in a single
@@ -282,8 +306,36 @@ async def generate_quiz_set(
     num_questions = max(2, min(int(num_questions), 5))
     difficulty    = get_adaptive_difficulty(uid, base_depth)
     age_context   = _get_user_age_context(uid)
+
+    # Clamp difficulty to the step-type ceiling — first-exposure steps
+    # should not receive mastery-level questions even if the user is on a streak
+    cap     = _STEP_TYPE_DIFFICULTY_CAP.get(step_type, "exploratory")
+    cap_idx = _DIFFICULTY_ORDER.index(cap)
+    if _DIFFICULTY_ORDER.index(difficulty) > cap_idx:
+        difficulty = cap
+        logger.debug("quiz.difficulty_capped step_type=%s cap=%s", step_type, cap)
+
     # Difficulty escalates across the set: Q1 = base, Q2 = base+1, Q3 = base+2, …
     difficulties  = _progression_difficulties(difficulty, num_questions)
+
+    # Fetch authoritative full content + anchors from DB when available
+    anchors: list[dict] = []
+    if journey_id and step_id:
+        try:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT content, quiz_anchors FROM step_content "
+                        "WHERE journey_id = %s AND step_id = %s",
+                        (journey_id, step_id),
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        if row["content"]:
+                            context = row["content"]
+                        anchors = row.get("quiz_anchors") or []
+        except Exception as e:
+            logger.debug("content fetch failed, using client context: %s", e)
 
     recent_summary = ""
     try:
@@ -307,10 +359,13 @@ async def generate_quiz_set(
     difficulty_spec = "\n".join(
         f"  Question {i + 1}: {d} depth" for i, d in enumerate(difficulties)
     )
-    age_line = f"Age context: {age_context}\n" if age_context else ""
+    age_line     = f"Age context: {age_context}\n" if age_context else ""
+    anchor_block = _format_anchors(anchors)
+    header = f"Concept: {concept}\nstep_type: {step_type}\n{age_line}"
+    if anchor_block:
+        header += f"{anchor_block}\n\n"
     user_content = (
-        f"Concept: {concept}\n"
-        f"{age_line}"
+        header +
         f"{recent_summary}\n\n"
         f"OVERRIDE FOR THIS REQUEST: generate exactly {num_questions} DISTINCT questions "
         f"with ESCALATING DIFFICULTY — each question must be harder than the previous one:\n"
@@ -318,7 +373,7 @@ async def generate_quiz_set(
         f"Each question must cover a different aspect of the concept (no two questions may "
         f"test the same insight). Output a JSON ARRAY of {num_questions} objects, each "
         f"matching the output format above. No markdown, no preamble — the array only.\n\n"
-        f"Context from learning session:\n{context[:1500]}"
+        f"Context from learning session:\n{context[:4000]}"
     )
 
     try:
@@ -338,11 +393,49 @@ async def generate_quiz_set(
         raise ValueError("Quiz AI returned no JSON")
     questions = questions[:num_questions]
 
+    # ── Inline quality judge: one retry per failing question ─────────────────
+    checked_questions = []
+    for q in questions:
+        q_text = q.get("question", "")
+        q_ans  = q.get("correct_answer", "")
+        ok, issue = await _check_answerable(context, q_text, q_ans)
+        was_retried = False
+        if not ok:
+            logger.info(
+                "quiz.inline_judge_failed concept=%.60s issue=%s — retrying",
+                concept, issue,
+            )
+            retry_prompt = (
+                f"The previous question was not answerable from the content alone.\n"
+                f"Issue: {issue}\n\n"
+                f"Generate a REPLACEMENT question for concept '{concept}' at "
+                f"{q.get('difficulty', difficulty)} depth that tests only what is "
+                f"explicitly in the context. Do not repeat the same question.\n"
+                f"Return ONE question object in the same JSON format as the original.\n\n"
+                f"Context:\n{context[:4000]}"
+            )
+            try:
+                retry_raw, _, _, _ = await complete_text(
+                    interaction_type="quiz",
+                    system=system,
+                    user_content=retry_prompt,
+                    max_tokens=600,
+                )
+                retry_list = _parse_question_list(retry_raw)
+                if retry_list:
+                    q = retry_list[0]
+                    was_retried = True
+            except Exception as retry_err:
+                logger.debug("quiz.inline_judge retry failed: %s", retry_err)
+        checked_questions.append((q, ok, issue, was_retried))
+    questions = [item[0] for item in checked_questions]
+
     quiz_set_id = str(uuid4())
     public_questions = []
+    pending_logs: list[dict] = []
     with get_db() as conn:
         with conn.cursor() as cur:
-            for i, q in enumerate(questions):
+            for i, (q, judge_ok, judge_issue, was_retried) in enumerate(checked_questions):
                 q["difficulty"] = difficulties[i] if i < len(difficulties) else difficulty
                 cur.execute(
                     """
@@ -362,6 +455,15 @@ async def generate_quiz_set(
                     "question":     q.get("question", ""),
                     "hint_available": 3,
                 })
+                pending_logs.append(dict(
+                    uid=uid, quiz_session_id=quiz_id, concept=concept,
+                    journey_id=journey_id, step_id=step_id,
+                    question=q.get("question", ""), difficulty=q["difficulty"],
+                    judge_ok=judge_ok, judge_issue=judge_issue, was_retried=was_retried,
+                ))
+    # quiz_sessions are committed above; now safe to reference them via FK
+    for log in pending_logs:
+        _log_quiz_quality(**log)
 
     return {
         "quiz_set_id": quiz_set_id,
@@ -482,6 +584,75 @@ def step_quiz_passed(uid: str, journey_id: str, step_id: str) -> bool:
     return step_quiz_status(uid, journey_id, step_id)["passed"]
 
 
+_INLINE_JUDGE_SYSTEM = """\
+You are a quiz fairness checker. Given step content and a quiz question,
+determine if the question is answerable by a learner who read ONLY the content.
+Return ONLY JSON: {"ok": true} or {"ok": false, "issue": "one sentence"}"""
+
+
+async def _check_answerable(content: str, question: str, answer: str) -> tuple[bool, str]:
+    """Returns (is_ok, issue_description). Fast, cheap inline check."""
+    try:
+        user_msg = (
+            f"Content (first 2000 chars):\n{content[:2000]}\n\n"
+            f"Question: {question}\n"
+            f"Expected answer: {answer}"
+        )
+        raw, _, _, _ = await complete_text(
+            interaction_type="quiz",
+            system=_INLINE_JUDGE_SYSTEM,
+            user_content=user_msg,
+            max_tokens=60,
+        )
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start != -1 and end > start:
+            data = json.loads(raw[start:end])
+            return bool(data.get("ok", True)), data.get("issue", "")
+    except Exception as e:
+        logger.debug("inline_judge failed: %s", e)
+    return True, ""  # fail open — never block on judge error
+
+
+def _log_quiz_quality(
+    uid: str,
+    quiz_session_id: str | None,
+    concept: str,
+    journey_id: str | None,
+    step_id: str | None,
+    question: str,
+    difficulty: str,
+    judge_ok: bool,
+    judge_issue: str,
+    was_retried: bool,
+) -> None:
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO quiz_quality_log
+                        (uid, quiz_session_id, concept, journey_id, step_id,
+                         question, difficulty, judge_ok, judge_issue, was_retried)
+                    VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        uid,
+                        quiz_session_id,
+                        concept[:200],
+                        journey_id,
+                        step_id,
+                        question[:500],
+                        difficulty,
+                        judge_ok,
+                        judge_issue or None,
+                        was_retried,
+                    ),
+                )
+    except Exception as e:
+        logger.debug("quiz_quality_log insert failed: %s", e)
+
+
 _GRADE_SYSTEM = """\
 You are a quiz grader for an educational platform.
 Given a quiz question, the model answer, and a student's response:
@@ -501,6 +672,22 @@ GRADING RULES:
     • Adds a false implication not supported by the model answer
     • Is too vague to demonstrate actual understanding
     • Does not address the specific question asked
+
+MECHANISM CREDIT RULE:
+If the learner correctly describes the mechanism or consequence — even in
+informal language, even without using the technical term — mark CORRECT.
+Understanding matters more than vocabulary.
+
+EXAMPLE:
+  Model answer: "Oxidative phosphorylation produces 30–32 ATP molecules."
+  Student says: "The cell gets about 30 units of energy from breaking down
+               one sugar molecule using oxygen."
+  → CORRECT. They understand the mechanism even without the technical name.
+
+FABRICATION RULE:
+If the learner adds a specific claim that contradicts or goes beyond what
+the content stated — even alongside something correct — mark INCORRECT and
+address the fabricated claim explicitly in feedback.
 
 FEEDBACK RULES:
 - Correct: affirm specifically what they got right, then add one enriching insight.

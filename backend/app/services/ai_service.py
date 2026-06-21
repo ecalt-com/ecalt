@@ -31,22 +31,50 @@ Return ONLY a valid JSON object — no markdown, no explanation — with this ex
 _STEP_CONTENT_CONTRACT = """\
 Return ONLY a valid JSON object with this exact structure:
 {
-  "content": "..."
+  "content": "...",
+  "quiz_anchors": [
+    {
+      "fact": "One sentence stating something explicitly in the content above",
+      "testable_as": "application | implication | exception | connection",
+      "hint_direction": "One phrase pointing toward the answer without stating it"
+    }
+  ]
 }
 
-The content field must follow this exact structure (use \\n\\n between each block):
+CONTENT field must follow this exact structure (use \\n\\n between each block):
 
-1. Opening hook — 2-3 sentences. Start with a wow fact, a question, or a mini story. Use **bold** for the most surprising word or phrase. Add 1 relevant emoji at the very start.
+1. Opening hook — 2-3 sentences. Start with a wow fact, a question, or a micro-story.
+   Use **bold** for the most surprising word or phrase. Add 1 relevant emoji at the start.
 
-2. ## [Section heading with emoji] — 3-5 bullet points using - prefix. Each bullet: one crisp sentence. Bold key terms. Keep it playful and clear.
+2. ## [Section heading with emoji] — 3-5 bullet points using - prefix.
+   At least one bullet must explain a mechanism (HOW, not just WHAT). Bold key terms.
 
-3. ## [Section heading with emoji] — another 3-5 bullets. Different angle on the topic.
+3. ## [Section heading with emoji] — another 3-5 bullets. Different angle.
+   For concept/practice: include the worked example or consequence here.
+   For challenge/explore: the exception or debate.
 
-4. (Optional) ## [Third section if needed]
+4. ## 🎯 Try This! — Hands-on activity completable in 5 minutes.
+   The activity must generate personal data or an observation the learner can actually test.
+   Bold the action verbs.
 
-5. ## 🎯 Try This! — A fun hands-on activity doable in 5 minutes, no special equipment. Write it as excited steps. Bold the action verbs.
+5. Final paragraph — one sentence in **bold**: the single most testable insight from this step.
+   This sentence is the quiz's primary target.
 
-6. Final paragraph — One-sentence takeaway in **bold**, capturing the biggest idea."""
+QUIZ ANCHOR RULES:
+- Generate exactly 3–5 anchors
+- Each anchor must be:
+    (a) A specific, unambiguous fact explicitly stated in your content — not implied
+    (b) Falsifiable: there is a clearly wrong answer possible
+    (c) Different from the other anchors — no two anchors test the same idea
+- Do NOT anchor vague or definitional statements
+  BAD:  "Encryption is important for security"
+  GOOD: "AES-256 encryption would take longer than the age of the universe
+         to brute-force with current hardware"
+- testable_as values:
+    application → "If X, what happens to Y?"
+    implication → "Given X, what does this mean for Z?"
+    exception   → "Under what conditions does X break down?"
+    connection  → "How does X relate to [another concept in this content]?" """
 
 
 async def generate_step_content(
@@ -57,8 +85,8 @@ async def generate_step_content(
     journey_question: str,
     age_group: str = "all",
     uid: str | None = None,
-) -> tuple[str, int, int]:
-    """Returns (content, estimated_input_tokens, estimated_output_tokens)."""
+) -> tuple[str, list[dict], int, int]:
+    """Returns (content, quiz_anchors, estimated_input_tokens, estimated_output_tokens)."""
     user_content = (
         f"Journey: {journey_title}\n"
         f"Original question: {journey_question}\n"
@@ -66,7 +94,7 @@ async def generate_step_content(
         f"Step description: {step_description}\n"
         f"Step type: {step_type}\n"
         f"Age group: {age_group}\n\n"
-        "Generate the lesson content JSON."
+        "Generate the step content JSON."
     )
     cfg = get_config("step_content")
     system = f"{inject_fingerprint(uid, cfg['style_prompt'])}\n\n{_STEP_CONTENT_CONTRACT}"
@@ -74,7 +102,7 @@ async def generate_step_content(
         interaction_type="step_content",
         system=system,
         user_content=user_content,
-        max_tokens=1500,
+        max_tokens=2000,
     )
     start = raw.find("{")
     end = raw.rfind("}") + 1
@@ -82,7 +110,8 @@ async def generate_step_content(
         raise ValueError("AI did not return valid content JSON")
     data = json.loads(raw[start:end])
     content = data["content"]
-    return content, in_tok, out_tok
+    quiz_anchors = data.get("quiz_anchors", [])
+    return content, quiz_anchors, in_tok, out_tok
 
 
 async def warm_journey_steps(
@@ -109,7 +138,7 @@ async def warm_journey_steps(
                     )
                     if cur.fetchone():
                         continue
-            content, in_tok, out_tok = await generate_step_content(
+            content, quiz_anchors, in_tok, out_tok = await generate_step_content(
                 step_title=step.title,
                 step_description=step.description,
                 step_type=step.type,
@@ -122,11 +151,11 @@ async def warm_journey_steps(
                 with conn.cursor() as cur:
                     cur.execute(
                         """
-                        INSERT INTO step_content (journey_id, step_id, content)
-                        VALUES (%s, %s, %s)
+                        INSERT INTO step_content (journey_id, step_id, content, quiz_anchors)
+                        VALUES (%s, %s, %s, %s::jsonb)
                         ON CONFLICT (journey_id, step_id) DO NOTHING
                         """,
-                        (journey_id, step.id, content),
+                        (journey_id, step.id, content, json.dumps(quiz_anchors)),
                     )
             if uid:
                 record_usage(uid, in_tok, out_tok, model, interaction_type="step_content")

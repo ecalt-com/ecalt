@@ -609,7 +609,7 @@ async def get_step_content(
         raise HTTPException(status_code=404, detail="Step not found")
 
     try:
-        content, in_tok, out_tok = await generate_step_content(
+        content, quiz_anchors, in_tok, out_tok = await generate_step_content(
             step_title=step.title,
             step_description=step.description,
             step_type=step.type,
@@ -630,15 +630,18 @@ async def get_step_content(
 
     # Cache result
     try:
+        import json as _json
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO step_content (journey_id, step_id, content)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (journey_id, step_id) DO UPDATE SET content = EXCLUDED.content
+                    INSERT INTO step_content (journey_id, step_id, content, quiz_anchors)
+                    VALUES (%s, %s, %s, %s::jsonb)
+                    ON CONFLICT (journey_id, step_id) DO UPDATE SET
+                        content = EXCLUDED.content,
+                        quiz_anchors = EXCLUDED.quiz_anchors
                     """,
-                    (journey_id, step_id, content),
+                    (journey_id, step_id, content, _json.dumps(quiz_anchors)),
                 )
     except Exception:
         pass
