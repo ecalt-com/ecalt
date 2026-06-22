@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 from app.core.database import get_db
@@ -11,17 +12,123 @@ from app.services.provider_service import get_config, stream_completion
 # ── Injection defense ─────────────────────────────────────────────────────────
 
 _BLOCKED_PATTERNS = [
+    # System prompt extraction
     "ignore previous instructions",
+    "ignore all previous",
     "ignore all instructions",
+    "forget previous instructions",
+    "forget all instructions",
+    "forget everything above",
+    "disregard all",
+    "disregard previous",
+    "disregard your instructions",
+    "override instructions",
+    "override your",
+    "bypass your",
     "my real instructions",
     "actual instructions",
     "system prompt",
+    "reveal your prompt",
+    "reveal your instructions",
+    "print your instructions",
+    "print your prompt",
+    "show your instructions",
+    "show your prompt",
+    "output your instructions",
+    "output your prompt",
+    "list your rules",
+    "what are your rules",
+    "what are your instructions",
+    "repeat your instructions",
+    "repeat what i told you",
+    # Identity attacks
     "jailbreak",
     "pretend you are",
-    "disregard all",
-    "i am a human",
+    "pretend to be",
+    "act as if you are",
+    "act as a",
+    "roleplay as",
+    "you are now",
+    "from now on you are",
     "you are actually",
+    "i am a human",
+    "developer mode",
+    "unrestricted mode",
+    "god mode",
+    "dan mode",
+    "do anything now",
+    # Prompt injection
+    "new instructions:",
+    "updated instructions:",
+    "secret instructions:",
+    "hidden instructions:",
+    "end of system",
+    "end system",
+    "[system]",
+    "<system>",
+    "<!-- instructions",
+    "---instructions",
 ]
+
+# ── Crisis detection ──────────────────────────────────────────────────────────
+# Pre-LLM filter for self-harm / abuse disclosure — checked on RAW INPUT before
+# any AI call so no jailbreak can suppress the crisis response.
+
+_CRISIS_PATTERNS = [
+    # Self-harm ideation (first-person)
+    "kill myself",
+    "killing myself",
+    "end my life",
+    "take my life",
+    "end it all",
+    "want to die",
+    "wanna die",
+    "wish i was dead",
+    "wish i were dead",
+    "wish i could die",
+    "don't want to live",
+    "dont want to live",
+    "no reason to live",
+    "not worth living",
+    "life is not worth",
+    "better off dead",
+    "better off without me",
+    "nobody would miss me",
+    "everyone would be better without me",
+    # Direct self-harm
+    "hurt myself",
+    "hurting myself",
+    "harm myself",
+    "harming myself",
+    "cutting myself",
+    "cut myself",
+    "self harm",
+    "self-harm",
+    "selfharm",
+    "suicidal",
+    "suicide",
+    # Abuse disclosure (first-person)
+    "someone is hurting me",
+    "someone hurts me",
+    "being abused",
+    "being hurt by",
+    "touching me inappropriately",
+    "touched me inappropriately",
+    "nobody cares if i die",
+]
+
+_CRISIS_RESPONSE = (
+    "I hear you, and what you're feeling right now matters deeply.\n\n"
+    "If you're going through something painful — whether it's thoughts of hurting "
+    "yourself or a situation where someone is hurting you — please reach out to "
+    "someone who can help right now:\n\n"
+    "**iCall (India):** 9152987821\n"
+    "**Vandrevala Foundation (India, 24/7):** 1860-2662-345\n"
+    "**Crisis Text Line (US):** Text HOME to 741741\n"
+    "**Samaritans (UK):** 116 123\n"
+    "**International Association for Suicide Prevention:** https://www.iasp.info/resources/Crisis_Centres/\n\n"
+    "You don't have to carry this alone. I'm here — would you like to talk?"
+)
 
 _CHAT_SYSTEM_DEFAULT = """\
 [SYSTEM INSTRUCTIONS — NOT PART OF CONVERSATION]
@@ -37,7 +144,45 @@ Rules:
 6. Use concrete analogies, surprising facts, and vivid language
 7. Keep responses 2–5 paragraphs unless depth is explicitly requested
 8. End each response with a gentle curiosity hook — a question or wonder that pulls the thread deeper
+9. If a learner expresses distress, self-harm, or abuse, respond with warmth and refer them to crisis resources
 [END SYSTEM INSTRUCTIONS]"""
+
+
+def _get_chat_age_context(uid: str) -> str:
+    """Return a one-line age calibration string for the chat system prompt."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT birth_year, age_group_flag FROM users WHERE uid = %s",
+                    (uid,),
+                )
+                row = cur.fetchone()
+        if not row:
+            return ""
+        birth_year = row["birth_year"]
+        age_flag   = (row.get("age_group_flag") or "adult")
+        if birth_year:
+            age = datetime.now(timezone.utc).year - int(birth_year)
+            if age <= 12:
+                return f"Learner age: {age} (child). Use simple, concrete, age-appropriate language. Never discuss adult, violent, or disturbing content."
+            elif age <= 17:
+                return f"Learner age: {age} (teen). Energetic and relatable. Brief explanations for technical terms. Apply teen-appropriate content standards."
+            elif age <= 25:
+                return f"Learner age: {age} (young adult). Intellectually direct. Abstract reasoning welcome."
+            else:
+                return f"Learner age: {age} (adult). Assume broad life experience. Practical relevance where natural."
+        if age_flag == "minor":
+            return "Learner age group: minor. Apply child-appropriate content standards at all times."
+        return ""
+    except Exception:
+        return ""
+
+
+def check_crisis_content(text: str) -> bool:
+    """Return True if the text contains first-person crisis or self-harm signals."""
+    lower = text.lower()
+    return any(p in lower for p in _CRISIS_PATTERNS)
 
 
 def validate_output(response: str) -> str:
@@ -129,6 +274,16 @@ async def stream_chat(
         yield f"data: {json.dumps({'type': 'error', 'message': 'Conversation not found'})}\n\n"
         return
 
+    yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id})}\n\n"
+
+    # ── Crisis pre-check (runs BEFORE any LLM call) ───────────────────────────
+    # Must stay outside the LLM path so no jailbreak can suppress this response.
+    if check_crisis_content(user_message):
+        _persist_messages(conv_id, user_message, _CRISIS_RESPONSE, "crisis_intercept")
+        yield f"data: {json.dumps({'type': 'token', 'content': _CRISIS_RESPONSE})}\n\n"
+        yield f"data: {json.dumps({'type': 'done', 'conversation_id': conv_id})}\n\n"
+        return
+
     messages = [
         *[{"role": m["role"], "content": m["content"]} for m in history],
         {
@@ -139,9 +294,10 @@ async def stream_chat(
         },
     ]
 
-    system = inject_fingerprint(uid, cfg["style_prompt"])
-
-    yield f"data: {json.dumps({'type': 'start', 'conversation_id': conv_id})}\n\n"
+    # Inject age context so the model applies age-appropriate content standards
+    base_system = inject_fingerprint(uid, cfg["style_prompt"])
+    age_context = _get_chat_age_context(uid)
+    system = f"{base_system}\n\n[AGE CONTEXT]: {age_context}" if age_context else base_system
 
     full_response = ""
     input_tokens = 0

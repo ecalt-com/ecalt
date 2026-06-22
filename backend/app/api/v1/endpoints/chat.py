@@ -1,14 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Literal, Optional
 
-from app.core.auth import get_required_user
+from app.core.auth import get_active_user
 from app.core.database import get_db
+from app.core.limiter import limiter
 from app.services.chat_service import stream_chat
 from app.services.subscription_service import check_budget
 
 router = APIRouter()
+
+# Only these interaction types are valid for the chat streaming endpoint.
+# An unknown type would produce an empty system prompt, bypassing all safety rules.
+_ALLOWED_INTERACTION_TYPES = {"daily_chat", "onboarding"}
 
 
 class ChatRequest(BaseModel):
@@ -18,7 +23,10 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/stream")
-async def chat_stream(body: ChatRequest, uid: str = Depends(get_required_user)):
+@limiter.limit("60/minute")
+async def chat_stream(request: Request, body: ChatRequest, uid: str = Depends(get_active_user)):
+    if body.interaction_type not in _ALLOWED_INTERACTION_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid interaction_type")
     allowed, reason = check_budget(uid, context="chat")
     if not allowed:
         raise HTTPException(

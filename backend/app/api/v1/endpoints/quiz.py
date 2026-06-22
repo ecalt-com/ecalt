@@ -1,6 +1,6 @@
 import logging
 from fastapi import APIRouter, HTTPException, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from typing import Optional
 
@@ -33,7 +33,7 @@ class QuizGenerateRequest(BaseModel):
 
 
 class QuizSubmitRequest(BaseModel):
-    user_answer: str
+    user_answer: str = Field(..., min_length=1, max_length=2000)
 
 
 @router.post("", summary="Generate a fingerprint-calibrated quiz (single question or step quiz set)")
