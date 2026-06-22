@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { Check, X, Lightbulb, Loader2, Award, RotateCcw, SkipForward } from 'lucide-react'
@@ -36,8 +36,17 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
   const [confirmingSkip, setConfirmingSkip] = useState(false)
   const [skipping, setSkipping] = useState(false)
   const completedFired = useRef(false)
+  // Mobile bottom-sheet: which question is being answered (-1 = none)
+  const [activeSheetIdx, setActiveSheetIdx] = useState<number | null>(null)
+  const sheetTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   const correctCount = results ? results.filter(r => r.is_correct).length : 0
+
+  const resizeTextarea = useCallback((el: HTMLTextAreaElement | null) => {
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [])
 
   function fireCompleted() {
     if (!completedFired.current) {
@@ -54,6 +63,7 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
     setHints({})
     setSubmitError(null)
     setConfirmingSkip(false)
+    setActiveSheetIdx(null)
     try {
       const token = await getToken()
       if (!token) return // guests never reach here — StepNode doesn't render the quiz
@@ -269,13 +279,31 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
                 </div>
               )}
 
-              <div className="flex items-center gap-2">
-                <input
+              {/* Mobile: tap-to-answer button that opens bottom sheet */}
+              <button
+                onClick={() => setActiveSheetIdx(i)}
+                className={clsx(
+                  'sm:hidden w-full text-left text-sm px-3 py-2.5 rounded-lg border min-h-[44px] transition-colors',
+                  answers[i]?.trim()
+                    ? 'text-slate-800 dark:text-slate-200 border-violet-300 dark:border-violet-600 bg-violet-50/50 dark:bg-violet-500/10'
+                    : 'text-slate-400 dark:text-slate-600 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900',
+                )}
+              >
+                {answers[i]?.trim() || 'Tap to answer…'}
+              </button>
+
+              {/* Desktop: inline textarea + hint */}
+              <div className="hidden sm:flex items-start gap-2">
+                <textarea
+                  rows={2}
                   value={answers[i] ?? ''}
-                  onChange={e => setAnswers(prev => prev.map((a, j) => (j === i ? e.target.value : a)))}
+                  onChange={e => {
+                    setAnswers(prev => prev.map((a, j) => (j === i ? e.target.value : a)))
+                    resizeTextarea(e.target)
+                  }}
                   placeholder="Your answer…"
                   className={clsx(
-                    'flex-1 text-sm px-3 py-2 rounded-lg border transition-colors',
+                    'flex-1 text-sm px-3 py-2 rounded-lg border transition-colors resize-none overflow-hidden',
                     'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200',
                     'border-slate-200 dark:border-slate-700',
                     'focus:outline-none focus:border-violet-400 dark:focus:border-violet-500',
@@ -300,6 +328,103 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
             </div>
           )
         })}
+
+        {/* Mobile bottom sheet for answering */}
+        {activeSheetIdx !== null && (() => {
+          const si = activeSheetIdx
+          const sq = quizSet.questions[si]
+          const sHints = hints[si] ?? []
+          const sHintsRemaining = sq.hint_available - sHints.length
+          return (
+            <div className="sm:hidden fixed inset-0 z-50 flex flex-col justify-end">
+              {/* Backdrop */}
+              <div
+                className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+                onClick={() => setActiveSheetIdx(null)}
+              />
+              {/* Sheet */}
+              <div className="relative bg-white dark:bg-slate-900 rounded-t-2xl shadow-2xl flex flex-col max-h-[78vh]">
+                {/* Handle */}
+                <div className="flex justify-center pt-3 pb-1 shrink-0">
+                  <div className="w-10 h-1 rounded-full bg-slate-200 dark:bg-slate-700" />
+                </div>
+
+                {/* Scrollable question + hints area */}
+                <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold text-slate-400">Question {si + 1}</p>
+                    <span className={clsx(
+                      'text-xs font-semibold px-1.5 py-0.5 rounded shrink-0',
+                      DIFFICULTY_COLORS[sq.difficulty] ?? DIFFICULTY_COLORS.exploratory
+                    )}>
+                      {sq.difficulty}
+                    </span>
+                  </div>
+                  {sq.intro_phrase && (
+                    <p className="text-xs text-slate-400 dark:text-slate-500 italic">{sq.intro_phrase}</p>
+                  )}
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 leading-snug">
+                    {sq.question}
+                  </p>
+                  {sHints.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      {sHints.map(h => (
+                        <div key={h.hint_num} className="flex gap-2 text-xs">
+                          <span className="text-violet-400 font-semibold shrink-0">Hint {h.hint_num}</span>
+                          <span className="text-slate-600 dark:text-slate-400">{h.hint_text}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Fixed answer area above keyboard */}
+                <div className="shrink-0 px-4 pt-3 pb-8 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <textarea
+                      ref={sheetTextareaRef}
+                      autoFocus
+                      rows={3}
+                      value={answers[si] ?? ''}
+                      onChange={e => {
+                        setAnswers(prev => prev.map((a, j) => (j === si ? e.target.value : a)))
+                        resizeTextarea(e.target)
+                      }}
+                      placeholder="Your answer…"
+                      className={clsx(
+                        'flex-1 text-sm px-3 py-2 rounded-lg border transition-colors resize-none overflow-hidden',
+                        'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200',
+                        'border-slate-200 dark:border-slate-700',
+                        'focus:outline-none focus:border-violet-400 dark:focus:border-violet-500',
+                        'placeholder:text-slate-300 dark:placeholder:text-slate-600',
+                      )}
+                    />
+                    <button
+                      onClick={() => handleHint(si)}
+                      disabled={sHintsRemaining <= 0 || loadingHint !== null}
+                      title={sHintsRemaining > 0 ? `Hint (${sHintsRemaining} left)` : 'No hints left'}
+                      className={clsx(
+                        'inline-flex items-center gap-1 text-xs px-2.5 min-h-[44px] rounded-lg border transition-colors shrink-0',
+                        'border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400',
+                        'hover:bg-slate-50 active:bg-slate-50 dark:hover:bg-slate-800 dark:active:bg-slate-800',
+                        'disabled:opacity-40 disabled:cursor-not-allowed',
+                      )}
+                    >
+                      {loadingHint === si ? <Loader2 size={11} className="animate-spin" /> : <Lightbulb size={11} />}
+                      {sHintsRemaining}
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setActiveSheetIdx(null)}
+                    className="w-full flex items-center justify-center text-sm py-2.5 min-h-[44px] rounded-lg font-semibold bg-violet-600 text-white hover:bg-violet-700 active:bg-violet-700 transition-colors"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         <button
           onClick={handleSubmitAll}
