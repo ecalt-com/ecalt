@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from typing import Optional
 
-from app.core.auth import get_active_user
+from app.core.auth import get_active_user, get_required_user
 from app.core.database import get_db
 from app.core.limiter import limiter
 from app.services.chat_service import stream_chat
