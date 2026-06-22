@@ -7,6 +7,7 @@ from app.services.subscription_service import check_budget, record_usage
 from app.services.provider_service import get_config
 from app.core.auth import get_optional_user
 from app.core.limiter import limiter
+from app.services.content_filter import check_topic_scope
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -31,6 +32,10 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
     key = uid or body.session_id
     if not key:
         raise HTTPException(status_code=400, detail="session_id required for unauthenticated requests")
+
+    topic_allowed, topic_reason = check_topic_scope(body.question)
+    if not topic_allowed:
+        raise HTTPException(status_code=422, detail=topic_reason)
 
     # Budget check for authenticated users — guests use session window only
     if uid:

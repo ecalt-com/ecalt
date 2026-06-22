@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.services.subscription_service import check_budget, record_usage
 from app.services.provider_service import get_config
 from app.services.interest_profile_service import invalidate as invalidate_profile
+from app.services.content_filter import check_topic_scope
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -40,6 +41,10 @@ async def explore(
     """
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
+
+    topic_allowed, topic_reason = check_topic_scope(request.question)
+    if not topic_allowed:
+        raise HTTPException(status_code=422, detail=topic_reason)
 
     allowed, reason = check_budget(uid)
     if not allowed:
