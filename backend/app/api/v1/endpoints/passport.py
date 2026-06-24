@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from app.core.auth import get_required_user
+from app.core.auth import get_acting_uid
 from app.core.database import get_db
 from app.api.v1.endpoints.journeys import SAMPLE_JOURNEYS
 
@@ -29,8 +29,9 @@ class PassportResponse(BaseModel):
 
 
 @router.get("", response_model=PassportResponse)
-async def get_passport(uid: str = Depends(get_required_user)):
+async def get_passport(ctx: tuple = Depends(get_acting_uid)):
     """Return the authenticated user's full capability passport."""
+    uid, _ = ctx
     with get_db() as conn:
         with conn.cursor() as cur:
             # All progress rows for this user

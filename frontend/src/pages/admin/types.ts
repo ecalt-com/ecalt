@@ -365,6 +365,22 @@ export interface PromptRow {
   version:                 string | null
 }
 
+export interface ImpersonationSession {
+  id: string
+  admin_uid: string
+  target_uid: string
+  reason: string | null
+  created_at: string
+  expires_at: string
+  ended_at: string | null
+  ended_by: string | null
+  admin_email: string | null
+  admin_name: string | null
+  target_email: string | null
+  target_name: string | null
+  request_count: number
+}
+
 export interface PromptHistoryEntry {
   id:               number
   interaction_type: string

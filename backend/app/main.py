@@ -13,6 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging_config import setup_logging
+from app.core.impersonation_audit import ImpersonationAuditMiddleware
 from app.api.v1.router import api_router
 
 # Called once at module load — may be overwritten by uvicorn's dictConfig
@@ -138,6 +139,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ImpersonationAuditMiddleware)
 
 _req_log = logging.getLogger("ecalt.request")
 

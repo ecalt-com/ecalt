@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from app.core.auth import get_required_user
+from app.core.auth import get_required_user, get_acting_uid
 from app.core.database import get_db
 
 logger = logging.getLogger(__name__)
@@ -158,7 +158,8 @@ async def upsert_user(body: UserUpsertRequest, uid: str = Depends(get_required_u
 
 
 @router.get("/me", response_model=UserProfile, summary="Get current user profile")
-def get_me(uid: str = Depends(get_required_user)):
+def get_me(ctx: tuple = Depends(get_acting_uid)):
+    uid, _ = ctx
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(

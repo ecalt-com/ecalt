@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Network, Sparkles } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../lib/AuthContext'
+import { getImpersonationSessionId } from '../../lib/impersonationStore'
 
 interface KnowledgeNode {
   concept: string
@@ -46,9 +47,12 @@ export default function KnowledgeUniverse({ refreshTrigger }: KnowledgeUniverseP
     try {
       const token = await getToken()
       if (!token) return
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
+      const sid = getImpersonationSessionId()
+      if (sid) headers['X-Impersonate-Session'] = sid
       const [nodesRes, sigRes] = await Promise.all([
-        fetch('/api/v1/knowledge/nodes', { headers: { Authorization: `Bearer ${token}` } }),
-        fetch('/api/v1/mind-signature/me', { headers: { Authorization: `Bearer ${token}` } }),
+        fetch('/api/v1/knowledge/nodes', { headers }),
+        fetch('/api/v1/mind-signature/me', { headers }),
       ])
       if (nodesRes.ok) {
         const data = await nodesRes.json()

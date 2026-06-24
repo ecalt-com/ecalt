@@ -4,7 +4,7 @@ from typing import Optional
 
 import jwt
 from jwt import PyJWKClient
-from fastapi import Header, HTTPException, Depends
+from fastapi import Header, HTTPException, Depends, Request
 
 from app.core.config import settings
 
@@ -113,3 +113,104 @@ def get_admin_user(uid: str = Depends(get_required_user)) -> str:
     if not is_admin:
         raise HTTPException(status_code=403, detail="Admin access required")
     return uid
+
+
+def _check_admin(uid: str) -> None:
+    """Raise 403 if uid is not an admin. Uses the same cache as get_admin_user."""
+    now = time.monotonic()
+    cached = _admin_cache.get(uid)
+    if cached is not None:
+        is_admin, ts = cached
+        if now - ts < _ADMIN_CACHE_TTL:
+            if not is_admin:
+                raise HTTPException(status_code=403, detail="Admin access required")
+            return
+
+    from app.core.database import get_db
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT is_admin FROM users WHERE uid = %s", (uid,))
+                row = cur.fetchone()
+                is_admin = bool(row and row["is_admin"])
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    _admin_cache[uid] = (is_admin, now)
+    if not is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+
+def _resolve_impersonation_session(session_id: str) -> Optional[tuple[str, str]]:
+    """
+    Validate an impersonation session ID.
+    Returns (target_uid, admin_uid) if valid and not expired, else None.
+    """
+    from app.core.database import get_db
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT target_uid, admin_uid
+                    FROM admin_impersonation_sessions
+                    WHERE id = %s
+                      AND ended_at IS NULL
+                      AND expires_at > now()
+                    """,
+                    (session_id,),
+                )
+                row = cur.fetchone()
+        if row:
+            return row["target_uid"], row["admin_uid"]
+    except Exception:
+        pass
+    return None
+
+
+def get_acting_uid(
+    real_uid: str = Depends(get_required_user),
+    x_impersonate_session: Optional[str] = Header(None),
+) -> tuple[str, str]:
+    """
+    Returns (acting_uid, real_uid).
+    acting_uid — the uid used for data queries (may be a different user when impersonating).
+    real_uid   — always the authenticated Firebase user.
+    When no valid impersonation session is present, both values are identical.
+    """
+    if x_impersonate_session:
+        result = _resolve_impersonation_session(x_impersonate_session)
+        if result:
+            target_uid, session_admin_uid = result
+            # Confirm the real caller is still an admin and matches the session owner
+            _check_admin(real_uid)
+            if session_admin_uid != real_uid:
+                raise HTTPException(status_code=403, detail="Impersonation session belongs to a different admin")
+            return target_uid, real_uid
+        # Invalid/expired session — reject rather than silently fall back to real uid
+        raise HTTPException(status_code=403, detail="Impersonation session is invalid or expired")
+    return real_uid, real_uid
+
+
+def get_optional_acting_uid(
+    real_uid: Optional[str] = Depends(get_optional_user),
+    x_impersonate_session: Optional[str] = Header(None),
+) -> Optional[str]:
+    """
+    Like get_acting_uid but for endpoints that allow unauthenticated access.
+    Returns None when no auth, target_uid when impersonating, real_uid otherwise.
+    """
+    if not real_uid:
+        return None
+    if x_impersonate_session:
+        result = _resolve_impersonation_session(x_impersonate_session)
+        if result:
+            target_uid, session_admin_uid = result
+            _check_admin(real_uid)
+            if session_admin_uid != real_uid:
+                raise HTTPException(status_code=403, detail="Impersonation session belongs to a different admin")
+            return target_uid
+        raise HTTPException(status_code=403, detail="Impersonation session is invalid or expired")
+    return real_uid

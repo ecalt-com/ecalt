@@ -1141,6 +1141,138 @@ def toggle_admin(target_uid: str, acting_uid: str = Depends(get_admin_user)):
     return {"user": dict(row)}
 
 
+# ── Impersonation ─────────────────────────────────────────────────────────────
+
+_MAX_ACTIVE_SESSIONS = 5
+
+
+class ImpersonateRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.post("/impersonate/{target_uid}")
+def start_impersonation(
+    target_uid: str,
+    body: ImpersonateRequest,
+    admin_uid: str = Depends(get_admin_user),
+):
+    """Issue a 30-minute impersonation session for target_uid. Admin only."""
+    if target_uid == admin_uid:
+        raise HTTPException(status_code=400, detail="Cannot impersonate yourself")
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT is_admin FROM users WHERE uid = %s", (target_uid,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Target user not found")
+            if row["is_admin"]:
+                raise HTTPException(status_code=403, detail="Cannot impersonate another admin account")
+
+            # Rate-limit: max active sessions per admin
+            cur.execute(
+                """
+                SELECT COUNT(*) AS n FROM admin_impersonation_sessions
+                WHERE admin_uid = %s AND ended_at IS NULL AND expires_at > now()
+                """,
+                (admin_uid,),
+            )
+            if cur.fetchone()["n"] >= _MAX_ACTIVE_SESSIONS:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Too many active impersonation sessions (max {_MAX_ACTIVE_SESSIONS}). End one first.",
+                )
+
+            cur.execute(
+                """
+                INSERT INTO admin_impersonation_sessions (admin_uid, target_uid, reason)
+                VALUES (%s, %s, %s)
+                RETURNING id, expires_at
+                """,
+                (admin_uid, target_uid, body.reason),
+            )
+            session = cur.fetchone()
+
+    return {
+        "session_id": str(session["id"]),
+        "expires_at": session["expires_at"].isoformat(),
+        "target_uid": target_uid,
+    }
+
+
+@router.delete("/impersonate/{session_id}", status_code=204)
+def end_impersonation(session_id: str, admin_uid: str = Depends(get_admin_user)):
+    """End an active impersonation session."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE admin_impersonation_sessions
+                SET ended_at = now(), ended_by = 'admin'
+                WHERE id = %s AND admin_uid = %s AND ended_at IS NULL
+                """,
+                (session_id, admin_uid),
+            )
+
+
+@router.delete("/impersonate/sessions/{session_id}/revoke", status_code=204)
+def revoke_impersonation(session_id: str, _uid: str = Depends(get_admin_user)):
+    """Force-end any admin's impersonation session (super-admin revocation)."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE admin_impersonation_sessions
+                SET ended_at = now(), ended_by = 'revoke'
+                WHERE id = %s AND ended_at IS NULL
+                """,
+                (session_id,),
+            )
+
+
+@router.get("/impersonation-log")
+def get_impersonation_log(
+    limit: int = Query(50, ge=1, le=200),
+    _uid: str = Depends(get_admin_user),
+):
+    """Recent impersonation sessions with audit request counts."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    s.id, s.admin_uid, s.target_uid, s.reason,
+                    s.created_at, s.expires_at, s.ended_at, s.ended_by,
+                    u_admin.email        AS admin_email,
+                    u_admin.display_name AS admin_name,
+                    u_target.email       AS target_email,
+                    u_target.display_name AS target_name,
+                    COUNT(a.id)          AS request_count
+                FROM admin_impersonation_sessions s
+                JOIN users u_admin  ON u_admin.uid  = s.admin_uid
+                JOIN users u_target ON u_target.uid = s.target_uid
+                LEFT JOIN admin_impersonation_audit a ON a.session_id = s.id
+                GROUP BY s.id, u_admin.email, u_admin.display_name,
+                         u_target.email, u_target.display_name
+                ORDER BY s.created_at DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            rows = []
+            for r in cur.fetchall():
+                row = dict(r)
+                row["id"] = str(row["id"])
+                if row.get("created_at"):
+                    row["created_at"] = row["created_at"].isoformat()
+                if row.get("expires_at"):
+                    row["expires_at"] = row["expires_at"].isoformat()
+                if row.get("ended_at"):
+                    row["ended_at"] = row["ended_at"].isoformat()
+                rows.append(row)
+    return {"sessions": rows}
+
+
 # ── Prompt management ─────────────────────────────────────────────────────────
 
 class PromptRead(BaseModel):

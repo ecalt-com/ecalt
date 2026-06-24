@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.core.limiter import limiter
 
-from app.core.auth import get_required_user
+from app.core.auth import get_required_user, get_acting_uid
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -98,7 +98,8 @@ def _build_me_response(uid: str) -> dict:
 
 
 @router.get("/me")
-def get_my_subscription(uid: str = Depends(get_required_user)):
+def get_my_subscription(ctx: tuple = Depends(get_acting_uid)):
+    uid, _ = ctx
     return _build_me_response(uid)
 
 

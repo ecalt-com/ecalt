@@ -1,4 +1,4 @@
-import { Search, ShieldCheck, ShieldOff, ChevronDown, ChevronUp, Loader2 } from 'lucide-react'
+import { Search, ShieldCheck, ShieldOff, ChevronDown, ChevronUp, Loader2, LogIn } from 'lucide-react'
 import clsx from 'clsx'
 import type { UserRow, UserDetail } from '../types'
 import { fmtCents, fmtPct, calcPct } from '../utils'
@@ -9,12 +9,14 @@ interface UsersTabProps {
   filteredUsers: UserRow[]
   userSearch: string
   togglingUid: string | null
+  impersonatingUid: string | null
   expandedUid: string | null
   userDetails: Record<string, UserDetail>
   loadingDetail: string | null
   onSetUserSearch: (v: string) => void
   onExpandUser: (uid: string) => void
   onToggleAdmin: (uid: string) => void
+  onImpersonate: (uid: string, displayName: string) => void
 }
 
 export function UsersTab({
@@ -22,12 +24,14 @@ export function UsersTab({
   filteredUsers,
   userSearch,
   togglingUid,
+  impersonatingUid,
   expandedUid,
   userDetails,
   loadingDetail,
   onSetUserSearch,
   onExpandUser,
   onToggleAdmin,
+  onImpersonate,
 }: UsersTabProps) {
   return (
     <>
@@ -105,6 +109,20 @@ export function UsersTab({
                   >
                     {togglingUid === u.uid ? <Loader2 size={11} className="animate-spin" /> : u.is_admin ? <ShieldOff size={11} /> : <ShieldCheck size={11} />}
                     <span className="hidden sm:inline">{u.is_admin ? 'Revoke' : 'Grant'}</span>
+                  </button>
+                  <button
+                    onClick={() => onImpersonate(u.uid, u.display_name ?? u.email ?? u.uid)}
+                    disabled={u.is_admin || impersonatingUid === u.uid}
+                    title={u.is_admin ? 'Cannot impersonate admins' : 'Login as this user'}
+                    className={clsx(
+                      'flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-all',
+                      u.is_admin
+                        ? 'text-slate-300 dark:text-slate-600 bg-slate-50 dark:bg-slate-800 cursor-not-allowed'
+                        : 'text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10 hover:bg-sky-100 dark:hover:bg-sky-500/20'
+                    )}
+                  >
+                    {impersonatingUid === u.uid ? <Loader2 size={11} className="animate-spin" /> : <LogIn size={11} />}
+                    <span className="hidden sm:inline">Login as</span>
                   </button>
                 </div>
                 <div className="text-slate-400 shrink-0">

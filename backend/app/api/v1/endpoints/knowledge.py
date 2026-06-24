@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.auth import get_required_user
+from app.core.auth import get_acting_uid
 from app.services.knowledge_service import get_nodes_for_user
 from app.services.spark_service import generate_daily_spark
 from app.services.subscription_service import check_budget, record_usage
@@ -10,13 +10,15 @@ router = APIRouter()
 
 
 @router.get("/nodes")
-async def get_knowledge_nodes(uid: str = Depends(get_required_user)):
+async def get_knowledge_nodes(ctx: tuple = Depends(get_acting_uid)):
+    uid, _ = ctx
     nodes = await get_nodes_for_user(uid)
     return {"nodes": nodes}
 
 
 @router.get("/spark")
-async def get_daily_spark(uid: str = Depends(get_required_user)):
+async def get_daily_spark(ctx: tuple = Depends(get_acting_uid)):
+    uid, _ = ctx
     allowed, reason = check_budget(uid, context="ai")
     if not allowed:
         raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})

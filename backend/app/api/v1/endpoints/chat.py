@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from app.core.auth import get_active_user, get_required_user
+from app.core.auth import get_active_user, get_required_user, get_acting_uid
 from app.core.database import get_db
 from app.core.limiter import limiter
 from app.services.chat_service import stream_chat
@@ -50,7 +50,8 @@ async def chat_stream(request: Request, body: ChatRequest, uid: str = Depends(ge
 
 
 @router.get("/conversations")
-async def list_conversations(uid: str = Depends(get_required_user)):
+async def list_conversations(ctx: tuple = Depends(get_acting_uid)):
+    uid, _ = ctx
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -66,7 +67,8 @@ async def list_conversations(uid: str = Depends(get_required_user)):
 
 
 @router.get("/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str, uid: str = Depends(get_required_user)):
+async def get_conversation(conversation_id: str, ctx: tuple = Depends(get_acting_uid)):
+    uid, _ = ctx
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(

@@ -45,6 +45,7 @@ export const TABS = [
   { id: 'retention',               label: 'Retention' },
   { id: 'funnel',                  label: 'Funnel' },
   { id: 'content',                 label: 'Content' },
+  { id: 'impersonation-log',       label: 'Impersonation Log' },
 ] as const
 
 export type TabId = typeof TABS[number]['id']

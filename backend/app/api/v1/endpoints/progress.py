@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from app.core.auth import get_required_user
+from app.core.auth import get_required_user, get_acting_uid
 from app.core.database import get_db
 from app.services.knowledge_service import credit_step_knowledge
 from app.services.quiz_service import step_quiz_passed
@@ -168,8 +168,9 @@ def _update_streak(uid: str) -> None:
 
 
 @router.get("/{journey_id}", response_model=JourneyProgressResponse)
-async def get_progress(journey_id: str, uid: str = Depends(get_required_user)):
+async def get_progress(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
     """Return all completed step IDs for a journey."""
+    uid, _ = ctx
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, Response
 from pydantic import BaseModel
 from typing import Optional
 from app.models.schemas import Journey, JourneyStep, JourneysResponse, JourneyWithProgress, StepContentResponse
-from app.core.auth import get_optional_user, get_required_user
+from app.core.auth import get_optional_user, get_required_user, get_optional_acting_uid, get_acting_uid
 from app.core.database import get_db
 from app.services.ai_service import generate_step_content, generate_journey
 from app.services.subscription_service import check_budget, record_usage
@@ -160,7 +160,7 @@ def _db_journey(journey_id: str) -> Optional[Journey]:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=JourneysResponse, summary="List all journeys")
-async def list_journeys(response: Response, uid: Optional[str] = Depends(get_optional_user)):
+async def list_journeys(response: Response, uid: Optional[str] = Depends(get_optional_acting_uid)):
     user_journeys: list[Journey] = []
     in_progress: list[JourneyWithProgress] = []
 
@@ -268,7 +268,8 @@ def _reason_for(j: Journey, profile) -> tuple[str, str]:
 
 
 @router.get("/recommendations", response_model=RecommendationsResponse, summary="Personalised journey recommendations")
-async def journey_recommendations(uid: str = Depends(get_required_user)):
+async def journey_recommendations(ctx: tuple = Depends(get_acting_uid)):
+    uid, _ = ctx
     """
     Returns up to 6 journey recommendations ranked by the user's interest profile.
     Cached for 24 hours per user; cache is invalidated on new explore calls or
@@ -467,7 +468,8 @@ class SuggestionsResponse(BaseModel):
     response_model=SuggestionsResponse,
     summary="Post-completion suggestions: next level + similar journeys, unique to the user",
 )
-async def journey_suggestions(journey_id: str, uid: str = Depends(get_required_user)):
+async def journey_suggestions(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
+    uid, _ = ctx
     source = _db_journey(journey_id) or _journey_map.get(journey_id)
     if not source:
         raise HTTPException(status_code=404, detail="Journey not found")
@@ -575,9 +577,10 @@ async def journey_suggestions(journey_id: str, uid: str = Depends(get_required_u
 async def get_step_content(
     journey_id: str,
     step_id: str,
-    uid: str = Depends(get_required_user),
+    ctx: tuple = Depends(get_acting_uid),
 ):
     """Returns AI-generated lesson content for a step. Checks cache first."""
+    uid, _ = ctx
     # Check cache
     try:
         with get_db() as conn:

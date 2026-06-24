@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Settings, ArrowLeft } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../lib/AuthContext'
+import { useImpersonation } from '../lib/ImpersonationContext'
+import { useSubscription } from '../lib/SubscriptionContext'
 import PageMeta from '../components/PageMeta'
 import type {
   PlanRow, NewPlanForm, UserDetail, AIConfig,
@@ -23,11 +25,14 @@ import { FunnelTab } from './admin/tabs/FunnelTab'
 import { ContentTab } from './admin/tabs/ContentTab'
 import { PromptsTab } from './admin/tabs/PromptsTab'
 import { NotificationTemplatesTab } from './admin/tabs/NotificationTemplatesTab'
+import { ImpersonationLogTab } from './admin/tabs/ImpersonationLogTab'
 
 
 export default function Admin() {
   const navigate = useNavigate()
   const { getToken } = useAuth()
+  const { startImpersonation } = useImpersonation()
+  const { refresh: refreshSubscription } = useSubscription()
 
   const {
     plans, stats, users, aiConfigs, availableModels,
@@ -47,6 +52,7 @@ export default function Admin() {
   const [edits, setEdits] = useState<Record<string, Partial<PlanRow>>>({})
   const [aiEdits, setAiEdits] = useState<Record<string, AIConfig>>({})
   const [togglingUid, setTogglingUid] = useState<string | null>(null)
+  const [impersonatingUid, setImpersonatingUid] = useState<string | null>(null)
   const [tab, setTab] = useState<TabId>('overview')
   const [userSearch, setUserSearch] = useState('')
 
@@ -165,6 +171,19 @@ export default function Admin() {
         setUsers(prev => prev.map(u => u.uid === uid ? { ...u, is_admin: data.user.is_admin } : u))
       }
     } finally { setTogglingUid(null) }
+  }
+
+  const handleImpersonate = async (uid: string, displayName: string) => {
+    setImpersonatingUid(uid)
+    try {
+      await startImpersonation(uid, displayName)
+      refreshSubscription()
+      navigate('/learn')
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to start impersonation session')
+    } finally {
+      setImpersonatingUid(null)
+    }
   }
 
   const handleExpandUser = async (uid: string) => {
@@ -510,12 +529,14 @@ export default function Admin() {
               filteredUsers={filteredUsers}
               userSearch={userSearch}
               togglingUid={togglingUid}
+              impersonatingUid={impersonatingUid}
               expandedUid={expandedUid}
               userDetails={userDetails}
               loadingDetail={loadingDetail}
               onSetUserSearch={setUserSearch}
               onExpandUser={handleExpandUser}
               onToggleAdmin={handleToggleAdmin}
+              onImpersonate={handleImpersonate}
             />
           )}
 
@@ -581,6 +602,10 @@ export default function Admin() {
               loadingDropoff={loadingDropoff}
               onExpandJourney={handleExpandJourney}
             />
+          )}
+
+          {tab === 'impersonation-log' && (
+            <ImpersonationLogTab getToken={getToken} />
           )}
         </div>
       </div>

@@ -9,7 +9,9 @@ import { ToastProvider } from './lib/ToastContext'
 import { SubscriptionProvider } from './lib/SubscriptionContext'
 import { GeoProvider } from './lib/GeoContext'
 import { PaymentConfigProvider } from './lib/PaymentConfig'
+import { ImpersonationProvider } from './lib/ImpersonationContext'
 import OnboardingModal from './components/OnboardingModal'
+import ImpersonationBanner from './components/ImpersonationBanner'
 import ErrorBoundary from './components/ErrorBoundary'
 import BirthYearGate from './components/auth/BirthYearGate'
 import Under13Block from './components/auth/Under13Block'
@@ -99,6 +101,7 @@ function AppShell() {
       )}
 
       {needsOnboarding && <OnboardingModal />}
+      <ImpersonationBanner />
     </>
   )
 }
@@ -108,6 +111,7 @@ export default function App() {
     <HelmetProvider>
       <ThemeProvider>
         <AuthProvider>
+          <ImpersonationProvider>
           <GeoProvider>
           <PaymentConfigProvider>
           <SubscriptionProvider>
@@ -119,6 +123,7 @@ export default function App() {
           </SubscriptionProvider>
           </PaymentConfigProvider>
           </GeoProvider>
+          </ImpersonationProvider>
         </AuthProvider>
         <Analytics />
         <SpeedInsights />
