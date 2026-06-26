@@ -1,9 +1,36 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
-import { Check, X, Lightbulb, Loader2, Award, RotateCcw, SkipForward } from 'lucide-react'
+import { Lightbulb, Loader2, Award, RotateCcw, SkipForward } from 'lucide-react'
 import { generateQuizSet, getQuizHint, submitQuizAnswer, skipStepQuiz } from '../lib/api'
-import type { QuizSet, QuizHint, QuizResult } from '../lib/types'
+import type { QuizSet, QuizHint, QuizResult, QuizVerdict } from '../lib/types'
+
+// ── 3-tier verdict display config ────────────────────────────────────────────
+const VERDICT_CONFIG: Record<QuizVerdict, { icon: string; label: string; cardCls: string; textCls: string }> = {
+  excellent: {
+    icon: '✦',
+    label: 'Spot on!',
+    cardCls: 'border-emerald-200 dark:border-emerald-500/30 bg-emerald-50/60 dark:bg-emerald-500/10',
+    textCls: 'text-emerald-700 dark:text-emerald-300',
+  },
+  on_track: {
+    icon: '→',
+    label: 'Right direction',
+    cardCls: 'border-amber-200 dark:border-amber-500/30 bg-amber-50/60 dark:bg-amber-500/10',
+    textCls: 'text-amber-700 dark:text-amber-300',
+  },
+  off_track: {
+    icon: '◎',
+    label: "Let's build on that",
+    cardCls: 'border-violet-200 dark:border-violet-500/30 bg-violet-50/60 dark:bg-violet-500/10',
+    textCls: 'text-violet-700 dark:text-violet-300',
+  },
+}
+
+function getVerdict(r: QuizResult): QuizVerdict {
+  if (r.verdict) return r.verdict
+  return r.is_correct ? 'excellent' : 'off_track'
+}
 
 type Phase = 'loading' | 'active' | 'passed' | 'failed' | 'skipped' | 'error' | 'budget'
 
@@ -452,13 +479,19 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
   }
 
   if ((phase === 'passed' || phase === 'failed') && quizSet && results) {
+    const excellentCount = results.filter(r => getVerdict(r) === 'excellent').length
+    const onTrackCount   = results.filter(r => getVerdict(r) === 'on_track').length
     return (
       <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 space-y-4">
         {phase === 'passed' ? (
           <div className="rounded-lg bg-emerald-50 dark:bg-emerald-500/10 px-3 py-3 text-center space-y-1">
             <p className="flex items-center justify-center gap-1.5 text-xs font-semibold text-emerald-700 dark:text-emerald-400">
               <Award size={13} />
-              Quiz passed — {correctCount}/{quizSet.questions.length} correct
+              {excellentCount === quizSet.questions.length
+                ? `Flawless — ${correctCount}/${quizSet.questions.length} spot on!`
+                : onTrackCount > 0
+                  ? `Step complete — ${excellentCount} excellent, ${onTrackCount} on the right track`
+                  : `Quiz passed — ${correctCount}/${quizSet.questions.length} correct`}
             </p>
             <p className="text-xs text-emerald-700/70 dark:text-emerald-400/70">
               Step complete. The next step is unlocked.
@@ -467,9 +500,9 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
         ) : (
           <div className="rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-3 text-center space-y-2">
             <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-              {correctCount}/{quizSet.questions.length} correct — you need {quizSet.pass_threshold} to finish this step.
+              {correctCount}/{quizSet.questions.length} correct — you need {quizSet.pass_threshold} to move on.
             </p>
-            <p className="text-xs text-slate-500">Review the answers below, then try a fresh set — or skip.</p>
+            <p className="text-xs text-slate-500">Review the feedback below, then try a fresh set — or skip.</p>
             <div className="flex items-center justify-center gap-2">
               <button
                 onClick={loadSet}
@@ -488,49 +521,46 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
           {quizSet.questions.map((q, i) => {
             const r = results[i]
             if (!r) return null
+            const verdict  = getVerdict(r)
+            const vcfg     = VERDICT_CONFIG[verdict]
             return (
               <div
                 key={q.quiz_id}
-                className={clsx(
-                  'rounded-lg border p-3 space-y-2',
-                  r.is_correct
-                    ? 'border-emerald-100 dark:border-emerald-500/20 bg-emerald-50/40 dark:bg-emerald-500/5'
-                    : 'border-rose-100 dark:border-rose-500/20 bg-rose-50/40 dark:bg-rose-500/5',
-                )}
+                className={clsx('rounded-lg border p-3 space-y-2', vcfg.cardCls)}
               >
-                {/* Question + verdict icon */}
-                <div className="flex items-start gap-2">
-                  {r.is_correct
-                    ? <Check size={13} className="text-emerald-500 mt-0.5 shrink-0" />
-                    : <X size={13} className="text-rose-400 mt-0.5 shrink-0" />}
-                  <p className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-snug">{q.question}</p>
+                {/* Question */}
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300 leading-snug">{q.question}</p>
+
+                {/* Verdict badge + personalised feedback */}
+                <div className={clsx('rounded-md px-3 py-2 space-y-1')}>
+                  <p className={clsx('text-xs font-semibold', vcfg.textCls)}>
+                    {vcfg.icon} {vcfg.label}
+                  </p>
+                  {r.feedback && (
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                      {r.feedback}
+                    </p>
+                  )}
+                  {r.missed && verdict !== 'excellent' && (
+                    <p className="text-xs text-slate-500 dark:text-slate-500 leading-relaxed mt-1 italic">
+                      Worth noting: {r.missed}
+                    </p>
+                  )}
                 </div>
 
-                {/* User's answer — always shown */}
-                <div className="pl-5 space-y-0.5">
+                {/* User's answer */}
+                <div className="space-y-0.5">
                   <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Your answer</p>
-                  <p className={clsx(
-                    'text-xs leading-relaxed',
-                    r.is_correct ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-600 dark:text-rose-300',
-                  )}>
-                    {r.user_answer}
-                  </p>
+                  <p className={clsx('text-xs leading-relaxed', vcfg.textCls)}>{r.user_answer}</p>
                 </div>
 
-                {/* Correct answer — only when wrong */}
-                {!r.is_correct && (
-                  <div className="pl-5 space-y-0.5">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Correct answer</p>
-                    <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">{r.correct_answer}</p>
-                  </div>
-                )}
-
-                {/* Dynamic personalised feedback */}
-                {r.feedback && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed pl-5 border-t border-slate-100 dark:border-slate-700/50 pt-2">
-                    {r.feedback}
+                {/* Explanation — always shown */}
+                <div className="space-y-0.5 border-t border-slate-100 dark:border-slate-700/40 pt-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Explanation</p>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                    {r.explanation || r.correct_answer}
                   </p>
-                )}
+                </div>
               </div>
             )
           })}

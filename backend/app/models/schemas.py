@@ -101,6 +101,8 @@ class ExploreRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=500, description="Free-form curiosity question (1–500 chars)")
     age_group: Optional[AgeGroup] = Field("all", description="Tailor content for a specific age group")
     level: Optional[str] = Field(None, description="Preferred difficulty hint (optional)")
+    learner_purpose: Optional[str] = Field(None, description="Why the user is exploring: research_paper | professional_growth | personal_curiosity | teaching_others | fun")
+    topic_expertise: Optional[str] = Field(None, description="Self-reported expertise on this specific topic: beginner | intermediate | advanced | expert")
 
     model_config = {
         "json_schema_extra": {
@@ -108,6 +110,8 @@ class ExploreRequest(BaseModel):
                 "question": "How does DNA work?",
                 "age_group": "all",
                 "level": None,
+                "learner_purpose": "personal_curiosity",
+                "topic_expertise": "beginner",
             }
         }
     }

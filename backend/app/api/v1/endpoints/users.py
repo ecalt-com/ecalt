@@ -6,7 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.auth import get_required_user, get_acting_uid
 from app.core.database import get_db
@@ -28,6 +28,7 @@ class UserProfile(BaseModel):
     account_status: str = "active"
     consent_given_at: Optional[datetime] = None
     needs_birth_year: bool = False
+    profession: Optional[str] = None
 
 
 class UserUpsertRequest(BaseModel):
@@ -218,6 +219,21 @@ def save_interests(body: InterestsRequest, uid: str = Depends(get_required_user)
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM daily_sparks WHERE uid = %s", (uid,))
+    return {"saved": True}
+
+
+class ProfessionRequest(BaseModel):
+    profession: str = Field(..., min_length=1, max_length=200)
+
+
+@router.patch("/me/profession", summary="Save or update the user's profession")
+def save_profession(body: ProfessionRequest, uid: str = Depends(get_required_user)):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET profession = %s WHERE uid = %s",
+                (body.profession.strip(), uid),
+            )
     return {"saved": True}
 
 

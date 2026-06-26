@@ -26,10 +26,15 @@ export interface Journey {
   created_at: string
 }
 
+export type LearnerPurpose = 'research_paper' | 'professional_growth' | 'personal_curiosity' | 'teaching_others' | 'fun'
+export type TopicExpertise = 'beginner' | 'intermediate' | 'advanced' | 'expert'
+
 export interface ExploreRequest {
   question: string
   age_group?: AgeGroup
   level?: string
+  learner_purpose?: LearnerPurpose
+  topic_expertise?: TopicExpertise
 }
 
 export interface JourneysResponse {
@@ -100,11 +105,16 @@ export interface QuizHint {
   hints_remaining: number
 }
 
+export type QuizVerdict = 'excellent' | 'on_track' | 'off_track'
+
 export interface QuizResult {
+  verdict: QuizVerdict
   is_correct: boolean
   user_answer: string
   correct_answer: string
+  explanation: string
   feedback: string
+  missed: string | null
   hints_used: number
   concept: string
   difficulty: string

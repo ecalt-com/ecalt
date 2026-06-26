@@ -287,6 +287,14 @@ async def generate_quiz(
     }, in_tok, out_tok
 
 
+_EXPERTISE_DEPTH_FLOOR = {
+    "beginner":     "surface",
+    "intermediate": "exploratory",
+    "advanced":     "deep",
+    "expert":       "deep",
+}
+
+
 async def generate_quiz_set(
     uid: str,
     concept: str,
@@ -296,6 +304,7 @@ async def generate_quiz_set(
     journey_id: str | None = None,
     step_id: str | None = None,
     step_type: str = "concept",
+    topic_expertise: str | None = None,
 ) -> tuple[dict, int, int]:
     """
     Generate a set of distinct quiz questions for a journey step in a single
@@ -304,8 +313,16 @@ async def generate_quiz_set(
     journey/step and a shared quiz_set_id.
     """
     num_questions = max(2, min(int(num_questions), 5))
-    difficulty    = get_adaptive_difficulty(uid, base_depth)
-    age_context   = _get_user_age_context(uid)
+
+    # Raise base_depth floor for domain experts before adaptive adjustment
+    if topic_expertise and topic_expertise in _EXPERTISE_DEPTH_FLOOR:
+        floor     = _EXPERTISE_DEPTH_FLOOR[topic_expertise]
+        floor_idx = _DIFFICULTY_ORDER.index(floor)
+        if _DIFFICULTY_ORDER.index(base_depth) < floor_idx:
+            base_depth = floor
+
+    difficulty  = get_adaptive_difficulty(uid, base_depth)
+    age_context = _get_user_age_context(uid)
 
     # Clamp difficulty to the step-type ceiling — first-exposure steps
     # should not receive mastery-level questions even if the user is on a streak
@@ -655,45 +672,39 @@ def _log_quiz_quality(
 
 _GRADE_SYSTEM = """\
 You are a quiz grader for an educational platform.
-Given a quiz question, the model answer, and a student's response:
-1. Decide if the student demonstrates genuine understanding of the KEY concept.
-2. Write personalised 2-sentence feedback that directly references their answer.
+Given a question, the model answer, and a student's response:
+1. Assign one of three verdicts.
+2. Write personalised 2-sentence feedback that directly references their actual words.
+3. If verdict is not "excellent", name the single most important missed aspect in one sentence.
 
 Return ONLY valid JSON — no markdown, no preamble:
-{"correct": true, "feedback": "..."}
-{"correct": false, "feedback": "..."}
+{"verdict": "excellent", "feedback": "...", "missed": null}
+{"verdict": "on_track",  "feedback": "...", "missed": "one-line description of what was missing"}
+{"verdict": "off_track", "feedback": "...", "missed": "one-line description of the core gap"}
 
-GRADING RULES:
-- CORRECT: response captures the core concept, even if worded differently or briefly.
-- INCORRECT if the response:
-    • Contains a factual error or known misconception, even alongside something true
-      (e.g. claiming quantum entanglement allows faster-than-light communication is WRONG
-       even if the student also mentions correlation)
-    • Adds a false implication not supported by the model answer
-    • Is too vague to demonstrate actual understanding
-    • Does not address the specific question asked
+VERDICT DEFINITIONS:
+- excellent  → Student demonstrates full understanding of the key concept.
+               Minor wording differences or missing technical term but correct mechanism = excellent.
+- on_track   → Student shows the right direction but omits one important nuance,
+               edge case, or specific mechanism the model answer requires.
+- off_track  → Student's answer misunderstands the core concept, adds a significant
+               factual error, or is too vague to show genuine understanding.
 
 MECHANISM CREDIT RULE:
-If the learner correctly describes the mechanism or consequence — even in
-informal language, even without using the technical term — mark CORRECT.
+If the learner correctly describes the mechanism or consequence — even in informal
+language, even without the technical term — the answer is at least "on_track".
 Understanding matters more than vocabulary.
 
-EXAMPLE:
-  Model answer: "Oxidative phosphorylation produces 30–32 ATP molecules."
-  Student says: "The cell gets about 30 units of energy from breaking down
-               one sugar molecule using oxygen."
-  → CORRECT. They understand the mechanism even without the technical name.
-
 FABRICATION RULE:
-If the learner adds a specific claim that contradicts or goes beyond what
-the content stated — even alongside something correct — mark INCORRECT and
-address the fabricated claim explicitly in feedback.
+A specific false claim that contradicts the model answer → always "off_track",
+even if accompanied by correct content. Address the fabricated claim in feedback.
 
-FEEDBACK RULES:
-- Correct: affirm specifically what they got right, then add one enriching insight.
-- Incorrect: acknowledge what they got right (if anything), then clearly correct the error.
-- Always conversational — never open with "This is correct/incorrect because".
-- Reference their actual words, not just the model answer."""
+FEEDBACK STYLE:
+- excellent  → Open with genuine affirmation referencing their actual words. Add one enriching insight.
+- on_track   → Open warmly ("You're on the right track —"), then name the missed nuance clearly.
+- off_track  → Open by acknowledging anything correct ("Good instinct on X —"), then gently redirect.
+               Never open with "That's wrong" or "This is incorrect".
+- Always reference the student's actual words, not just the model answer."""
 
 
 def _is_trivially_invalid(answer: str) -> bool:
@@ -703,9 +714,8 @@ def _is_trivially_invalid(answer: str) -> bool:
 
 async def _llm_grade_and_explain(
     question: str, correct_ans: str, user_answer: str
-) -> tuple[bool, str]:
-    """Grade a free-text answer and generate personalised feedback in one LLM call."""
-    # Wrap student answer as untrusted to prevent injection into the grader prompt.
+) -> tuple[str, str, str | None]:
+    """Grade a free-text answer and return (verdict, feedback, missed_aspect)."""
     user_content = (
         f"Question: {question}\n"
         f"Model answer: {correct_ans}\n"
@@ -717,16 +727,19 @@ async def _llm_grade_and_explain(
             interaction_type="quiz",
             system=_GRADE_SYSTEM,
             user_content=user_content,
-            max_tokens=150,
+            max_tokens=200,
         )
         start = raw.find("{")
         end   = raw.rfind("}") + 1
         if start != -1 and end > start:
-            data = json.loads(raw[start:end])
-            return bool(data.get("correct", False)), data.get("feedback", "")
+            data    = json.loads(raw[start:end])
+            verdict = data.get("verdict", "off_track")
+            if verdict not in ("excellent", "on_track", "off_track"):
+                verdict = "off_track"
+            return verdict, data.get("feedback", ""), data.get("missed") or None
     except Exception as e:
         logger.warning("quiz grading LLM failed: %s", e)
-    return False, ""
+    return "off_track", "", None
 
 
 def get_hint(quiz_id: str, uid: str) -> dict:
@@ -755,6 +768,34 @@ def get_hint(quiz_id: str, uid: str) -> dict:
     }
 
 
+def _record_concept_interaction(
+    uid: str,
+    journey_id: str | None,
+    step_id: str | None,
+    concept: str,
+    domain: str | None,
+    verdict: str,
+    missed_aspect: str | None,
+    hints_used: int,
+    difficulty: str,
+) -> None:
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO concept_interactions
+                        (uid, journey_id, step_id, concept, domain,
+                         verdict, missed_aspect, hints_used, difficulty)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (uid, journey_id, step_id, concept[:200], domain,
+                     verdict, missed_aspect, hints_used, difficulty),
+                )
+    except Exception as e:
+        logger.debug("concept_interaction insert failed: %s", e)
+
+
 async def submit_answer(quiz_id: str, uid: str, user_answer: str) -> dict:
     """
     Evaluate a submitted answer via LLM semantic grading, record the result,
@@ -773,27 +814,47 @@ async def submit_answer(quiz_id: str, uid: str, user_answer: str) -> dict:
     difficulty  = quiz_data.get("difficulty", "exploratory")
     concept     = session["concept"]
     question    = quiz_data.get("question", "")
+    journey_id  = session.get("journey_id")
+    step_id     = session.get("step_id")
 
     if _is_trivially_invalid(user_answer):
-        is_correct = False
+        verdict  = "off_track"
         feedback = "That doesn't look like a complete answer — give it another try!"
+        missed   = None
     else:
-        is_correct, feedback = await _llm_grade_and_explain(question, correct_ans, user_answer)
+        verdict, feedback, missed = await _llm_grade_and_explain(question, correct_ans, user_answer)
+
+    # on_track and excellent both count as correct for the pass gate
+    is_correct = verdict in ("excellent", "on_track")
 
     _mark_submitted(quiz_id)
     record_quiz_result(
         uid, concept, difficulty, is_correct, hints_used,
-        journey_id=session.get("journey_id"),
-        step_id=session.get("step_id"),
+        journey_id=journey_id,
+        step_id=step_id,
         session_id=str(session.get("id")) if session.get("id") else None,
+    )
+    _record_concept_interaction(
+        uid=uid,
+        journey_id=journey_id,
+        step_id=step_id,
+        concept=concept,
+        domain=quiz_data.get("domain"),
+        verdict=verdict,
+        missed_aspect=missed,
+        hints_used=hints_used,
+        difficulty=difficulty,
     )
 
     return {
-        "is_correct":    is_correct,
-        "user_answer":   user_answer,
+        "verdict":        verdict,
+        "is_correct":     is_correct,
+        "user_answer":    user_answer,
         "correct_answer": correct_ans,
-        "feedback":      feedback,
-        "hints_used":    hints_used,
-        "concept":       concept,
-        "difficulty":    difficulty,
+        "explanation":    explanation,
+        "feedback":       feedback,
+        "missed":         missed,
+        "hints_used":     hints_used,
+        "concept":        concept,
+        "difficulty":     difficulty,
     }

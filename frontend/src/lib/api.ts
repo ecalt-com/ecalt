@@ -1,4 +1,5 @@
 import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus, QuizQuestion, QuizSet, QuizHint, QuizResult } from './types'
+export type { LearnerPurpose, TopicExpertise, QuizVerdict } from './types'
 import { getImpersonationSessionId } from './impersonationStore'
 
 // In production, Vercel rewrites /api/* → Railway (no env var needed, no mixed-content).
@@ -36,6 +37,12 @@ export const getSessionStatus = (sessionId: string): Promise<SessionStatus> =>
 
 export const exploreQuestion = (body: ExploreRequest, token: string): Promise<{ journey: Journey }> =>
   request('/api/v1/explore', { method: 'POST', body: JSON.stringify(body) }, token)
+
+export const previewJourney = (body: ExploreRequest, token: string): Promise<{ preview_token: string; journey: Journey }> =>
+  request('/api/v1/explore/preview', { method: 'POST', body: JSON.stringify(body) }, token)
+
+export const confirmJourney = (preview_token: string, token: string): Promise<{ journey: Journey }> =>
+  request('/api/v1/explore/confirm', { method: 'POST', body: JSON.stringify({ preview_token }) }, token)
 
 export const getJourneys = (token?: string): Promise<JourneysResponse> =>
   request('/api/v1/journeys', undefined, token)
@@ -96,6 +103,7 @@ export interface UserProfile {
   streak_days: number
   whatsapp_opted_in?: boolean
   has_notification_prefs?: boolean
+  profession?: string
 }
 
 // ── Notification preferences ──────────────────────────────────────────────────
@@ -148,6 +156,9 @@ export const getUserProfile = (token: string): Promise<UserProfile> =>
 
 export const completeOnboarding = (token: string): Promise<UserProfile> =>
   request('/api/v1/users/me/onboarding', { method: 'PATCH' }, token)
+
+export const saveProfession = (profession: string, token: string): Promise<{ saved: boolean }> =>
+  request('/api/v1/users/me/profession', { method: 'PATCH', body: JSON.stringify({ profession }) }, token)
 
 // ── Chat / Knowledge ──────────────────────────────────────────────────────────
 
