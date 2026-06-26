@@ -319,26 +319,41 @@ async def generate_journey(
     )
     cfg = get_config("journey")
     system = f"{inject_fingerprint(uid, cfg['style_prompt'])}\n\n{_JOURNEY_CONTRACT}"
-    raw, in_tok, out_tok, _ = await complete_text(
-        interaction_type="journey",
-        system=system,
-        user_content=user_content,
-        max_tokens=2048,
-    )
 
-    start = raw.find("{")
-    end = raw.rfind("}") + 1
-    if start == -1 or end == 0:
-        raise ValueError("AI did not return valid JSON")
+    _VALID_STEP_TYPES = {"concept", "practice", "challenge", "explore"}
+    data = None
+    in_tok = out_tok = 0
+    last_err: Exception = ValueError("AI did not return valid JSON")
+    for attempt in range(2):
+        raw, i_tok, o_tok, _ = await complete_text(
+            interaction_type="journey",
+            system=system,
+            user_content=user_content,
+            max_tokens=2048,
+        )
+        in_tok += i_tok
+        out_tok += o_tok
+        start = raw.find("{")
+        end   = raw.rfind("}") + 1
+        if start == -1 or end == 0:
+            logger.warning("generate_journey attempt %d: no JSON in response", attempt + 1)
+            continue
+        try:
+            data = json.loads(raw[start:end])
+            break
+        except json.JSONDecodeError as exc:
+            last_err = exc
+            logger.warning("generate_journey attempt %d: JSON parse error: %s", attempt + 1, exc)
 
-    data = json.loads(raw[start:end])
+    if data is None:
+        raise ValueError(f"AI returned malformed JSON after retry: {last_err}")
 
     steps = [
         JourneyStep(
             id=str(uuid.uuid4()),
             title=step["title"],
             description=step["description"],
-            type=step["type"],
+            type=step["type"] if step.get("type") in _VALID_STEP_TYPES else "concept",
             estimated_minutes=int(step["estimated_minutes"]),
         )
         for step in data["steps"]
