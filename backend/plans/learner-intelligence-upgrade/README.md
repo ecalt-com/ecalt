@@ -42,15 +42,18 @@ next step on any wrong-answer session. No mid-tier verdict or analytics signal.
 
 ---
 
-## The Fix — Three Phases
+## The Fix — Five Phases
 
 | Phase | What changes | Effort |
 |-------|-------------|--------|
 | [Phase 1 — Journey Confirmation Gate](phase-1-journey-confirmation.md) | Preview before persist; reprompt if wrong | Backend + Frontend |
 | [Phase 2 — Learner Intent Profiling](phase-2-learner-intent-profiling.md) | Profession + purpose → injected into prompts | Backend + Frontend + DB |
 | [Phase 3 — Nuanced Quiz Feedback & Analytics](phase-3-quiz-feedback-analytics.md) | 3-tier verdict, no gate blocking, Mind Signature analytics | Backend + Frontend + DB |
+| [Phase 4 — Journey Test Script](phase-4-journey-test-script.md) | Real OpenAI test harness across 4 batches | Backend script |
+| [Phase 5 — Smart Generation: History Context + Structured Refinement](phase-5-smart-generation.md) | Completion history injected into generation; refinement panel instead of starting from scratch | Backend + Frontend |
 
 Phases are independent — each can ship alone without the others.
+Phase 5A (learning context) is a safe backend-only change that can ship without Phase 5B (refinement panel).
 
 ---
 
@@ -59,6 +62,7 @@ Phases are independent — each can ship alone without the others.
 - Phase 1: Zero "wrong journey" complaints from users who engage with the confirmation step.
 - Phase 2: Domain-expert users report quiz difficulty feels appropriate to their level.
 - Phase 3: Users report feeling understood rather than graded; Mind Signature page shows richer per-concept analytics.
+- Phase 5: Users with 3+ completed journeys get harder/deeper journeys without re-explaining mastered concepts; refinement loop (≥2 previews) ends in confirm rather than abandon.
 
 ---
 

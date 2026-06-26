@@ -27,12 +27,31 @@ const EXPERTISE_OPTIONS: { value: TopicExpertise; label: string }[] = [
   { value: 'expert',       label: 'Domain expert' },
 ]
 
+// ── Refinement options ────────────────────────────────────────────────────────
+
+const ISSUE_OPTIONS: { value: string; label: string }[] = [
+  { value: 'too_basic',      label: 'Too basic / surface level' },
+  { value: 'too_advanced',   label: 'Too advanced / too dense' },
+  { value: 'wrong_angle',    label: 'Wrong angle — different focus' },
+  { value: 'wrong_topic',    label: 'Wrong topic — misunderstood me' },
+  { value: 'missing_key',    label: 'Missing key concepts' },
+]
+
+const ISSUE_LABELS: Record<string, string> = {
+  too_basic:    'Too basic / surface level',
+  too_advanced: 'Too advanced / too dense',
+  wrong_angle:  'Wrong angle — I needed a different focus',
+  wrong_topic:  'Wrong topic — the question was misunderstood',
+  missing_key:  'Missing key concepts',
+}
+
 // ── Phase state machine ───────────────────────────────────────────────────────
 type ExplorePhase =
   | 'idle'
   | 'intent'           // collecting purpose + expertise before preview
   | 'loading'          // calling /preview
   | 'confirming'       // preview shown, awaiting user decision
+  | 'refining'         // collecting structured feedback on rejected preview
   | 'confirming_save'  // calling /confirm
   | 'ready'            // confirmed + persisted, show full step list
   | 'error'
@@ -58,6 +77,13 @@ export default function Explore() {
 
   // Preview state
   const [previewToken, setPreviewToken] = useState<string | null>(null)
+
+  // Refinement state
+  const [prevJourneyTitle, setPrevJourneyTitle] = useState<string | null>(null)
+  const [prevJourneyDesc,  setPrevJourneyDesc]  = useState<string | null>(null)
+  const [refinementIssue,  setRefinementIssue]  = useState<string | null>(null)
+  const [refinementText,   setRefinementText]   = useState('')
+  const [refineCount,      setRefineCount]      = useState(0)
 
   const q = searchParams.get('q') || ''
 
@@ -120,6 +146,8 @@ export default function Explore() {
       setPreviewToken(preview_token)
       setJourney(result)
       setSteps(result.steps)
+      setPrevJourneyTitle(result.title)
+      setPrevJourneyDesc(result.description)
       setPhase('confirming')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate journey. Please try again.')
@@ -150,9 +178,43 @@ export default function Explore() {
   }
 
   const handleRefine = () => {
-    setJourney(null)
-    setPreviewToken(null)
-    setPhase('idle')
+    setRefinementIssue(null)
+    setRefinementText('')
+    setPhase('refining')
+  }
+
+  const handleRegenerate = async () => {
+    const issue   = refinementIssue ? ISSUE_LABELS[refinementIssue] : ''
+    const details = refinementText.trim()
+    const ctx     = [issue, details].filter(Boolean).join('. ')
+
+    const token = await getToken()
+    if (!token) { navigate('/'); return }
+
+    setPhase('loading')
+    setRefineCount(c => c + 1)
+
+    try {
+      const { preview_token, journey: result } = await previewJourney(
+        {
+          question:           pendingQuestion,
+          age_group:          'all',
+          learner_purpose:    purpose ?? undefined,
+          topic_expertise:    topicExpertise ?? undefined,
+          refinement_context: ctx || undefined,
+        },
+        token,
+      )
+      setPreviewToken(preview_token)
+      setJourney(result)
+      setSteps(result.steps)
+      setPrevJourneyTitle(result.title)
+      setPrevJourneyDesc(result.description)
+      setPhase('confirming')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to regenerate. Please try again.')
+      setPhase('error')
+    }
   }
 
   const goExplore = (question: string) => {
@@ -356,6 +418,101 @@ export default function Explore() {
             </div>
           )}
 
+          {/* ── Refining: structured feedback panel ── */}
+          {phase === 'refining' && (
+            <div className="animate-in">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-1">
+                Let's get this right
+              </h2>
+              <p className="text-sm text-slate-500 mb-6">
+                Tell us what was off — we'll regenerate with your feedback.
+              </p>
+
+              {prevJourneyTitle && (
+                <div className="glass-card rounded-xl p-4 mb-6 border-l-2 border-slate-300 dark:border-slate-600">
+                  <p className="text-xs text-slate-500 mb-0.5 uppercase tracking-wide">We generated</p>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">{prevJourneyTitle}</p>
+                  {prevJourneyDesc && (
+                    <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">{prevJourneyDesc}</p>
+                  )}
+                </div>
+              )}
+
+              <div className="glass-card rounded-2xl p-6 space-y-5">
+                <div>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+                    What was off?
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {ISSUE_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setRefinementIssue(r => r === opt.value ? null : opt.value)}
+                        className={clsx(
+                          'px-3 py-1.5 rounded-full text-sm border transition-colors',
+                          refinementIssue === opt.value
+                            ? 'bg-rose-500 text-white border-rose-500'
+                            : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-rose-300 dark:hover:border-rose-500/50',
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Anything specific to add?
+                    <span className="text-slate-400 font-normal ml-1">(optional)</span>
+                  </p>
+                  <textarea
+                    rows={3}
+                    value={refinementText}
+                    onChange={e => setRefinementText(e.target.value)}
+                    placeholder={
+                      refinementIssue === 'wrong_angle'
+                        ? 'e.g. "I wanted the mathematical formalism — Hilbert spaces and operators"'
+                        : refinementIssue === 'wrong_topic'
+                          ? 'e.g. "I meant the Penrose–Hawking singularity theorems specifically"'
+                          : 'Tell us what you were really looking for…'
+                    }
+                    className={clsx(
+                      'w-full text-sm px-4 py-2.5 rounded-xl border transition-colors resize-none',
+                      'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200',
+                      'border-slate-200 dark:border-slate-700',
+                      'focus:outline-none focus:border-violet-400 dark:focus:border-violet-500',
+                      'placeholder:text-slate-300 dark:placeholder:text-slate-600',
+                    )}
+                  />
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-1">
+                  <button
+                    onClick={handleRegenerate}
+                    disabled={!refinementIssue && !refinementText.trim()}
+                    className="btn-primary flex items-center justify-center gap-2"
+                  >
+                    <Zap size={14} fill="currentColor" />
+                    Regenerate with this feedback
+                  </button>
+                  <button
+                    onClick={() => { setPendingQuestion(''); setRefineCount(0); setPhase('idle') }}
+                    className="btn-ghost text-sm"
+                  >
+                    Change question entirely
+                  </button>
+                </div>
+
+                {refineCount > 0 && (
+                  <p className="text-xs text-slate-400">
+                    Refined {refineCount} time{refineCount > 1 ? 's' : ''} — each attempt uses a small AI credit.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* ── Confirming: preview + confirmation banner ── */}
           {(phase === 'confirming' || phase === 'confirming_save') && journey && (
             <div className="animate-in">
@@ -384,7 +541,7 @@ export default function Explore() {
                     className="btn-ghost flex items-center gap-1.5"
                   >
                     <RefreshCw size={13} />
-                    Not quite — refine
+                    {refineCount > 0 ? 'Refine again' : 'Not quite — refine'}
                   </button>
                 </div>
               </div>

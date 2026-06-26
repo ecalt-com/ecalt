@@ -35,6 +35,7 @@ export interface ExploreRequest {
   level?: string
   learner_purpose?: LearnerPurpose
   topic_expertise?: TopicExpertise
+  refinement_context?: string
 }
 
 export interface JourneysResponse {

@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from app.models.schemas import ExploreRequest, ExploreResponse, Journey, JourneyStep
-from app.services.ai_service import generate_journey, warm_journey_steps
+from app.services.ai_service import generate_journey, warm_journey_steps, _build_learning_context
 from app.core.auth import get_required_user
 from app.core.database import get_db
 from app.services.subscription_service import check_budget, record_usage
@@ -64,7 +64,8 @@ async def explore_preview(
     if not allowed:
         raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
 
-    learner_profile = _get_learner_profile(uid, request)
+    learner_profile  = _get_learner_profile(uid, request)
+    learning_context = _build_learning_context(uid)
 
     try:
         journey, in_tok, out_tok = await generate_journey(
@@ -72,6 +73,8 @@ async def explore_preview(
             age_group=request.age_group or "all",
             uid=uid,
             learner_profile=learner_profile,
+            learning_context=learning_context or None,
+            refinement_context=request.refinement_context or None,
         )
     except ValueError as e:
         logger.warning("explore preview upstream error", extra={"question": request.question[:120], "error": str(e)})
@@ -262,7 +265,8 @@ async def explore(
     if not allowed:
         raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
 
-    learner_profile = _get_learner_profile(uid, request)
+    learner_profile  = _get_learner_profile(uid, request)
+    learning_context = _build_learning_context(uid)
 
     try:
         journey, in_tok, out_tok = await generate_journey(
@@ -270,6 +274,8 @@ async def explore(
             age_group=request.age_group or "all",
             uid=uid,
             learner_profile=learner_profile,
+            learning_context=learning_context or None,
+            refinement_context=request.refinement_context or None,
         )
     except ValueError as e:
         logger.warning("explore upstream error", extra={"question": request.question[:120], "error": str(e)})

@@ -103,6 +103,7 @@ class ExploreRequest(BaseModel):
     level: Optional[str] = Field(None, description="Preferred difficulty hint (optional)")
     learner_purpose: Optional[str] = Field(None, description="Why the user is exploring: research_paper | professional_growth | personal_curiosity | teaching_others | fun")
     topic_expertise: Optional[str] = Field(None, description="Self-reported expertise on this specific topic: beginner | intermediate | advanced | expert")
+    refinement_context: Optional[str] = Field(None, max_length=600, description="Feedback on a rejected journey preview — triggers targeted regeneration")
 
     model_config = {
         "json_schema_extra": {
