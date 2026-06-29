@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional
 from app.models.schemas import SparkRequest, SparkResponse
 from app.services.spark_service import consume_spark, generate_spark
-from app.services.subscription_service import check_budget, record_usage
+from app.services.subscription_service import check_budget, record_usage, get_user_plan
 from app.services.provider_service import get_config
 from app.core.auth import get_optional_user
 from app.core.limiter import limiter
@@ -44,18 +44,24 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
         if not allowed:
             raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
 
-    allowed, used, remaining = consume_spark(key)
+    # Session spark window is an anti-abuse guard for guests and free-trial users only.
+    # Paid users are already gated by token budget; don't impose an artificial hourly cap.
+    on_paid_plan = uid and get_user_plan(uid).get("plan_id") != "free_trial"
 
-    if not allowed:
-        raise HTTPException(
-            status_code=429,
-            detail={
-                "message": "You've used all 5 free sparks for this session.",
-                "sparks_used": used,
-                "sparks_remaining": 0,
-                "action": "enroll",
-            },
-        )
+    if on_paid_plan:
+        used, remaining = 0, -1  # -1 signals "unlimited" to the frontend
+    else:
+        allowed, used, remaining = consume_spark(key)
+        if not allowed:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "message": "You've used all 5 free sparks for this session.",
+                    "sparks_used": used,
+                    "sparks_remaining": 0,
+                    "action": "enroll",
+                },
+            )
 
     try:
         answer, mission, in_tok, out_tok = await generate_spark(body.question.strip(), uid=uid)

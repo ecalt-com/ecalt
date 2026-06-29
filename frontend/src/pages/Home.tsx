@@ -238,17 +238,19 @@ function LightSparkResult({ question, answer, mission, sparksUsed, sparksRemaini
         </div>
       </div>
 
-      {/* Spark meter */}
+      {/* Spark meter — hidden for paid/unlimited users (sparksRemaining === -1) */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <SparkDots used={sparksUsed} />
-          <span className="text-xs text-slate-400 ml-0.5">
-            {sparksRemaining === 0
-              ? <button onClick={onUpgrade} className="text-violet-600 font-medium hover:underline">Upgrade for unlimited →</button>
-              : <><span className="font-semibold text-slate-600 dark:text-slate-400">{sparksRemaining}</span> of 5 sparks left</>
-            }
-          </span>
-        </div>
+        {sparksRemaining >= 0 && (
+          <div className="flex items-center gap-2">
+            <SparkDots used={sparksUsed} />
+            <span className="text-xs text-slate-400 ml-0.5">
+              {sparksRemaining === 0
+                ? <button onClick={onUpgrade} className="text-violet-600 font-medium hover:underline">Upgrade for unlimited →</button>
+                : <><span className="font-semibold text-slate-600 dark:text-slate-400">{sparksRemaining}</span> of 5 sparks left</>
+              }
+            </span>
+          </div>
+        )}
         <button onClick={onReset} className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
           ↑ Ask another
         </button>
@@ -561,7 +563,10 @@ export default function Home() {
     try {
       const token = await getToken()
       const res = await askSpark({ question, session_id: sessionId }, token ?? undefined)
-      setSessionSparks({ used: res.sparks_used, remaining: res.sparks_remaining })
+      // -1 means unlimited (paid plan) — don't update the session counter
+      if (res.sparks_remaining !== -1) {
+        setSessionSparks({ used: res.sparks_used, remaining: res.sparks_remaining })
+      }
       setPhase({ kind: 'sparked', question, answer: res.answer, mission: res.mission, sparksUsed: res.sparks_used, sparksRemaining: res.sparks_remaining })
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 80)
     } catch (err: unknown) {
