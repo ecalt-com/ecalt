@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2, Lock } from 'lucide-react'
 import type { JourneyStep } from '../lib/types'
 import { getStepContent } from '../lib/api'
 import MarkdownContent from './MarkdownContent'
 import QuizCard from './QuizCard'
+import StepUpgradePanel from './StepUpgradePanel'
 
 const typeConfig = {
   concept:   { icon: BookOpen, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 border-violet-200 dark:bg-violet-400/10 dark:border-violet-400/20', label: 'Learn' },
@@ -189,12 +189,7 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
                 </div>
               )}
               {budgetExceeded && !loadingContent && (
-                <div className="py-5 text-center space-y-2">
-                  <p className="text-xs text-slate-600 dark:text-slate-400">You've used your AI budget for this period.</p>
-                  <Link to="/pricing" className="text-xs text-violet-600 dark:text-violet-400 hover:underline font-medium">
-                    Upgrade or apply a promo code →
-                  </Link>
-                </div>
+                <StepUpgradePanel />
               )}
               {contentError && !loadingContent && !budgetExceeded && (
                 <div className="py-4 text-center">

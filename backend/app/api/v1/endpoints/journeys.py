@@ -1,5 +1,6 @@
 import json
 import logging
+import openai as _openai
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Response
 from pydantic import BaseModel
@@ -624,6 +625,9 @@ async def get_step_content(
     except ValueError as e:
         logger.warning("step content upstream error", extra={"journey_id": journey_id, "step_id": step_id, "error": str(e)})
         raise HTTPException(status_code=502, detail=str(e))
+    except _openai.RateLimitError:
+        logger.warning("openai quota exceeded for step content", extra={"journey_id": journey_id, "step_id": step_id})
+        raise HTTPException(status_code=402, detail={"error": "quota_exceeded", "upgrade_url": "/pricing"})
     except Exception:
         logger.exception("step content generation failed", extra={"journey_id": journey_id, "step_id": step_id})
         raise HTTPException(status_code=500, detail="Failed to generate step content.")
