@@ -5,6 +5,7 @@ import clsx from 'clsx'
 import Navigation from '../components/Navigation'
 import CuriosityInput from '../components/CuriosityInput'
 import StepNode from '../components/StepNode'
+import StepUpgradePanel from '../components/StepUpgradePanel'
 import { previewJourney, confirmJourney, markStepComplete, saveProfession, getUserProfile } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { usePageTitle } from '../lib/usePageTitle'
@@ -66,6 +67,7 @@ export default function Explore() {
   const [journey, setJourney] = useState<Journey | null>(null)
   const [steps, setSteps] = useState<JourneyStep[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [budgetExceeded, setBudgetExceeded] = useState(false)
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null)
 
   // Intent state
@@ -130,6 +132,7 @@ export default function Explore() {
 
     setPhase('loading')
     setError(null)
+    setBudgetExceeded(false)
     setJourney(null)
     setPreviewToken(null)
 
@@ -149,8 +152,12 @@ export default function Explore() {
       setPrevJourneyTitle(result.title)
       setPrevJourneyDesc(result.description)
       setPhase('confirming')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate journey. Please try again.')
+    } catch (err: any) {
+      if (err?.status === 402) {
+        setBudgetExceeded(true)
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to generate journey. Please try again.')
+      }
       setPhase('error')
     }
   }
@@ -211,8 +218,12 @@ export default function Explore() {
       setPrevJourneyTitle(result.title)
       setPrevJourneyDesc(result.description)
       setPhase('confirming')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to regenerate. Please try again.')
+    } catch (err: any) {
+      if (err?.status === 402) {
+        setBudgetExceeded(true)
+      } else {
+        setError(err instanceof Error ? err.message : 'Failed to regenerate. Please try again.')
+      }
       setPhase('error')
     }
   }
@@ -409,12 +420,20 @@ export default function Explore() {
 
           {/* ── Error ── */}
           {phase === 'error' && (
-            <div className="glass rounded-2xl p-8 text-center border border-rose-200 dark:border-rose-500/20">
-              <p className="text-rose-600 dark:text-rose-400 mb-4">{error}</p>
-              <div className="flex items-center justify-center gap-3">
-                <button onClick={() => handleBuildJourney(false)} className="btn-primary">Try again</button>
-                <button onClick={() => setPhase('idle')} className="btn-ghost">Start over</button>
-              </div>
+            <div className="glass rounded-2xl border border-rose-200 dark:border-rose-500/20">
+              {budgetExceeded ? (
+                <div className="p-6">
+                  <StepUpgradePanel />
+                </div>
+              ) : (
+                <div className="p-8 text-center">
+                  <p className="text-rose-600 dark:text-rose-400 mb-4">{error}</p>
+                  <div className="flex items-center justify-center gap-3">
+                    <button onClick={() => handleBuildJourney(false)} className="btn-primary">Try again</button>
+                    <button onClick={() => setPhase('idle')} className="btn-ghost">Start over</button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
