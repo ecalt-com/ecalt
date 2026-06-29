@@ -1,6 +1,7 @@
 import asyncio
 import json
 import uuid
+import openai as _openai
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 
@@ -314,7 +315,10 @@ async def stream_chat(
                 output_tokens = out_tok
             if cached_tok:
                 cached_input_tokens = cached_tok
-    except Exception as e:
+    except _openai.RateLimitError:
+        yield f"data: {json.dumps({'type': 'quota_exceeded', 'message': 'Token limit exhausted. Upgrade your plan to keep learning.'})}\n\n"
+        return
+    except Exception:
         yield f"data: {json.dumps({'type': 'error', 'message': 'Could not generate response. Please try again.'})}\n\n"
         return
 

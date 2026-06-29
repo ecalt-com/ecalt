@@ -128,6 +128,10 @@ export default function ConversationInterface({
                 }
                 return msgs
               })
+            } else if (event.type === 'quota_exceeded') {
+              setMessages(prev => prev.slice(0, -2))
+              setLimitReason('budget_exhausted')
+              refreshSubscription()
             }
           } catch { /* skip malformed SSE lines */ }
         }
