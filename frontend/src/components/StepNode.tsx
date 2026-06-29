@@ -1,11 +1,11 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
 import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2, Lock } from 'lucide-react'
 import type { JourneyStep } from '../lib/types'
 import { getStepContent } from '../lib/api'
 import MarkdownContent from './MarkdownContent'
 import QuizCard from './QuizCard'
-import StepUpgradePanel from './StepUpgradePanel'
 
 const typeConfig = {
   concept:   { icon: BookOpen, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 border-violet-200 dark:bg-violet-400/10 dark:border-violet-400/20', label: 'Learn' },
@@ -32,6 +32,7 @@ interface StepNodeProps {
 }
 
 export default function StepNode({ step, index, isLast, journeyId, getToken, onToggle, expanded: controlledExpanded, onExpandToggle, locked = false }: StepNodeProps) {
+  const navigate = useNavigate()
   const config = typeConfig[step.type]
   const Icon = config.icon
   const [internalExpanded, setInternalExpanded] = useState(false)
@@ -189,7 +190,18 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
                 </div>
               )}
               {budgetExceeded && !loadingContent && (
-                <StepUpgradePanel />
+                <div className="py-6 flex flex-col items-center gap-3 text-center">
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">Token limit exhausted</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs">
+                    You've used your plan's AI token budget. Upgrade to keep learning.
+                  </p>
+                  <button
+                    onClick={() => navigate('/pricing')}
+                    className="btn-primary text-xs px-5 py-2"
+                  >
+                    View pricing plans →
+                  </button>
+                </div>
               )}
               {contentError && !loadingContent && !budgetExceeded && (
                 <div className="py-4 text-center">
