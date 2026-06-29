@@ -70,7 +70,7 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
         raise HTTPException(status_code=502, detail=str(e))
     except _openai.RateLimitError:
         logger.warning("openai quota exceeded for spark [%s]", body.question[:80])
-        raise HTTPException(status_code=402, detail={"error": "quota_exceeded", "upgrade_url": "/pricing"})
+        raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
     except Exception as e:
         logger.error("spark generation failed [%s]: %s", body.question[:80], e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Spark generation failed: {e}")

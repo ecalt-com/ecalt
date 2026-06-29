@@ -627,7 +627,7 @@ async def get_step_content(
         raise HTTPException(status_code=502, detail=str(e))
     except _openai.RateLimitError:
         logger.warning("openai quota exceeded for step content", extra={"journey_id": journey_id, "step_id": step_id})
-        raise HTTPException(status_code=402, detail={"error": "quota_exceeded", "upgrade_url": "/pricing"})
+        raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
     except Exception:
         logger.exception("step content generation failed", extra={"journey_id": journey_id, "step_id": step_id})
         raise HTTPException(status_code=500, detail="Failed to generate step content.")

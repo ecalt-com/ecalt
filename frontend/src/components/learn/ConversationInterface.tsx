@@ -128,10 +128,15 @@ export default function ConversationInterface({
                 }
                 return msgs
               })
-            } else if (event.type === 'quota_exceeded') {
-              setMessages(prev => prev.slice(0, -2))
-              setLimitReason('budget_exhausted')
-              refreshSubscription()
+            } else if (event.type === 'service_unavailable') {
+              setMessages(prev => {
+                const msgs = [...prev]
+                const last = msgs[msgs.length - 1]
+                if (last?.role === 'assistant') {
+                  return [...msgs.slice(0, -1), { ...last, content: event.message, streaming: false }]
+                }
+                return msgs
+              })
             }
           } catch { /* skip malformed SSE lines */ }
         }

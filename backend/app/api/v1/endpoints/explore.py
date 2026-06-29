@@ -82,7 +82,7 @@ async def explore_preview(
         raise HTTPException(status_code=502, detail=str(e))
     except _openai.RateLimitError:
         logger.warning("openai quota exceeded for explore preview", extra={"question": request.question[:120]})
-        raise HTTPException(status_code=402, detail={"error": "quota_exceeded", "upgrade_url": "/pricing"})
+        raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
     except Exception:
         logger.exception("explore preview generation failed", extra={"question": request.question[:120]})
         raise HTTPException(status_code=500, detail="Failed to generate journey. Please try again.")
@@ -286,7 +286,7 @@ async def explore(
         raise HTTPException(status_code=502, detail=str(e))
     except _openai.RateLimitError:
         logger.warning("openai quota exceeded for explore", extra={"question": request.question[:120]})
-        raise HTTPException(status_code=402, detail={"error": "quota_exceeded", "upgrade_url": "/pricing"})
+        raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
     except Exception:
         logger.exception("explore generation failed", extra={"question": request.question[:120]})
         raise HTTPException(status_code=500, detail="Failed to generate journey. Please try again.")

@@ -316,7 +316,7 @@ async def stream_chat(
             if cached_tok:
                 cached_input_tokens = cached_tok
     except _openai.RateLimitError:
-        yield f"data: {json.dumps({'type': 'quota_exceeded', 'message': 'Token limit exhausted. Upgrade your plan to keep learning.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'service_unavailable', 'message': 'AI service temporarily unavailable. Please try again later.'})}\n\n"
         return
     except Exception:
         yield f"data: {json.dumps({'type': 'error', 'message': 'Could not generate response. Please try again.'})}\n\n"
