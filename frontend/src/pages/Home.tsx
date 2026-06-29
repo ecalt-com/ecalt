@@ -3,12 +3,14 @@ import { useNavigate, Link } from 'react-router-dom'
 import {
   Zap, ArrowRight, Loader2, Sparkles,
   BookOpen, Wrench, Compass, Check,
-  Shield, Map,
+  Shield, Map, Lock,
 } from 'lucide-react'
 import clsx from 'clsx'
 import GateModal from '../components/GateModal'
+import GoogleSignInButton from '../components/GoogleSignInButton'
 import Navigation from '../components/Navigation'
 import PageMeta from '../components/PageMeta'
+import StepUpgradePanel from '../components/StepUpgradePanel'
 import { askSpark, getSessionStatus, getPassport, getUserProfile, type PassportData } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import type { Mission, StepType } from '../lib/types'
@@ -25,6 +27,8 @@ type Phase =
   | { kind: 'hero' }
   | { kind: 'loading'; question: string }
   | { kind: 'sparked'; question: string; answer: string; mission: Mission; sparksUsed: number; sparksRemaining: number }
+  | { kind: 'limit'; question: string }
+  | { kind: 'quota_exceeded'; question: string }
   | { kind: 'error'; question: string; message: string }
 
 // ── Spark dots ────────────────────────────────────────────────────────────────
@@ -266,6 +270,114 @@ function LightLoadingSkeleton() {
   )
 }
 
+// ── Spark limit banner ────────────────────────────────────────────────────────
+interface SparkLimitBannerProps {
+  question: string
+  isSignedIn: boolean
+  onViewPricing: () => void
+  onReset: () => void
+}
+
+function SparkLimitBanner({ question, isSignedIn, onViewPricing, onReset }: SparkLimitBannerProps) {
+  const PERKS = [
+    'Unlimited sparks & deep-dive questions',
+    'Full AI learning journey builder',
+    'Capability Passport & progress tracking',
+  ]
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 pb-12 animate-in">
+      <div className="bg-white dark:bg-slate-900 border border-violet-200 dark:border-violet-800/50 rounded-3xl overflow-hidden shadow-lg shadow-violet-100/40 dark:shadow-violet-900/20">
+        {/* Accent bar */}
+        <div className="h-1 bg-gradient-to-r from-violet-500 to-cyan-500" />
+
+        <div className="p-6 sm:p-8">
+          {/* Dots — all spent */}
+          <div className="flex justify-center mb-5">
+            <div className="flex flex-col items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <div key={i} className="w-3 h-3 rounded-full bg-slate-200 dark:bg-slate-700" />
+                ))}
+              </div>
+              <span className="text-xs text-slate-400 font-medium">0 of 5 sparks remaining</span>
+            </div>
+          </div>
+
+          {/* Icon + heading */}
+          <div className="flex justify-center mb-3">
+            <div className="w-12 h-12 rounded-2xl bg-violet-50 dark:bg-violet-900/30 border border-violet-100 dark:border-violet-800/40 flex items-center justify-center">
+              <Lock size={22} className="text-violet-600 dark:text-violet-400" />
+            </div>
+          </div>
+
+          <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 text-center mb-2">
+            You've used all 5 free sparks
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400 text-sm text-center mb-6 leading-relaxed">
+            {isSignedIn
+              ? 'Upgrade your plan to keep exploring with unlimited sparks and full journey access.'
+              : 'Create a free account for unlimited sparks, full journeys, and your Capability Passport.'}
+          </p>
+
+          {/* Perks list */}
+          <ul className="space-y-2.5 mb-6">
+            {PERKS.map(perk => (
+              <li key={perk} className="flex items-center gap-2.5 text-sm text-slate-600 dark:text-slate-400">
+                <Check size={14} className="text-emerald-500 shrink-0" />
+                {perk}
+              </li>
+            ))}
+          </ul>
+
+          {/* CTAs */}
+          {isSignedIn ? (
+            <button
+              onClick={onViewPricing}
+              className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2"
+            >
+              <Zap size={14} fill="currentColor" />
+              Upgrade — view pricing plans
+            </button>
+          ) : (
+            <>
+              <GoogleSignInButton label="Create free account with Google" />
+
+              <div className="flex items-center gap-3 my-4">
+                <div className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
+                <span className="text-xs text-slate-400">or already have an account?</span>
+                <div className="flex-1 h-px bg-slate-100 dark:bg-slate-800" />
+              </div>
+
+              <button
+                onClick={onViewPricing}
+                className="w-full py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors flex items-center justify-center gap-1.5"
+              >
+                View pricing plans <ArrowRight size={13} />
+              </button>
+            </>
+          )}
+
+          {/* Original question */}
+          <p className="text-xs text-slate-400 text-center mt-5">
+            You asked:{' '}
+            <span className="italic">
+              "{question.length > 80 ? question.slice(0, 80) + '…' : question}"
+            </span>
+          </p>
+
+          <button
+            onClick={onReset}
+            className="w-full text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 mt-3 transition-colors"
+          >
+            ↑ Ask something else after signing in
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Feature cards ─────────────────────────────────────────────────────────────
 interface FeatureCardProps {
   icon: React.ReactNode
@@ -455,9 +567,10 @@ export default function Home() {
     } catch (err: unknown) {
       const e = err as { status?: number; message?: string }
       if (e.status === 429) {
-        setGateReason('limit')
-        setGateOpen(true)
-        setPhase({ kind: 'hero' })
+        setSessionSparks({ used: 5, remaining: 0 })
+        setPhase({ kind: 'limit', question })
+      } else if (e.status === 402) {
+        setPhase({ kind: 'quota_exceeded', question })
       } else {
         setPhase({ kind: 'error', question, message: e.message ?? 'Something went wrong.' })
       }
@@ -585,6 +698,15 @@ export default function Home() {
       <div ref={resultRef}>
         {phase.kind === 'loading' && <LightLoadingSkeleton />}
 
+        {phase.kind === 'limit' && (
+          <SparkLimitBanner
+            question={phase.question}
+            isSignedIn={!!user}
+            onViewPricing={() => navigate('/pricing')}
+            onReset={() => setPhase({ kind: 'hero' })}
+          />
+        )}
+
         {phase.kind === 'sparked' && (
           <LightSparkResult
             question={phase.question}
@@ -597,6 +719,14 @@ export default function Home() {
             onReset={() => setPhase({ kind: 'hero' })}
             onUpgrade={() => { setGateReason('limit'); setGateOpen(true) }}
           />
+        )}
+
+        {phase.kind === 'quota_exceeded' && (
+          <div className="max-w-2xl mx-auto px-4 pb-12">
+            <div className="glass-card rounded-2xl p-6">
+              <StepUpgradePanel />
+            </div>
+          </div>
         )}
 
         {phase.kind === 'error' && (

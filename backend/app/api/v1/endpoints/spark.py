@@ -1,4 +1,5 @@
 import logging
+import openai as _openai
 from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Optional
 from app.models.schemas import SparkRequest, SparkResponse
@@ -61,6 +62,9 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
     except ValueError as e:
         logger.error("spark parse error [%s]: %s", body.question[:80], e, exc_info=True)
         raise HTTPException(status_code=502, detail=str(e))
+    except _openai.RateLimitError:
+        logger.warning("openai quota exceeded for spark [%s]", body.question[:80])
+        raise HTTPException(status_code=402, detail={"error": "quota_exceeded", "upgrade_url": "/pricing"})
     except Exception as e:
         logger.error("spark generation failed [%s]: %s", body.question[:80], e, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Spark generation failed: {e}")
