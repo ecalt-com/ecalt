@@ -15,7 +15,6 @@ const PUBLIC_LINKS = [
 const AUTH_LINKS = [
   { to: '/explore', label: 'Explore' },
   { to: '/journeys', label: 'Journeys' },
-  { to: '/learn', label: 'Clarify' },
   { to: '/passport', label: 'Passport' },
   { to: '/mind-signature', label: 'Mind Signature' },
 ]

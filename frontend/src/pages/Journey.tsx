@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Clock, BookOpen, Share2, Award, TrendingUp, Loader2 } from 'lucide-react'
+import { ArrowLeft, Clock, BookOpen, Share2, Award, TrendingUp, Loader2, MessageCircle } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import StepNode from '../components/StepNode'
 import PageMeta from '../components/PageMeta'
+import JourneyTutor from '../components/journey/JourneyTutor'
 import { getJourney, getJourneys, getProgress, getJourneySuggestions, markStepComplete } from '../lib/api'
 import type { JourneySuggestions } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
@@ -119,6 +120,7 @@ export default function Journey() {
   const [error, setError] = useState<string | null>(null)
   const [showCompletion, setShowCompletion] = useState(false)
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null)
+  const [tutorOpen, setTutorOpen] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -131,6 +133,7 @@ export default function Journey() {
     setLoading(true)
     setShowCompletion(false)
     setExpandedStepId(null)
+    setTutorOpen(false)
 
     // Client-side fallback when the suggestions endpoint is unavailable
     const relatedByTags = (j: JourneyType, token?: string) => {
@@ -259,10 +262,13 @@ export default function Journey() {
 
       <Navigation />
 
-      <div className="relative min-h-screen pt-24 pb-20 px-4 max-w-3xl mx-auto">
+      <div className="relative min-h-screen pt-20 sm:pt-24 pb-24 px-4 sm:px-6">
+        <div className="max-w-7xl mx-auto flex gap-6 items-start">
+        {/* Journey content column */}
+        <div className="flex-1 min-w-0 max-w-3xl">
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 mb-8 transition-colors group"
+          className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:hover:text-slate-300 mb-5 sm:mb-8 transition-colors group"
         >
           <ArrowLeft size={14} className="group-hover:-translate-x-0.5 transition-transform" />
           Back
@@ -284,68 +290,107 @@ export default function Journey() {
 
         {journey && !loading && (
           <div className="animate-in">
-            <div className="mb-10">
-              <div className="flex items-start gap-3 mb-5">
-                <span className="text-4xl sm:text-5xl shrink-0">{journey.icon}</span>
-                <div>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Learning Journey</p>
-                  <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-100 leading-tight">{journey.title}</h1>
+            {/* ── Hero card ── */}
+            <div className="relative rounded-3xl overflow-hidden mb-8 border border-violet-200/40 dark:border-violet-500/20 shadow-xl shadow-violet-500/5">
+              {/* Background gradient */}
+              <div className="absolute inset-0 bg-gradient-to-br from-violet-50 via-white to-indigo-50/60 dark:from-slate-900 dark:via-slate-900/95 dark:to-indigo-950/40" />
+              <div className="absolute top-0 right-0 w-64 h-64 bg-violet-400/8 dark:bg-violet-500/8 rounded-full blur-3xl" />
+
+              <div className="relative p-5 sm:p-8">
+                {/* Icon + badges + title */}
+                <div className="flex items-start gap-3 sm:gap-4 mb-4 sm:mb-5">
+                  <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-500/15 dark:to-indigo-500/10 flex items-center justify-center text-3xl sm:text-5xl shrink-0 shadow-inner border border-violet-100 dark:border-violet-500/20">
+                    {journey.icon}
+                  </div>
+                  <div className="flex-1 min-w-0 pt-0.5">
+                    <div className="flex flex-wrap items-center gap-1.5 mb-2">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-500/20 text-violet-700 dark:text-violet-300 text-[10px] font-bold uppercase tracking-widest">
+                        <BookOpen size={9} />Journey
+                      </span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border border-violet-300/60 dark:border-violet-500/30 text-violet-700 dark:text-violet-300 capitalize">
+                        {journey.difficulty}
+                      </span>
+                    </div>
+                    <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-50 leading-tight">
+                      {journey.title}
+                    </h1>
+                  </div>
                 </div>
-              </div>
 
-              <p className="text-slate-500 leading-relaxed mb-5">{journey.description}</p>
+                <p className="text-slate-500 dark:text-slate-400 leading-relaxed mb-5 text-sm">
+                  {journey.description}
+                </p>
 
-              <div className="flex flex-wrap gap-2 mb-5">
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border border-slate-200 bg-slate-100/60 text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
-                  <BookOpen size={11} />{steps.length} steps
-                </span>
-                <span className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs border border-slate-200 bg-slate-100/60 text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-400">
-                  <Clock size={11} />~{journey.estimated_hours}h
-                </span>
-                <span className="px-3 py-1.5 rounded-full text-xs border border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300 capitalize">
-                  {journey.difficulty}
-                </span>
-              </div>
-
-              <div className="mb-6">
-                <div className="flex justify-between text-xs text-slate-500 mb-1.5">
-                  <span>{completed} / {steps.length} completed</span>
-                  <span>{progress}%</span>
+                {/* Stats row */}
+                <div className="flex flex-wrap gap-2 mb-5">
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/50 shadow-sm">
+                    <BookOpen size={12} className="text-violet-500" />
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">{steps.length} steps</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/70 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/50 shadow-sm">
+                    <Clock size={12} className="text-violet-500" />
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">~{journey.estimated_hours}h</span>
+                  </div>
+                  {progress > 0 && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/70 dark:border-emerald-500/20 shadow-sm">
+                      <Award size={12} className="text-emerald-500" />
+                      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-400">{completed}/{steps.length} done</span>
+                    </div>
+                  )}
                 </div>
-                <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-violet-600 to-cyan-500 rounded-full transition-all duration-700"
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-              </div>
 
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button onClick={startJourney} className="btn-primary text-center">
-                  {completed === 0 ? 'Start Journey' : 'Continue'}
-                </button>
-                <button
-                  onClick={async () => {
-                    const url = window.location.href
-                    const title = journey.title
-                    if (navigator.share) {
-                      try { await navigator.share({ title, url }) } catch { /* cancelled */ }
-                    } else {
-                      await navigator.clipboard.writeText(url)
-                      addToast('Link copied to clipboard')
-                    }
-                  }}
-                  className="btn-ghost flex items-center justify-center gap-1.5"
-                >
-                  <Share2 size={13} />Share
-                </button>
+                {/* Progress */}
+                <div className="mb-5">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                      {progress === 0 ? 'Not started' : progress === 100 ? 'Complete!' : 'In progress'}
+                    </span>
+                    <span className="text-xs font-bold text-violet-600 dark:text-violet-400">{progress}%</span>
+                  </div>
+                  <div className="h-2 bg-slate-200/80 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-violet-600 to-cyan-500 rounded-full transition-all duration-700 relative"
+                      style={{ width: `${progress}%` }}
+                    >
+                      {progress > 0 && progress < 100 && (
+                        <span className="absolute right-0 top-0 bottom-0 w-1 bg-white/40 rounded-full animate-pulse" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions — full width on xs, inline from sm */}
+                <div className="flex flex-col xs:flex-row sm:flex-row gap-2 sm:gap-3">
+                  <button
+                    onClick={startJourney}
+                    className="btn-primary flex items-center justify-center gap-2 w-full sm:w-auto"
+                  >
+                    <TrendingUp size={14} />
+                    {completed === 0 ? 'Start Journey' : 'Continue'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      const url = window.location.href
+                      const title = journey.title
+                      if (navigator.share) {
+                        try { await navigator.share({ title, url }) } catch { /* cancelled */ }
+                      } else {
+                        await navigator.clipboard.writeText(url)
+                        addToast('Link copied to clipboard')
+                      }
+                    }}
+                    className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
+                  >
+                    <Share2 size={13} />Share
+                  </button>
+                </div>
               </div>
             </div>
 
             <div className="flex items-center gap-3 mb-8">
-              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-              <span className="text-xs text-slate-400 uppercase tracking-widest">Learning Path</span>
-              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+              <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-200 dark:via-slate-800 to-transparent" />
+              <span className="text-xs text-slate-400 dark:text-slate-600 uppercase tracking-widest font-medium">Learning Path</span>
+              <div className="flex-1 h-px bg-gradient-to-r from-transparent via-slate-200 dark:via-slate-800 to-transparent" />
             </div>
 
             {steps.map((step, i) => (
@@ -411,6 +456,63 @@ export default function Journey() {
               </div>
             )}
           </div>
+        )}
+        </div>{/* end content column */}
+
+        {/* Tutor sidebar — desktop/large iPad */}
+        {user && journey && (
+          <div className="hidden lg:flex flex-col w-80 xl:w-96 shrink-0 sticky top-24 h-[calc(100dvh-7rem)]">
+            <JourneyTutor
+              journeyId={id!}
+              journeyTitle={journey.title}
+              currentStepId={expandedStepId}
+              currentStepTitle={steps.find(s => s.id === expandedStepId)?.title ?? null}
+              getToken={getToken}
+            />
+          </div>
+        )}
+        </div>{/* end flex wrapper */}
+
+        {/* Tutor — mobile/iPad floating button + bottom-sheet overlay */}
+        {user && journey && (
+          <>
+            {!tutorOpen && (
+              <button
+                onClick={() => setTutorOpen(true)}
+                className="lg:hidden fixed bottom-6 right-5 z-30 flex items-center gap-2 pl-4 pr-5 py-3 rounded-2xl bg-violet-600 text-white shadow-xl shadow-violet-500/30 hover:bg-violet-500 active:scale-95 transition-all safe-bottom"
+                style={{ bottom: 'max(1.5rem, calc(1rem + env(safe-area-inset-bottom)))' }}
+              >
+                <MessageCircle size={16} />
+                <span className="text-sm font-semibold">Ask Tutor</span>
+              </button>
+            )}
+            {tutorOpen && (
+              <div className="lg:hidden fixed inset-0 z-40 flex flex-col justify-end">
+                <div
+                  className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                  onClick={() => setTutorOpen(false)}
+                />
+                {/* Bottom sheet — slides up, respects iOS safe area */}
+                <div
+                  className="relative mx-0 rounded-t-3xl overflow-hidden shadow-2xl"
+                  style={{
+                    height: 'min(75vh, 640px)',
+                    paddingBottom: 'env(safe-area-inset-bottom)',
+                  }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <JourneyTutor
+                    journeyId={id!}
+                    journeyTitle={journey.title}
+                    currentStepId={expandedStepId}
+                    currentStepTitle={steps.find(s => s.id === expandedStepId)?.title ?? null}
+                    getToken={getToken}
+                    onClose={() => setTutorOpen(false)}
+                  />
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 

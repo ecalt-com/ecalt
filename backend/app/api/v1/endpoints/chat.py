@@ -13,13 +13,15 @@ router = APIRouter()
 
 # Only these interaction types are valid for the chat streaming endpoint.
 # An unknown type would produce an empty system prompt, bypassing all safety rules.
-_ALLOWED_INTERACTION_TYPES = {"daily_chat", "onboarding"}
+_ALLOWED_INTERACTION_TYPES = {"daily_chat", "onboarding", "journey_tutor"}
 
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=2000)
     conversation_id: Optional[str] = None
     interaction_type: str = Field("daily_chat")
+    journey_id: Optional[str] = None
+    step_id: Optional[str] = None
 
 
 @router.post("/stream")
@@ -39,6 +41,8 @@ async def chat_stream(request: Request, body: ChatRequest, uid: str = Depends(ge
             user_message=body.message,
             conversation_id=body.conversation_id,
             interaction_type=body.interaction_type,
+            journey_id=body.journey_id,
+            step_id=body.step_id,
         ),
         media_type="text/event-stream",
         headers={

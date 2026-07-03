@@ -441,6 +441,9 @@ DEFAULT_STYLE_PROMPTS: dict[str, str] = {
     "journey":              _JOURNEY_STYLE_DEFAULT,
     "step_content":         _STEP_CONTENT_STYLE_DEFAULT,
     "quiz":                 _QUIZ_STYLE_DEFAULT,
+    # journey_tutor style prompt is built dynamically in chat_service.py
+    # using _JOURNEY_TUTOR_SYSTEM_TEMPLATE; this entry provides model/provider defaults
+    "journey_tutor":        _CHAT_STYLE_DEFAULT,
 }
 
 # ── Available models ──────────────────────────────────────────────────────────
@@ -474,6 +477,7 @@ DEFAULT_CONFIG: dict[str, dict] = {
     "journey":              {"provider": "openai", "model": "gpt-4o-mini"},
     "step_content":         {"provider": "openai", "model": "gpt-4o-mini"},
     "quiz":                 {"provider": "openai", "model": "gpt-4o-mini"},
+    "journey_tutor":        {"provider": "openai", "model": "gpt-4.1-nano"},
 }
 
 # Cost per token in cents (input, output)
