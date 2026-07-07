@@ -181,6 +181,8 @@ async def explore_confirm(
             description=s["description"],
             type=s["type"],
             estimated_minutes=int(s["estimated_minutes"]),
+            core_question=s.get("core_question"),
+            seed_facts=s.get("seed_facts"),
         )
         for s in data["steps"]
     ]
@@ -234,12 +236,10 @@ async def explore_confirm(
 
     background_tasks.add_task(
         warm_journey_steps,
-        journey.id,
-        journey.steps,
-        journey.title,
-        journey.question,
-        age_group,
+        journey,
         uid,
+        data.get("learner_purpose"),
+        data.get("topic_expertise"),
     )
 
     return ExploreResponse(journey=journey)
@@ -322,12 +322,10 @@ async def explore(
 
     background_tasks.add_task(
         warm_journey_steps,
-        journey.id,
-        journey.steps,
-        journey.title,
-        journey.question,
-        journey.age_group,
+        journey,
         uid,
+        request.learner_purpose,
+        request.topic_expertise,
     )
 
     return ExploreResponse(journey=journey)

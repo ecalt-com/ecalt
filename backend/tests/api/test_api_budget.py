@@ -307,8 +307,10 @@ class TestJourneyStepContent:
         assert res.status_code == 401
 
     def test_cache_hit_returns_200_without_budget_check(self, client):
-        """Cached content is served for free — no budget check."""
-        cached_row = {"content": "cached lesson content here"}
+        """Cached content at the current prompt version is served for free — no budget check."""
+        from app.services.ai_service import CONTENT_PROMPT_VERSION
+        cached_row = {"content": "cached lesson content here",
+                      "prompt_version": CONTENT_PROMPT_VERSION}
 
         check_budget_mock = MagicMock(return_value=(True, "ok"))
 
@@ -351,7 +353,7 @@ class TestJourneyStepContent:
              patch("app.api.v1.endpoints.journeys.get_config",      return_value={"model": "gpt-4o-mini"}), \
              patch("app.api.v1.endpoints.journeys.generate_step_content",
                    new_callable=AsyncMock,
-                   return_value=("lesson text here", 100, 200)):
+                   return_value=("lesson text here", [], 100, 200)):
             res = client.get(self.URL)
 
         assert res.status_code == 200
@@ -369,7 +371,9 @@ class TestJourneyStepContent:
         def fake_record(*args, **kwargs):
             usage_recorded.append(args)
 
-        with patch("app.api.v1.endpoints.journeys.get_db",      mock_db({"content": "cached"})), \
+        from app.services.ai_service import CONTENT_PROMPT_VERSION
+        cached_row = {"content": "cached", "prompt_version": CONTENT_PROMPT_VERSION}
+        with patch("app.api.v1.endpoints.journeys.get_db",      mock_db(cached_row)), \
              patch("app.api.v1.endpoints.journeys.record_usage", side_effect=fake_record):
             res = client.get(self.URL)
 

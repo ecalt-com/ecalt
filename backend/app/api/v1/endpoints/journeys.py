@@ -2,13 +2,21 @@ import json
 import logging
 import openai as _openai
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Response
-from pydantic import BaseModel
-from typing import Optional
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Request, Response
+from pydantic import BaseModel, Field
+from typing import Literal, Optional
 from app.models.schemas import Journey, JourneyStep, JourneysResponse, JourneyWithProgress, StepContentResponse
 from app.core.auth import get_optional_user, get_required_user, get_optional_acting_uid, get_acting_uid
 from app.core.database import get_db
-from app.services.ai_service import generate_step_content, generate_journey
+from app.core.limiter import limiter
+from app.services.ai_service import (
+    CONTENT_PROMPT_VERSION,
+    _anchor_facts,
+    _covered_block,
+    generate_step_content,
+    generate_journey,
+    upsert_step_content,
+)
 from app.services.subscription_service import check_budget, record_usage
 from app.services.provider_service import get_config
 from app.services.suggestion_service import generate_next_level, pick_suggestions
@@ -570,6 +578,107 @@ async def journey_suggestions(journey_id: str, ctx: tuple = Depends(get_acting_u
     )
 
 
+# ── Step content generation context helpers ──────────────────────────────────
+
+def _journey_learner_context(journey_id: str) -> tuple[Optional[str], Optional[str]]:
+    """Fetch (learner_purpose, topic_expertise) captured when the journey was created."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT learner_purpose, topic_expertise FROM journeys WHERE id = %s",
+                    (journey_id,),
+                )
+                row = cur.fetchone()
+                if row:
+                    return row.get("learner_purpose"), row.get("topic_expertise")
+    except Exception:
+        logger.debug("learner context fetch failed for journey %s", journey_id)
+    return None, None
+
+
+def _step_generation_context(journey: Journey, step_id: str) -> tuple[list[str], tuple[int, int], str]:
+    """Return (outline, position, covered-facts block from earlier cached steps)."""
+    outline = [s.title for s in journey.steps]
+    idx = next((i for i, s in enumerate(journey.steps) if s.id == step_id), 0)
+    position = (idx + 1, len(journey.steps))
+
+    covered: list[str] = []
+    earlier_ids = [s.id for s in journey.steps[:idx]]
+    if earlier_ids:
+        try:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT step_id, quiz_anchors FROM step_content "
+                        "WHERE journey_id = %s AND step_id = ANY(%s)",
+                        (journey.id, earlier_ids),
+                    )
+                    by_id = {r["step_id"]: r["quiz_anchors"] for r in cur.fetchall()}
+            for sid in earlier_ids:
+                if sid in by_id:
+                    covered.extend(_anchor_facts(by_id[sid]))
+        except Exception:
+            logger.debug("covered-facts fetch failed for journey %s", journey.id)
+    return outline, position, _covered_block(covered)
+
+
+async def _generate_step_for_journey(
+    journey: Journey,
+    step: JourneyStep,
+    uid: str,
+    refinement_note: Optional[str] = None,
+) -> tuple[str, list[dict], int, int]:
+    learner_purpose, topic_expertise = _journey_learner_context(journey.id)
+    outline, position, covered = _step_generation_context(journey, step.id)
+    return await generate_step_content(
+        step_title=step.title,
+        step_description=step.description,
+        step_type=step.type,
+        journey_title=journey.title,
+        journey_question=journey.question,
+        age_group=journey.age_group,
+        uid=uid,
+        difficulty=journey.difficulty,
+        learner_purpose=learner_purpose,
+        topic_expertise=topic_expertise,
+        journey_outline=outline,
+        step_position=position,
+        covered_facts=covered or None,
+        core_question=step.core_question,
+        seed_facts=step.seed_facts,
+        refinement_note=refinement_note,
+    )
+
+
+async def _regenerate_step_task(
+    journey_id: str,
+    step_id: str,
+    uid: str,
+    refinement_note: Optional[str] = None,
+) -> None:
+    """Background: regenerate a cached step at current quality. Never raises."""
+    try:
+        allowed, _ = check_budget(uid)
+        if not allowed:
+            return
+        journey = _db_journey(journey_id) or _journey_map.get(journey_id)
+        if not journey:
+            return
+        step = next((s for s in journey.steps if s.id == step_id), None)
+        if not step:
+            return
+        content, quiz_anchors, in_tok, out_tok = await _generate_step_for_journey(
+            journey, step, uid, refinement_note
+        )
+        model = get_config("step_content")["model"]
+        upsert_step_content(journey_id, step_id, content, quiz_anchors, model, overwrite=True)
+        record_usage(uid, in_tok, out_tok, model, interaction_type="step_content")
+    except Exception:
+        logger.warning("background step regeneration failed journey=%s step=%s",
+                       journey_id, step_id, exc_info=True)
+
+
 @router.get(
     "/{journey_id}/steps/{step_id}/content",
     response_model=StepContentResponse,
@@ -578,20 +687,31 @@ async def journey_suggestions(journey_id: str, ctx: tuple = Depends(get_acting_u
 async def get_step_content(
     journey_id: str,
     step_id: str,
+    background_tasks: BackgroundTasks,
     ctx: tuple = Depends(get_acting_uid),
 ):
-    """Returns AI-generated lesson content for a step. Checks cache first."""
+    """Returns AI-generated lesson content for a step. Checks cache first.
+
+    Cached content generated under an older prompt version is served immediately
+    and refreshed in the background, so quality improvements reach existing
+    journeys without blocking the reader.
+    """
     uid, _ = ctx
     # Check cache
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT content FROM step_content WHERE journey_id = %s AND step_id = %s",
+                    "SELECT content, prompt_version FROM step_content "
+                    "WHERE journey_id = %s AND step_id = %s",
                     (journey_id, step_id),
                 )
                 cached = cur.fetchone()
                 if cached:
+                    if (cached.get("prompt_version") or 1) < CONTENT_PROMPT_VERSION:
+                        background_tasks.add_task(
+                            _regenerate_step_task, journey_id, step_id, uid, None
+                        )
                     return StepContentResponse(
                         journey_id=journey_id, step_id=step_id,
                         content=cached["content"], cached=True,
@@ -613,14 +733,8 @@ async def get_step_content(
         raise HTTPException(status_code=404, detail="Step not found")
 
     try:
-        content, quiz_anchors, in_tok, out_tok = await generate_step_content(
-            step_title=step.title,
-            step_description=step.description,
-            step_type=step.type,
-            journey_title=journey.title,
-            journey_question=journey.question,
-            age_group=journey.age_group,
-            uid=uid,
+        content, quiz_anchors, in_tok, out_tok = await _generate_step_for_journey(
+            journey, step, uid
         )
     except ValueError as e:
         logger.warning("step content upstream error", extra={"journey_id": journey_id, "step_id": step_id, "error": str(e)})
@@ -637,22 +751,122 @@ async def get_step_content(
 
     # Cache result
     try:
-        import json as _json
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO step_content (journey_id, step_id, content, quiz_anchors)
-                    VALUES (%s, %s, %s, %s::jsonb)
-                    ON CONFLICT (journey_id, step_id) DO UPDATE SET
-                        content = EXCLUDED.content,
-                        quiz_anchors = EXCLUDED.quiz_anchors
-                    """,
-                    (journey_id, step_id, content, _json.dumps(quiz_anchors)),
-                )
+        upsert_step_content(journey_id, step_id, content, quiz_anchors,
+                            get_config("step_content")["model"], overwrite=True)
     except Exception:
         pass
 
     return StepContentResponse(
         journey_id=journey_id, step_id=step_id, content=content, cached=False,
     )
+
+
+@router.post(
+    "/{journey_id}/steps/{step_id}/content/regenerate",
+    response_model=StepContentResponse,
+    summary="Regenerate step content (fresh, more specific take)",
+)
+@limiter.limit("10/hour")
+async def regenerate_step_content(
+    request: Request,
+    journey_id: str,
+    step_id: str,
+    ctx: tuple = Depends(get_acting_uid),
+):
+    """Force-regenerates a step's content, overwriting the cache."""
+    uid, _ = ctx
+    allowed, reason = check_budget(uid)
+    if not allowed:
+        raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
+
+    journey = _db_journey(journey_id) or _journey_map.get(journey_id)
+    if not journey:
+        raise HTTPException(status_code=404, detail="Journey not found")
+    step = next((s for s in journey.steps if s.id == step_id), None)
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+
+    try:
+        content, quiz_anchors, in_tok, out_tok = await _generate_step_for_journey(
+            journey, step, uid,
+            refinement_note=(
+                "The learner asked for a fresh take on this step. Produce substantially "
+                "different content: different examples, different angle, more specific detail."
+            ),
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except _openai.RateLimitError:
+        raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.")
+    except Exception:
+        logger.exception("step regeneration failed", extra={"journey_id": journey_id, "step_id": step_id})
+        raise HTTPException(status_code=500, detail="Failed to regenerate step content.")
+
+    model = get_config("step_content")["model"]
+    record_usage(uid, in_tok, out_tok, model, interaction_type="step_content")
+    try:
+        upsert_step_content(journey_id, step_id, content, quiz_anchors, model, overwrite=True)
+    except Exception:
+        logger.exception("failed to cache regenerated step content")
+
+    return StepContentResponse(
+        journey_id=journey_id, step_id=step_id, content=content, cached=False,
+    )
+
+
+# ── Step feedback ─────────────────────────────────────────────────────────────
+
+_REGEN_FEEDBACK_NOTES = {
+    "too_generic":  "The learner flagged the previous version as too generic. Rewrite with "
+                    "concrete named examples, real numbers, and explicit mechanisms specific to this topic.",
+    "too_basic":    "The learner flagged the previous version as too basic. Go deeper: mechanisms, "
+                    "edge cases, and nuance — assume they already know the fundamentals.",
+    "too_advanced": "The learner flagged the previous version as too advanced. Rebuild from concrete "
+                    "everyday examples, define every term, and add one relatable analogy.",
+}
+
+
+class StepFeedbackRequest(BaseModel):
+    rating: Literal["up", "down"]
+    tag: Optional[Literal["too_generic", "too_basic", "too_advanced", "inaccurate", "loved_it"]] = None
+    comment: Optional[str] = Field(None, max_length=500)
+
+
+@router.post(
+    "/{journey_id}/steps/{step_id}/feedback",
+    summary="Rate step content; negative tags trigger a background regeneration",
+)
+async def step_feedback(
+    journey_id: str,
+    step_id: str,
+    body: StepFeedbackRequest,
+    background_tasks: BackgroundTasks,
+    ctx: tuple = Depends(get_acting_uid),
+):
+    uid, _ = ctx
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO step_feedback (uid, journey_id, step_id, rating, tag, comment)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (uid, journey_id, step_id) DO UPDATE SET
+                        rating = EXCLUDED.rating,
+                        tag = EXCLUDED.tag,
+                        comment = EXCLUDED.comment,
+                        created_at = now()
+                    """,
+                    (uid, journey_id, step_id, body.rating, body.tag, body.comment),
+                )
+    except Exception:
+        logger.exception("failed to store step feedback")
+        raise HTTPException(status_code=500, detail="Failed to save feedback")
+
+    regenerating = False
+    note = _REGEN_FEEDBACK_NOTES.get(body.tag or "")
+    if note:
+        background_tasks.add_task(_regenerate_step_task, journey_id, step_id, uid, note)
+        regenerating = True
+
+    return {"ok": True, "regenerating": regenerating}

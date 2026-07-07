@@ -159,7 +159,8 @@ class TestNoUnknownInteractionType:
     KNOWN_INTERACTION_TYPES = {
         "daily_chat", "onboarding", "fingerprint", "mind_signature",
         "spark", "daily_spark", "knowledge_extraction",
-        "journey", "step_content", "quiz", "nudge",
+        "journey", "step_content", "content_critic", "quiz", "nudge",
+        "journey_tutor",
     }
 
     def test_all_provider_default_config_types_are_known(self):

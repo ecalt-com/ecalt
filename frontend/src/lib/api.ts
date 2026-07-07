@@ -94,6 +94,26 @@ export interface StepContent {
 export const getStepContent = (journeyId: string, stepId: string, token?: string): Promise<StepContent> =>
   request(`/api/v1/journeys/${journeyId}/steps/${stepId}/content`, undefined, token)
 
+// Synchronous full rewrite of a step's content (rate-limited server-side).
+export const regenerateStepContent = (journeyId: string, stepId: string, token: string): Promise<StepContent> =>
+  request(`/api/v1/journeys/${journeyId}/steps/${stepId}/content/regenerate`, { method: 'POST' }, token)
+
+export type StepFeedbackTag = 'too_generic' | 'too_basic' | 'too_advanced' | 'inaccurate' | 'loved_it'
+
+export interface StepFeedbackResponse {
+  ok: boolean
+  // true when a negative tag triggered a background rewrite of the step
+  regenerating: boolean
+}
+
+export const submitStepFeedback = (
+  journeyId: string,
+  stepId: string,
+  body: { rating: 'up' | 'down'; tag?: StepFeedbackTag; comment?: string },
+  token: string,
+): Promise<StepFeedbackResponse> =>
+  request(`/api/v1/journeys/${journeyId}/steps/${stepId}/feedback`, { method: 'POST', body: JSON.stringify(body) }, token)
+
 export interface UserProfile {
   uid: string
   email?: string

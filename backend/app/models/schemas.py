@@ -17,6 +17,8 @@ class JourneyStep(BaseModel):
     estimated_minutes: int = Field(..., description="Estimated time to complete the step, in minutes", gt=0)
     completed: bool = Field(False, description="Whether the learner has completed this step")
     content: Optional[str] = Field(None, description="Full step content / lesson body (populated on demand)")
+    core_question: Optional[str] = Field(None, description="The one question this step answers (seeds content generation)")
+    seed_facts: Optional[List[str]] = Field(None, description="Specific facts/examples the step content is built around")
 
     model_config = {
         "json_schema_extra": {

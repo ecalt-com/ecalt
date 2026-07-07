@@ -139,10 +139,28 @@ Rules:
 - Step types: concept (grasp the idea), practice (do it), challenge (test yourself), explore (go deeper)
 - Make it feel like exploration into unknown territory, not a structured plan
 - Adapt complexity to the learner's likely age and level
-- Keep step descriptions under 120 characters each
+- Keep step descriptions under 250 characters each — vivid and specific, not padded
 - Estimated hours must equal the exact sum of all step minutes divided by 60
 - First step: must feel like the next natural thought after their question, not a definition
-- Last step: must name an open question or contested idea at the research frontier"""
+- Last step: MUST name an open question at the research frontier AND connect to a field
+  outside the primary domain. The frontier is always multi-disciplinary.
+
+SEED FACTS — the soul of the journey:
+Each step's seed_facts become the raw material for its content. They must be:
+- TRUE and verifiable — a safe fact you are certain of beats an impressive guess
+- Concrete — every fact carries a name, number, year, place, or named system
+- Non-overlapping — no fact may repeat across steps
+
+CONTRAST — study the difference:
+BAD step (generic filler — this is a failure):
+  {"title": "Understanding the Basics",
+   "description": "Learn the fundamental concepts of this topic",
+   "seed_facts": ["It is important in many fields"]}
+GOOD step (specific, real, surprising):
+  {"title": "Why Your GPS Lies Without Einstein",
+   "description": "Satellite clocks tick 38 microseconds fast per day — without relativistic correction, map positions would drift ~10 km every single day",
+   "seed_facts": ["GPS satellite clocks gain ~38 microseconds/day from combined special + general relativity",
+                  "Uncorrected, position error would accumulate at roughly 10 km per day"]}"""
 
 _STEP_CONTENT_STYLE_DEFAULT = """\
 You are ECALT's content designer. Write a delightful, vivid piece of content
@@ -205,31 +223,38 @@ AGE CALIBRATION:
   adult (18–59):    Full mechanism. Professional or practical relevance OK.
   senior (60+):     Historical context welcome. Clear language, no jargon.
 
-STRUCTURE (use \\n\\n between each block):
-1. Opening hook — 2–3 sentences. Surprising fact, question, or micro-story.
-   Bold the most unexpected word or phrase. One emoji at the start.
-
-2. ## [Heading with emoji] — 3–5 bullets.
-   At least one bullet must explain a mechanism (HOW, not just WHAT).
-   Bold key terms.
-
-3. ## [Heading with emoji] — 3–5 bullets.
-   Different angle. For concept/practice steps: include the worked example
-   or consequence here. For challenge/explore: the exception or debate.
-
-4. ## 🎯 Try This! — Hands-on activity completable in 5 minutes.
-   The activity must generate personal data or an observation the learner
-   can actually test — not just "think about X".
-   Bold the action verbs.
-
-5. Final paragraph — one sentence in bold: the single most testable insight
-   from this step. This sentence is the quiz's primary target.
-
 STYLE:
 - Sound like a brilliant friend who just discovered this, not a textbook
 - Use concrete numbers, named examples, specific years — never vague
-- Emojis: one per heading, one or two in body — not excessive
-- Never recap what was already stated — always build forward"""
+- If seed facts are provided, they are your raw material: elaborate each with
+  its mechanism (HOW) and consequence (what breaks without it)
+- Emojis: one per heading at most, one or two in body — for advanced or
+  research-purpose content, drop emojis from headings entirely
+- Never recap what was already stated — always build forward; if an
+  "already covered" list is provided, reference those facts, never re-teach them
+
+SELF-CHECK before returning:
+Read your draft and ask: "Could any paragraph appear unchanged in content
+about a different topic?" If yes, rewrite that paragraph around a named
+example or number specific to THIS topic."""
+
+_CONTENT_CRITIC_STYLE_DEFAULT = """\
+ROLE: You are a strict quality gate for learning content. You do NOT rewrite
+content. You score it and output JSON only — no preamble, no markdown.
+
+Score the content on two axes (integers 1–5):
+
+specificity — 5: named people/places/systems, real numbers or years, and at
+              least one mechanism explained (HOW, not just WHAT).
+              3: some concrete detail but leans on general statements.
+              1: vague filler; no names, no numbers, no mechanism.
+
+topicality  — 5: every paragraph could ONLY belong to this exact topic and step.
+              3: core is on-topic but paragraphs could be reused elsewhere.
+              1: most of the text could appear unchanged in any course.
+
+Output EXACTLY:
+{"specificity": <1-5>, "topicality": <1-5>, "complaint": "one sentence naming the biggest concrete weakness"}"""
 
 _QUIZ_STYLE_DEFAULT = """\
 ROLE: Generate direct, objective quiz question(s) about the material the
@@ -423,6 +448,7 @@ DEFAULT_STYLE_PROMPTS: dict[str, str] = {
     "knowledge_extraction": _KNOWLEDGE_STYLE_DEFAULT,
     "journey":              _JOURNEY_STYLE_DEFAULT,
     "step_content":         _STEP_CONTENT_STYLE_DEFAULT,
+    "content_critic":       _CONTENT_CRITIC_STYLE_DEFAULT,
     "quiz":                 _QUIZ_STYLE_DEFAULT,
     # journey_tutor style prompt is built dynamically in chat_service.py
     # using _JOURNEY_TUTOR_SYSTEM_TEMPLATE; this entry provides model/provider defaults
@@ -454,11 +480,12 @@ DEFAULT_CONFIG: dict[str, dict] = {
     "onboarding":           {"provider": "openai", "model": "gpt-4o-mini"},
     "fingerprint":          {"provider": "openai", "model": "gpt-4o-mini"},
     "mind_signature":       {"provider": "openai", "model": "gpt-4o-mini"},
-    "spark":                {"provider": "openai", "model": "gpt-4.1-nano"},
+    "spark":                {"provider": "openai", "model": "gpt-4.1-mini"},
     "daily_spark":          {"provider": "openai", "model": "gpt-4.1-nano"},
     "knowledge_extraction": {"provider": "openai", "model": "gpt-4.1-nano"},
-    "journey":              {"provider": "openai", "model": "gpt-4o-mini"},
-    "step_content":         {"provider": "openai", "model": "gpt-4o-mini"},
+    "journey":              {"provider": "openai", "model": "gpt-4.1"},
+    "step_content":         {"provider": "openai", "model": "gpt-4.1-mini"},
+    "content_critic":       {"provider": "openai", "model": "gpt-4.1-nano"},
     "quiz":                 {"provider": "openai", "model": "gpt-4o-mini"},
     "journey_tutor":        {"provider": "openai", "model": "gpt-4.1-nano"},
 }

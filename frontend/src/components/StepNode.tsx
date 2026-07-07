@@ -5,6 +5,7 @@ import type { JourneyStep } from '../lib/types'
 import { getStepContent } from '../lib/api'
 import MarkdownContent from './MarkdownContent'
 import QuizCard from './QuizCard'
+import StepFeedbackBar from './StepFeedbackBar'
 import StepUpgradePanel from './StepUpgradePanel'
 
 const typeConfig = {
@@ -205,6 +206,14 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
               {content && !loadingContent && (
                 <div className="pt-4">
                   <MarkdownContent content={content} />
+                  {!isGuest && (
+                    <StepFeedbackBar
+                      journeyId={journeyId}
+                      stepId={step.id}
+                      getToken={getToken}
+                      onRegenerated={setContent}
+                    />
+                  )}
                   {!isGuest && quizRequired.current && (
                     <QuizCard
                       concept={step.title}
