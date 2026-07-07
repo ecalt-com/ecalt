@@ -333,7 +333,13 @@ async def generate_quiz_set(
         logger.debug("quiz.difficulty_capped step_type=%s cap=%s", step_type, cap)
 
     # Difficulty escalates across the set: Q1 = base, Q2 = base+1, Q3 = base+2, …
-    difficulties  = _progression_difficulties(difficulty, num_questions)
+    # but never past the step-type cap — a first-exposure step must not hand out
+    # mastery-level questions just because it has several questions.
+    difficulties = _progression_difficulties(difficulty, num_questions)
+    difficulties = [
+        _DIFFICULTY_ORDER[min(_DIFFICULTY_ORDER.index(d), cap_idx)]
+        for d in difficulties
+    ]
 
     # Fetch authoritative full content + anchors from DB when available
     anchors: list[dict] = []

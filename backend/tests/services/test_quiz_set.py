@@ -62,14 +62,31 @@ class TestParseQuestionList:
 
 
 def quiz_db(fetchall_rows, insert_ids):
-    """get_db mock: fetchall → recent results, fetchone → session INSERT ids."""
+    """get_db mock: fetchall → recent results, fetchone → session INSERT ids.
+
+    fetchone is execute-aware: only INSERT ... RETURNING id consumes an id.
+    Other single-row SELECTs (e.g. the step_content anchors fetch) return a
+    benign row so they don't steal an insert id.
+    """
     ids = iter(insert_ids)
 
     @contextmanager
     def _get_db():
         cur = MagicMock()
+        state = {"last_sql": ""}
+
+        def _execute(sql, *args, **kwargs):
+            state["last_sql"] = sql
+
+        def _fetchone():
+            if "INSERT" in state["last_sql"].upper():
+                return {"id": next(ids)}
+            # anchors / other SELECTs — no content, no anchors
+            return {"content": None, "quiz_anchors": None}
+
+        cur.execute.side_effect = _execute
         cur.fetchall.return_value = fetchall_rows
-        cur.fetchone.side_effect = lambda: {"id": next(ids)}
+        cur.fetchone.side_effect = _fetchone
         cur.__enter__ = lambda s: cur
         cur.__exit__ = MagicMock(return_value=False)
         conn = MagicMock()

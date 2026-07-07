@@ -232,115 +232,98 @@ STYLE:
 - Never recap what was already stated — always build forward"""
 
 _QUIZ_STYLE_DEFAULT = """\
-ROLE: Generate quiz question(s) about a concept from a learning step.
-Draw ONLY from what the context explicitly states.
+ROLE: Generate direct, objective quiz question(s) about the material the
+learner just studied. Every question must have ONE clear, correct answer
+that is stated in — or directly follows from — the content provided.
+
+GOLDEN RULE — DIRECT AND OBJECTIVE:
+The learner should be able to answer from what they just read. Ask about the
+actual facts, terms, and mechanisms the content covered. Do NOT test cleverness,
+lateral thinking, or the ability to handle situations the content never discussed.
 
 CONTENT BOUNDARY — NON-NEGOTIABLE:
-You may ONLY ask about concepts, facts, or mechanisms that are EXPLICITLY
-STATED in the context provided.
+You may ONLY ask about facts, terms, or mechanisms that are EXPLICITLY STATED
+in the context provided.
 
 Do NOT:
-- Infer beyond what is written
-- Ask about implications the content never draws
-- Reference named techniques, formulas, or people not mentioned in context
-- Ask "why does X fail" if the context never describes how X works
+- Invent a hypothetical scenario, story, or "imagine that…" setup
+- Ask the learner to APPLY the idea to a new situation the content never covered
+- Ask them to find an edge case, exception, contradiction, or "when does this
+  break down" — unless the content itself explicitly describes one
+- Ask them to connect the topic to an open research question or outside field
+- Reference any term, formula, technique, or person not mentioned in the content
 
-If generating your ideal question would require knowledge beyond the context,
-SIMPLIFY the question until it is fully answerable from the context alone.
-A technically brilliant question that cannot be answered from this content
-is a failed question.
+If your first idea for a question needs any knowledge beyond this content,
+throw it out and ask a simpler, more direct question about what the content
+actually says. A direct question every reader can answer beats a clever one.
 
-PRIMARY TARGET:
-The content ends with a bolded sentence — this is the step's single most
-testable insight. Your question should test whether the learner understood
-THAT insight, at the depth level specified by question_depth.
+WHAT A GOOD QUESTION LOOKS LIKE:
+  GOOD (recall a stated fact):
+    "According to what you read, what does a catalyst do to the activation
+     energy of a reaction — and what happens to the catalyst itself?"
+  GOOD (explain a mechanism the content described):
+    "The content explained why ice floats on water. In your own words, what is
+     it about how water molecules arrange when frozen that makes ice less dense?"
+  BAD (invented scenario / application):
+    "A chemist drops an unknown catalyst into a novel reaction at 400°C — predict
+     what happens to the yield." ← content never covered this
+  BAD (invented edge case):
+    "Under what rare condition would ice actually sink?" ← content never said
 
-surface      → Can the learner restate this insight in their own words?
-exploratory  → Can the learner apply this insight to a new scenario?
-deep         → Can the learner identify when this insight breaks down?
-research     → Can the learner connect this insight to an open question
-               in the field?
+CALIBRATE DIFFICULTY TO question_depth — but stay grounded in the content:
+   surface      → Recall a specific fact, term, or definition exactly as the
+                  content stated it. Direct "what / which / how much" question.
+   exploratory  → Ask the learner to explain, in their own words, HOW or WHY
+                  something works — using the mechanism the content described.
+   deep         → Ask them to connect two facts the content explicitly linked,
+                  or explain a multi-step process the content laid out in full.
+                  Still 100% answerable from the content — no outside knowledge.
+   research     → Ask them to summarise the fullest cause-and-effect chain the
+                  content built. Never an open question or outside connection.
 
-QUESTION DESIGN RULES:
-1. Test the MECHANISM, not the label.
-   The context explains HOW something works. Test that explanation.
-
-   BAD  (tests the label): "What is photosynthesis?"
-   BAD  (tests a detail not in content): "What is the quantum yield of PS2?"
-   GOOD (tests the mechanism in content): "A plant is kept in total darkness
-        for 3 days. Which part of photosynthesis stops immediately — and
-        which keeps running briefly on stored molecules? Use what the content
-        explains about the two stages."
-
-   If the content does not explain the mechanism, do not ask about it.
-   Ask about what the content DOES explain, at the appropriate depth.
-
-2. Calibrate difficulty to question_depth provided:
-   surface      → recall a specific insight from the context
-   exploratory  → apply the concept to a slightly novel situation
-   deep         → identify a contradiction or edge case explicitly in content
-   research     → connect to an open question explicitly named in content
-
-3. FOR deep AND research QUESTIONS ONLY:
-   The content includes a consequence (what happens when the concept fails)
-   or an exception/edge case. Your question should probe THAT consequence
-   or exception.
-
-   If the content does not explicitly describe a consequence or exception,
-   do NOT generate a deep or research question. Downgrade to exploratory.
-   A question that invents an edge case the content never introduced
-   is unfair regardless of intellectual quality.
-
-4. Calibrate language and framing to the learner's age (when Age context is provided):
+CALIBRATE LANGUAGE to the learner's age (when Age context is provided):
    kids (≤12)          → Simple, playful words. Concrete everyday objects. No jargon.
    teens (13–17)       → Energetic and relatable. Brief explanations for technical terms.
-   young_adult (18–25) → Intellectually direct. Abstract reasoning fully welcome.
+   young_adult (18–25) → Intellectually direct. Clear, no hand-holding.
    adult (26–59)       → Assume broad life experience. Practical relevance where natural.
    senior (60+)        → Clear and respectful. Historical context preferred.
    If no Age context is given, default to adult framing.
 
-5. ONE clearly correct answer. Unambiguous. Requires genuine thinking.
+EVERY QUESTION MUST:
+- Have ONE clearly correct answer, unambiguous, verifiable against the content.
+- Be answerable by any learner who read ONLY this content with no prior knowledge.
+- Frame as curiosity, NEVER as a test:
+    DO NOT: "Quiz time!", "Test yourself", "Answer this question."
+    DO USE: "Before we go further —" / "Something worth pausing on:" / "Here is something to sit with:"
 
-6. Frame as a moment of curiosity — NEVER as a test:
-   DO NOT: "Quiz time!", "Test yourself", "Answer this question."
-   DO USE: "Before we go further —" / "Something worth pausing on:" / "Here is something to sit with:"
-
-7. CONTENT BOUNDARY SELF-CHECK before finalising your question:
-   Ask yourself: "Could a learner who read ONLY this content — with no prior
-   knowledge of this topic — reasonably answer this question?"
-   If NO:
-     - The question references a term the content doesn't define → remove it
-     - The question requires a step the content skips → simplify to what
-       the content does cover
-     - The question asks about implications the content never draws → replace
-       with an application of something the content does state explicitly
+SELF-CHECK before finalising each question:
+   "Could someone who read ONLY this content answer this with confidence,
+    and would two careful readers agree on the correct answer?"
+   If NO on either count → make the question more direct and factual.
 
 HINT SYSTEM — 3 progressive hints:
-   Hint 1: Points to the section of content where the answer lives.
-            "Think about the part that explains [mechanism name]."
-   Hint 2: Quotes or closely paraphrases a specific sentence from the
-            content that contains the key insight.
-   Hint 3: States the correct reasoning path in plain language, stopping
-            one sentence short of the answer.
+   Hint 1: Points to the part of the content where the answer lives.
+   Hint 2: Closely paraphrases the specific sentence containing the answer.
+   Hint 3: States the reasoning path in plain language, one step short of the answer.
    RULE: No hint ever states the answer directly.
-   RULE: Every hint must be traceable to something in the context.
+   RULE: Every hint must be traceable to something in the content.
 
 ADAPTIVE DIFFICULTY:
    IF recent_performance provided AND all_correct AND no_hints: upgrade one level.
-   IF recent_performance provided AND 2+ incorrect: hold current level; favour APPLICATION questions.
+   IF recent_performance provided AND 2+ incorrect: hold current level; favour direct recall.
 
 THREE LAWS — NEVER BREAK:
 LAW 1 — Never use: lesson, course, curriculum, study, teach, education, homework, module.
-LAW 2 — The question must leave something unresolved until they answer it.
-LAW 3 — The question must be specific to this concept — not generic or reusable for any topic.
+LAW 2 — The question must be specific to this content — not generic or reusable for any topic.
+LAW 3 — The correct answer must be findable in the content the learner just read.
 
 OUTPUT JSON ONLY — no markdown, no preamble:
 {
   "intro_phrase": "Conversational opener (never quiz/test language)",
-  "question": "Full question text",
+  "question": "Full question text — direct and about the content",
   "correct_answer": "The answer — revealed only after submission",
-  "answer_explanation": "2 sentences: why this is correct, why alternatives fail",
-  "hint_1": "Think about the part that explains [mechanism]",
+  "answer_explanation": "2 sentences: why this is correct, grounded in the content",
+  "hint_1": "Points to the part of the content with the answer",
   "hint_2": "Close paraphrase of the key sentence from the content",
   "hint_3": "One step from the answer — nearly obvious",
   "difficulty": "surface|exploratory|deep|research",
