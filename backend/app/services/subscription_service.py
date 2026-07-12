@@ -8,7 +8,11 @@ logger = logging.getLogger(__name__)
 
 
 def get_user_plan(uid: str) -> dict:
-    """Return plan_configs row for user. Defaults to free_trial."""
+    """Return plan_configs row for user. Defaults to free_trial.
+
+    A child with no subscription of their own inherits their linked parent's
+    Family plan (seat-capped: only the first max_seats-1 children by link age).
+    """
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -16,14 +20,59 @@ def get_user_plan(uid: str) -> dict:
                 SELECT pc.* FROM plan_configs pc
                 WHERE pc.plan_id = COALESCE(
                     (SELECT plan_id FROM subscriptions
-                     WHERE uid = %s AND status IN ('active', 'trialing')
+                     WHERE uid = %(uid)s AND status IN ('active', 'trialing')
                      LIMIT 1),
+                    (SELECT s.plan_id
+                       FROM family_links fl
+                       JOIN subscriptions s ON s.uid = fl.parent_uid
+                        AND s.status IN ('active', 'trialing') AND s.plan_id = 'family'
+                      WHERE fl.child_uid = %(uid)s AND fl.status = 'active'
+                        AND (SELECT count(*) FROM family_links fl2
+                              WHERE fl2.parent_uid = fl.parent_uid
+                                AND fl2.status = 'active'
+                                AND fl2.created_at <= fl.created_at)
+                            <= (SELECT max_seats - 1 FROM plan_configs WHERE plan_id = 'family')
+                      LIMIT 1),
                     'free_trial'
                 )
                 """,
-                (uid,),
+                {"uid": uid},
             )
             return dict(cur.fetchone())
+
+
+def get_family_member_uids(uid: str) -> list[str]:
+    """All uids sharing this user's family budget: the subscribing parent plus
+    active linked children. Returns [uid] for anyone outside a family."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT parent_uid FROM family_links WHERE child_uid = %s AND status = 'active'",
+                (uid,),
+            )
+            row = cur.fetchone()
+            root = row["parent_uid"] if row else uid
+            cur.execute(
+                "SELECT child_uid FROM family_links WHERE parent_uid = %s AND status = 'active' "
+                "ORDER BY created_at",
+                (root,),
+            )
+            children = [r["child_uid"] for r in cur.fetchall()]
+    return [root] + children
+
+
+def get_family_spend_cents(member_uids: list[str]) -> float:
+    """Combined current-month spend across family members (shared budget)."""
+    period_start = date.today().replace(day=1)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COALESCE(sum(estimated_cost_cents), 0) AS spent "
+                "FROM token_usage WHERE uid = ANY(%s) AND period_start = %s",
+                (member_uids, period_start),
+            )
+            row = cur.fetchone()
+    return float(row["spent"] if row else 0.0)
 
 
 def get_current_usage(uid: str) -> dict:
@@ -124,11 +173,17 @@ def check_budget(uid: str, context: str = "ai") -> tuple[bool, str]:
         )
         return True, "ok"
 
-    # Token budget gate (free trial non-chat + all paid plans)
-    usage = get_current_usage(uid)
+    # Token budget gate (free trial non-chat + all paid plans).
+    # Family plans share one budget across parent + linked children.
+    spent = None
+    if plan["plan_id"] == "family":
+        members = get_family_member_uids(uid)
+        if len(members) > 1:
+            spent = get_family_spend_cents(members)
+    if spent is None:
+        spent = get_current_usage(uid)["estimated_cost_cents"]
     base_budget = float(plan.get("token_budget_cents") or 20.0)
     total_budget = base_budget + extras["extra_credits_cents"]
-    spent = usage["estimated_cost_cents"]
     remaining = total_budget - spent
 
     if spent >= total_budget:
@@ -241,12 +296,17 @@ def record_usage(
 def get_budget_status(uid: str) -> dict:
     """Return full budget picture for a user."""
     plan = get_user_plan(uid)
-    usage = get_current_usage(uid)
     extras = get_coupon_extras(uid)
 
+    spent = None
+    if plan["plan_id"] == "family":
+        members = get_family_member_uids(uid)
+        if len(members) > 1:
+            spent = get_family_spend_cents(members)
+    if spent is None:
+        spent = get_current_usage(uid)["estimated_cost_cents"]
     base_budget = float(plan.get("token_budget_cents") or 20.0)
     total_budget = base_budget + extras["extra_credits_cents"]
-    spent = usage["estimated_cost_cents"]
     remaining = max(0.0, total_budget - spent)
     pct_used = round(spent / total_budget * 100, 1) if total_budget > 0 else 0.0
 

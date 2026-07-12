@@ -12,6 +12,14 @@ class Settings(BaseSettings):
     ALLOWED_ORIGINS: str = "http://localhost:3000"
     ENVIRONMENT: str = "development"
     FIREBASE_PROJECT_ID: str = ""
+    # Service-account JSON (full key file contents) for Firebase Admin REST calls —
+    # needed to purge under-13 Firebase Auth records created before the age gate
+    # and to create managed child credentials from the Family dashboard.
+    FIREBASE_SERVICE_ACCOUNT_JSON: str = ""
+    # Under-13 managed accounts stay off until the jurisdiction's verifiable-consent
+    # tier (plan Phase 2) is live; 13+ children can be parent-created regardless.
+    ENABLE_MANAGED_CHILDREN: bool = False
+    MAX_CHILDREN_PER_PARENT: int = 5
     # Postgres — prefer DATABASE_URL (Supabase pooler); fallback to individual params
     DATABASE_URL: str = ""
     DB_HOST: str = ""

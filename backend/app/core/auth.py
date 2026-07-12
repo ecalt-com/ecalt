@@ -63,27 +63,113 @@ def get_required_user(uid: Optional[str] = Depends(get_optional_user)) -> str:
     return uid
 
 
+_status_cache: dict[str, tuple[str, float]] = {}
+_STATUS_CACHE_TTL = 60.0
+
+
+def invalidate_status_cache(uid: str) -> None:
+    """Call when account_status changes (e.g. consent granted) so the user isn't
+    blocked for up to a TTL by a stale cached status."""
+    _status_cache.pop(uid, None)
+
+
 def get_active_user(uid: str = Depends(get_required_user)) -> str:
-    """Like get_required_user but raises 403 if account_status is parental_consent_pending."""
+    """Like get_required_user but raises 403 if the account is consent-pending
+    or paused by the managing parent.
+
+    Fails closed: if the status can't be determined (DB error, nothing cached),
+    the request is rejected rather than letting a blocked child through.
+    Status is cached for 60 s per uid to keep the hot path off the DB.
+    """
+    from app.core.database import get_db
+    now = time.monotonic()
+    cached = _status_cache.get(uid)
+    if cached is not None and now - cached[1] < _STATUS_CACHE_TTL:
+        status = cached[0]
+    else:
+        try:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT account_status, paused FROM users WHERE uid = %s", (uid,))
+                    row = cur.fetchone()
+            # No row yet = user record mid-creation on first sign-in — allow.
+            if row and row.get("paused"):
+                status = "paused"
+            else:
+                status = (row.get("account_status") if row else None) or "active"
+            _status_cache[uid] = (status, now)
+        except Exception:
+            if cached is not None:
+                status = cached[0]  # stale but known beats guessing
+            else:
+                raise HTTPException(
+                    status_code=503,
+                    detail="Could not verify account status. Please try again.",
+                )
+
+    if status == "parental_consent_pending":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "consent_pending",
+                "message": "Your account is waiting for parental approval. Check your parent's inbox.",
+            },
+        )
+    if status == "paused":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "account_paused",
+                "message": "Your account is paused. Ask your parent to unpause it from the Family dashboard.",
+            },
+        )
+    return uid
+
+
+def ensure_chat_allowed(uid: str) -> None:
+    """Parental control: raise 403 when the managing parent disabled AI chat.
+    No child_settings row (the common case for unlinked users) means allowed."""
     from app.core.database import get_db
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT account_status FROM users WHERE uid = %s", (uid,))
+                cur.execute(
+                    "SELECT chat_enabled FROM child_settings WHERE child_uid = %s",
+                    (uid,),
+                )
                 row = cur.fetchone()
-                if row and row.get("account_status") == "parental_consent_pending":
-                    raise HTTPException(
-                        status_code=403,
-                        detail={
-                            "error": "consent_pending",
-                            "message": "Your account is waiting for parental approval. Check your parent's inbox.",
-                        },
-                    )
-    except HTTPException:
-        raise
     except Exception:
-        pass  # fail open — DB check must never block a valid user
-    return uid
+        return  # settings lookup failure must not take chat down for everyone
+    if row is not None and not row.get("chat_enabled"):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "chat_disabled",
+                "message": "AI chat is turned off for your account. Ask your parent to enable it.",
+            },
+        )
+
+
+def verify_parent_of(parent_uid: str, child_uid: str) -> None:
+    """Raise 403 unless parent_uid has an active family link to child_uid.
+
+    Fails closed — parental access to a child's account must never be granted
+    on a DB error.
+    """
+    from app.core.database import get_db
+    ok = False
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT 1 FROM family_links WHERE parent_uid = %s AND child_uid = %s AND status = 'active'",
+                    (parent_uid, child_uid),
+                )
+                ok = cur.fetchone() is not None
+    except Exception:
+        ok = False
+    if not ok:
+        raise HTTPException(status_code=403, detail="You do not manage this account")
 
 
 def get_admin_user(uid: str = Depends(get_required_user)) -> str:

@@ -177,24 +177,150 @@ def test_adult_gets_active_account(client):
     assert resp.json()["account_status"] == "active"
 
 
-# ── Parental consent confirmation ─────────────────────────────────────────────
+# ── Month-accurate age (conservative when birthday month hasn't passed) ──────
 
-def test_consent_confirm_invalid_token(client):
-    with patch("app.api.v1.endpoints.users.get_db") as mock_get_db:
-        mock_cur = MagicMock()
-        mock_cur.__enter__ = lambda s: mock_cur
-        mock_cur.__exit__ = MagicMock(return_value=False)
-        mock_cur.fetchone.return_value = None
-
+def test_birth_month_makes_age_conservative(client):
+    """13 calendar years ago but December birthday → still 12 → blocked."""
+    birth_year = CURRENT_YEAR - 13
+    with patch("app.core.database.get_db") as mock_get_db:
         mock_conn = MagicMock()
-        mock_conn.__enter__ = lambda s: mock_conn
-        mock_conn.__exit__ = MagicMock(return_value=False)
-        mock_conn.cursor.return_value = mock_cur
-
         mock_get_db.return_value.__enter__ = lambda s: mock_conn
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
+        resp = client.post(
+            "/api/v1/users",
+            json={"birth_year": birth_year, "birth_month": 12},
+        )
+
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["error"] == "under_13"
+
+
+# ── Parental consent confirmation ─────────────────────────────────────────────
+
+def _mock_db(mock_get_db, fetchone_results):
+    """Wire a shared MagicMock cursor into a patched get_db context manager."""
+    mock_cur = MagicMock()
+    mock_cur.__enter__ = lambda s: mock_cur
+    mock_cur.__exit__ = MagicMock(return_value=False)
+    if isinstance(fetchone_results, list):
+        mock_cur.fetchone.side_effect = fetchone_results
+    else:
+        mock_cur.fetchone.return_value = fetchone_results
+
+    mock_conn = MagicMock()
+    mock_conn.__enter__ = lambda s: mock_conn
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value = mock_cur
+
+    mock_get_db.return_value.__enter__ = lambda s: mock_conn
+    mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
+    return mock_cur
+
+
+def _pending_token_row():
+    from datetime import datetime, timedelta, timezone
+    return {
+        "uid": TEST_UID,
+        "expires_at": datetime.now(timezone.utc) + timedelta(days=3),
+        "status": "pending",
+        "parent_email": "parent@example.com",
+        "display_name": "Teen User",
+    }
+
+
+def test_consent_confirm_invalid_token(client):
+    with patch("app.api.v1.endpoints.users.get_db") as mock_get_db:
+        _mock_db(mock_get_db, None)
         resp = client.get("/api/v1/users/consent/confirm?token=nonexistent")
 
     assert resp.status_code == 400
     assert resp.json()["detail"]["error"] == "invalid_token"
+
+
+def test_get_consent_confirm_is_read_only(client):
+    """G1 fix: email-link prefetchers follow GETs — the GET must never mutate."""
+    with patch("app.api.v1.endpoints.users.get_db") as mock_get_db:
+        mock_cur = _mock_db(mock_get_db, _pending_token_row())
+        resp = client.get("/api/v1/users/consent/confirm?token=sometoken")
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "pending_review"
+    mutations = [
+        c for c in mock_cur.execute.call_args_list
+        if any(kw in str(c[0][0]).upper() for kw in ("UPDATE", "INSERT", "DELETE"))
+    ]
+    assert mutations == []
+
+
+def test_post_consent_confirm_approves(client):
+    with patch("app.api.v1.endpoints.users.get_db") as mock_get_db:
+        mock_cur = _mock_db(mock_get_db, [_pending_token_row(), {"jurisdiction": "US"}])
+        resp = client.post(
+            "/api/v1/users/consent/confirm",
+            json={"token": "sometoken", "approved": True},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "confirmed"
+    executed = [str(c[0][0]) for c in mock_cur.execute.call_args_list]
+    assert any("account_status = 'active'" in q for q in executed)
+    assert any("INSERT INTO consent_events" in q for q in executed)
+
+
+def test_post_consent_decline_records_refusal(client):
+    with patch("app.api.v1.endpoints.users.get_db") as mock_get_db:
+        mock_cur = _mock_db(mock_get_db, [_pending_token_row(), {"jurisdiction": "US"}])
+        resp = client.post(
+            "/api/v1/users/consent/confirm",
+            json={"token": "sometoken", "approved": False},
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "refused"
+    executed = [str(c[0][0]) for c in mock_cur.execute.call_args_list]
+    assert any("status = 'refused'" in q for q in executed)
+    assert not any("account_status = 'active'" in q for q in executed)
+
+
+def test_expired_token_rejected_on_post(client):
+    from datetime import datetime, timedelta, timezone
+    row = _pending_token_row()
+    row["expires_at"] = datetime.now(timezone.utc) - timedelta(days=1)
+    with patch("app.api.v1.endpoints.users.get_db") as mock_get_db:
+        _mock_db(mock_get_db, row)
+        resp = client.post(
+            "/api/v1/users/consent/confirm",
+            json={"token": "sometoken", "approved": True},
+        )
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error"] == "token_expired"
+
+
+# ── get_active_user fails closed ──────────────────────────────────────────────
+
+def test_get_active_user_fails_closed_on_db_error():
+    """G8 fix: an unknown status must reject the request, not let it through."""
+    from app.core import auth as auth_module
+
+    auth_module._status_cache.clear()
+    with patch("app.core.database.get_db", side_effect=Exception("db down")):
+        with pytest.raises(HTTPException) as exc:
+            auth_module.get_active_user(uid="some-uid")
+
+    assert exc.value.status_code == 503
+
+
+def test_get_active_user_blocks_pending_status():
+    from app.core import auth as auth_module
+
+    auth_module._status_cache.clear()
+    with patch("app.core.database.get_db") as mock_get_db:
+        _mock_db(mock_get_db, {"account_status": "parental_consent_pending"})
+        with pytest.raises(HTTPException) as exc:
+            auth_module.get_active_user(uid="pending-uid")
+
+    auth_module._status_cache.clear()
+    assert exc.value.status_code == 403
+    assert exc.value.detail["error"] == "consent_pending"

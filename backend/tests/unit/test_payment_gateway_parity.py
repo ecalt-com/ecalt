@@ -25,6 +25,7 @@ from tests.conftest import (
 def _run_check(plan, usage_val, extras_val, context="ai"):
     from app.services.subscription_service import check_budget
     with patch("app.services.subscription_service.get_user_plan",           return_value=plan), \
+         patch("app.services.subscription_service.get_family_member_uids", return_value=[TEST_UID]), \
          patch("app.services.subscription_service.get_current_usage",        return_value=usage_val), \
          patch("app.services.subscription_service.get_coupon_extras",        return_value=extras_val), \
          patch("app.services.subscription_service.count_lifetime_messages",  return_value=0):

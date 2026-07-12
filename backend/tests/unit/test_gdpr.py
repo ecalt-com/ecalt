@@ -50,6 +50,7 @@ def test_delete_account_returns_204(client):
 
     with (
         patch("app.api.v1.endpoints.users.get_db", mock_get_db),
+        patch("app.services.account_service.get_db", mock_get_db),
     ):
         resp = client.delete("/api/v1/users/me")
 
@@ -81,7 +82,10 @@ def test_delete_account_executes_cascade(client):
     def fake_get_db():
         yield TrackingConn()
 
-    with patch("app.api.v1.endpoints.users.get_db", fake_get_db):
+    with (
+        patch("app.api.v1.endpoints.users.get_db", fake_get_db),
+        patch("app.services.account_service.get_db", fake_get_db),
+    ):
         resp = client.delete("/api/v1/users/me")
 
     assert resp.status_code == 204
@@ -108,6 +112,7 @@ def test_delete_continues_if_stripe_cancel_fails(client):
 
     with (
         patch("app.api.v1.endpoints.users.get_db", mock_get_db),
+        patch("app.services.account_service.get_db", mock_get_db),
         patch("stripe.Subscription.cancel", side_effect=Exception("stripe down")),
     ):
         resp = client.delete("/api/v1/users/me")

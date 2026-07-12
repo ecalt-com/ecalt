@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from app.core.auth import get_active_user, get_required_user, get_acting_uid
+from app.core.auth import get_active_user, get_required_user, get_acting_uid, ensure_chat_allowed
 from app.core.database import get_db
 from app.core.limiter import limiter
 from app.services.chat_service import stream_chat
@@ -29,6 +29,7 @@ class ChatRequest(BaseModel):
 async def chat_stream(request: Request, body: ChatRequest, uid: str = Depends(get_active_user)):
     if body.interaction_type not in _ALLOWED_INTERACTION_TYPES:
         raise HTTPException(status_code=400, detail="Invalid interaction_type")
+    ensure_chat_allowed(uid)  # parental control (covers daily chat + journey tutor)
     allowed, reason = check_budget(uid, context="chat")
     if not allowed:
         raise HTTPException(

@@ -5,7 +5,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from pydantic import BaseModel
 from app.models.schemas import ExploreRequest, ExploreResponse, Journey, JourneyStep
 from app.services.ai_service import generate_journey, warm_journey_steps, _build_learning_context
-from app.core.auth import get_required_user
+from app.core.auth import get_active_user
 from app.core.database import get_db
 from app.services.subscription_service import check_budget, record_usage
 from app.services.provider_service import get_config
@@ -14,6 +14,24 @@ from app.services.content_filter import check_topic_scope
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _effective_age_group(uid: str, requested: str | None) -> str:
+    """Parental control: a parent-set content age band overrides whatever the
+    client sends. Only linked children have a child_settings row."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT content_age_band FROM child_settings WHERE child_uid = %s",
+                    (uid,),
+                )
+                row = cur.fetchone()
+        if row and row.get("content_age_band"):
+            return row["content_age_band"]
+    except Exception:
+        pass  # fall back to the requested band rather than failing generation
+    return requested or "all"
 
 
 def _invalidate_recommendation_cache(uid: str) -> None:
@@ -52,7 +70,7 @@ def _get_learner_profile(uid: str, request: ExploreRequest) -> dict | None:
 )
 async def explore_preview(
     request: ExploreRequest,
-    uid: str = Depends(get_required_user),
+    uid: str = Depends(get_active_user),
 ):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
@@ -71,7 +89,7 @@ async def explore_preview(
     try:
         journey, in_tok, out_tok = await generate_journey(
             question=request.question.strip(),
-            age_group=request.age_group or "all",
+            age_group=_effective_age_group(uid, request.age_group),
             uid=uid,
             learner_profile=learner_profile,
             learning_context=learning_context or None,
@@ -147,7 +165,7 @@ class ConfirmRequest(BaseModel):
 async def explore_confirm(
     request: ConfirmRequest,
     background_tasks: BackgroundTasks,
-    uid: str = Depends(get_required_user),
+    uid: str = Depends(get_active_user),
 ):
     try:
         with get_db() as conn:
@@ -256,7 +274,7 @@ async def explore_confirm(
 async def explore(
     request: ExploreRequest,
     background_tasks: BackgroundTasks,
-    uid: str = Depends(get_required_user),
+    uid: str = Depends(get_active_user),
 ):
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty")
@@ -275,7 +293,7 @@ async def explore(
     try:
         journey, in_tok, out_tok = await generate_journey(
             question=request.question.strip(),
-            age_group=request.age_group or "all",
+            age_group=_effective_age_group(uid, request.age_group),
             uid=uid,
             learner_profile=learner_profile,
             learning_context=learning_context or None,
