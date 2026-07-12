@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback } f
 import {
   onAuthStateChanged,
   signInWithPopup,
+  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   getAdditionalUserInfo,
   type User,
@@ -9,6 +10,7 @@ import {
 import { firebaseAuth, googleProvider } from './firebase'
 
 export type PostSignInPhase = 'none' | 'birth_year' | 'under_13' | 'consent_pending' | 'consent_sent'
+export type UserRole = 'learner' | 'parent'
 
 interface AuthContextValue {
   user: User | null
@@ -16,11 +18,13 @@ interface AuthContextValue {
   needsOnboarding: boolean
   postSignInPhase: PostSignInPhase
   parentEmail: string | null
+  role: UserRole | null
   signIn: () => Promise<void>
+  signInWithEmail: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   getToken: () => Promise<string | null>
   dismissOnboarding: () => void
-  completeBirthYear: (birthYear: number) => Promise<void>
+  completeBirthYear: (birthYear: number, birthMonth?: number, country?: string) => Promise<void>
   submitParentalConsent: (parentEmail: string) => Promise<void>
   markConsentSent: (email: string) => void
   dismissPostSignIn: () => void
@@ -32,7 +36,9 @@ const AuthContext = createContext<AuthContextValue>({
   needsOnboarding: false,
   postSignInPhase: 'none',
   parentEmail: null,
+  role: null,
   signIn: async () => {},
+  signInWithEmail: async () => {},
   signOut: async () => {},
   getToken: async () => null,
   dismissOnboarding: () => {},
@@ -48,7 +54,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [needsOnboarding, setNeedsOnboarding] = useState(false)
   const [postSignInPhase, setPostSignInPhase] = useState<PostSignInPhase>('none')
   const [parentEmail, setParentEmail] = useState<string | null>(null)
+  const [role, setRole] = useState<UserRole | null>(null)
   const [pendingBirthYear, setPendingBirthYear] = useState<number | null>(null)
+  const [pendingBirthMonth, setPendingBirthMonth] = useState<number | null>(null)
+  const [pendingCountry, setPendingCountry] = useState<string | null>(null)
   const userRef = useRef<User | null>(firebaseAuth.currentUser)
   const signingIn = useRef(false)
   const pendingUserRef = useRef<User | null>(null)
@@ -83,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           })
           if (res.ok) {
             const profile = await res.json()
+            if (profile.role) setRole(profile.role)
             if (profile.needs_birth_year) {
               pendingUserRef.current = u
               setPostSignInPhase('birth_year')
@@ -134,6 +144,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       if (res.ok) {
         const profile = await res.json()
+        if (profile.role) setRole(profile.role)
         if (profile.needs_birth_year === true) {
           pendingUserRef.current = result.user
           setPostSignInPhase('birth_year')
@@ -150,7 +161,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch { /* non-critical */ }
   }
 
-  const completeBirthYear = async (birthYear: number) => {
+  // Kids login: managed children sign in with the email+password their parent
+  // created. Same post-sign-in upsert flow as Google; managed children already
+  // have birth_year set, so no gate appears.
+  const signInWithEmail = async (email: string, password: string) => {
+    const result = await signInWithEmailAndPassword(firebaseAuth, email, password)
+    try {
+      const token = await result.user.getIdToken()
+      const res = await fetch('/api/v1/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          email: result.user.email,
+          display_name: result.user.displayName,
+          photo_url: result.user.photoURL,
+        }),
+      })
+      if (res.ok) {
+        const profile = await res.json()
+        if (profile.role) setRole(profile.role)
+        if (profile.account_status === 'parental_consent_pending') {
+          setPostSignInPhase('consent_pending')
+          return
+        }
+        if (profile.onboarding_done === false) {
+          setNeedsOnboarding(true)
+        }
+      }
+    } catch { /* non-critical */ }
+  }
+
+  const completeBirthYear = async (birthYear: number, birthMonth?: number, country?: string) => {
     const u = pendingUserRef.current ?? userRef.current
     if (!u) return
     try {
@@ -163,6 +204,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           display_name: u.displayName,
           photo_url: u.photoURL,
           birth_year: birthYear,
+          ...(birthMonth ? { birth_month: birthMonth } : {}),
+          ...(country ? { country } : {}),
         }),
       })
       if (res.status === 403) {
@@ -179,14 +222,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.status === 400) {
         const data = await res.json().catch(() => ({}))
         if (data.detail?.error === 'parent_email_required') {
-          // Teen flow: store birth year and advance to parent email collection.
+          // Teen flow: store birth details and advance to parent email collection.
           setPendingBirthYear(birthYear)
+          setPendingBirthMonth(birthMonth ?? null)
+          setPendingCountry(country ?? null)
           setPostSignInPhase('consent_pending')
           return
         }
       }
       if (res.ok) {
         const profile = await res.json()
+        if (profile.role) setRole(profile.role)
         pendingUserRef.current = null
         if (profile.account_status === 'parental_consent_pending') {
           setPostSignInPhase('consent_pending')
@@ -212,6 +258,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         display_name: u.displayName,
         photo_url: u.photoURL,
         birth_year: pendingBirthYear,
+        ...(pendingBirthMonth ? { birth_month: pendingBirthMonth } : {}),
+        ...(pendingCountry ? { country: pendingCountry } : {}),
         parent_email: email,
       }),
     })
@@ -221,6 +269,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     pendingUserRef.current = null
     setPendingBirthYear(null)
+    setPendingBirthMonth(null)
+    setPendingCountry(null)
     setParentEmail(email)
     setPostSignInPhase('consent_sent')
   }
@@ -235,6 +285,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pendingUserRef.current = null
     setParentEmail(null)
     setPendingBirthYear(null)
+    setPendingBirthMonth(null)
+    setPendingCountry(null)
   }
 
   const signOut = async () => {
@@ -243,7 +295,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setPostSignInPhase('none')
     pendingUserRef.current = null
     setParentEmail(null)
+    setRole(null)
     setPendingBirthYear(null)
+    setPendingBirthMonth(null)
+    setPendingCountry(null)
   }
 
   const getToken = useCallback(async (): Promise<string | null> => {
@@ -260,8 +315,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, needsOnboarding, postSignInPhase, parentEmail,
-      signIn, signOut, getToken,
+      user, loading, needsOnboarding, postSignInPhase, parentEmail, role,
+      signIn, signInWithEmail, signOut, getToken,
       dismissOnboarding, completeBirthYear, submitParentalConsent, markConsentSent, dismissPostSignIn,
     }}>
       {children}

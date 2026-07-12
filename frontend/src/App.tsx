@@ -12,6 +12,7 @@ import { PaymentConfigProvider } from './lib/PaymentConfig'
 import { ImpersonationProvider } from './lib/ImpersonationContext'
 import OnboardingModal from './components/OnboardingModal'
 import ImpersonationBanner from './components/ImpersonationBanner'
+import ReconsentBanner from './components/ReconsentBanner'
 import ErrorBoundary from './components/ErrorBoundary'
 import BirthYearGate from './components/auth/BirthYearGate'
 import Under13Block from './components/auth/Under13Block'
@@ -31,6 +32,10 @@ const Journey       = lazy(() => import('./pages/Journey'))
 const Passport      = lazy(() => import('./pages/Passport'))
 const Profile       = lazy(() => import('./pages/Profile'))
 const ConsentConfirm = lazy(() => import('./pages/ConsentConfirm'))
+const ConsentReport = lazy(() => import('./pages/ConsentReport'))
+const Family        = lazy(() => import('./pages/Family'))
+const FamilyChild   = lazy(() => import('./pages/FamilyChild'))
+const KidsLogin     = lazy(() => import('./pages/KidsLogin'))
 const Welcome       = lazy(() => import('./pages/Welcome'))
 const ComingSoon    = lazy(() => import('./pages/ComingSoon'))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
@@ -71,6 +76,10 @@ function AppShell() {
           <Route path="/contact" element={<ErrorBoundary><Contact /></ErrorBoundary>} />
           <Route path="/welcome" element={<ErrorBoundary><Welcome /></ErrorBoundary>} />
           <Route path="/consent/confirm" element={<ErrorBoundary><ConsentConfirm /></ErrorBoundary>} />
+          <Route path="/consent/report" element={<ErrorBoundary><ConsentReport /></ErrorBoundary>} />
+          <Route path="/family" element={<ErrorBoundary><Family /></ErrorBoundary>} />
+          <Route path="/family/child/:uid" element={<ErrorBoundary><FamilyChild /></ErrorBoundary>} />
+          <Route path="/kids-login" element={<ErrorBoundary><KidsLogin /></ErrorBoundary>} />
           <Route
             path="/sign-in"
             element={<ComingSoon title="Sign In — Coming Soon" description="User accounts are on the way. Drop your email and we'll notify you." />}
@@ -101,6 +110,7 @@ function AppShell() {
       )}
 
       {needsOnboarding && <OnboardingModal />}
+      <ReconsentBanner />
       <ImpersonationBanner />
     </>
   )

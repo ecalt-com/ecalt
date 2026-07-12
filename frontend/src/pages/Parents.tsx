@@ -1,20 +1,21 @@
+import { Link } from 'react-router-dom'
 import Navigation from '../components/Navigation'
 import PageMeta from '../components/PageMeta'
-import { Brain, Shield, Eye, MessageSquare } from 'lucide-react'
+import { Brain, Shield, Eye, MessageSquare, Users, SlidersHorizontal } from 'lucide-react'
 
 
 const FAQ = [
   {
     q: 'Is ECALT safe for my child to use unsupervised?',
-    a: 'ECALT is designed for independent use. Our AI is configured to stay on educational topics and will not engage with requests for harmful, adult, or off-topic content. That said, we recommend parents review their child\'s Passport page periodically to see what topics they\'re exploring.',
+    a: 'ECALT is designed for independent use. Our AI is configured to stay on educational topics and will not engage with requests for harmful, adult, or off-topic content. Your Family dashboard shows you what topics your child explores, their progress, and their quiz scores — so you can check in any time without looking over their shoulder.',
   },
   {
     q: 'What subjects does ECALT cover?',
-    a: 'Any topic a curious learner might ask about — science, history, maths, coding, music, geography, philosophy, and more. ECALT follows the learner\'s curiosity rather than a fixed curriculum.',
+    a: 'Any topic a curious learner might ask about — science, history, maths, coding, music, geography, philosophy, and more. ECALT follows the learner\'s curiosity rather than a fixed curriculum. You can also set a content level for your child from the dashboard.',
   },
   {
     q: 'Does my child talk to a real person?',
-    a: 'No. All conversations are with an AI (powered by Claude by Anthropic). No human tutor is involved. This is clearly disclosed in the app.',
+    a: 'No. All conversations are with an AI (powered by Claude by Anthropic). No human tutor is involved. This is clearly disclosed in the app, and you can turn AI chat off entirely from your Family dashboard.',
   },
   {
     q: 'Can ECALT replace school or tutoring?',
@@ -22,11 +23,11 @@ const FAQ = [
   },
   {
     q: 'What happens to my child\'s data?',
-    a: 'We collect only what\'s needed to run the service. We never sell data, show ads, or profile your child for marketing. Full details are in our Privacy Policy.',
+    a: 'We collect only what\'s needed to run the service. We never sell data, show ads, or profile your child for marketing. You can export everything we store about your child from the Family dashboard at any time. Full details are in our Privacy Policy.',
   },
   {
     q: 'Can I delete my child\'s account?',
-    a: 'Yes, at any time. Sign in, go to Profile → Privacy & Data, and choose Delete Account. All data is purged within 30 days.',
+    a: 'Yes, at any time, from your Family dashboard: open your child\'s page and choose Delete in the danger zone. You can also withdraw consent, which pauses the account immediately and deletes it after a 14-day grace window in case you change your mind.',
   },
 ]
 
@@ -44,7 +45,7 @@ export default function Parents() {
     <>
       <PageMeta
         title="For Parents — ECALT"
-        description="How ECALT works, what the AI will and won't do, what parents can see and control, and who built it."
+        description="How ECALT works, the Family dashboard, what parents can see and control, and how consent works."
       />
       <Navigation />
       <div className="min-h-screen bg-[var(--bg-primary)] px-4 pt-24 pb-20">
@@ -58,7 +59,8 @@ export default function Parents() {
             </h1>
             <p className="text-base text-slate-600 dark:text-slate-300 leading-relaxed">
               ECALT gives curious learners a patient AI guide that turns any question into a structured
-              learning journey — with no ads, no rabbit holes, and no data sold.
+              learning journey — with no ads, no rabbit holes, and no data sold. And you get a Family
+              dashboard that keeps you in the loop.
             </p>
           </div>
 
@@ -72,7 +74,7 @@ export default function Parents() {
                 { step: '1', title: 'Your child asks a question', body: 'Anything — "How do black holes work?" or "I want to build a robot." No topic list, no rigid syllabus.' },
                 { step: '2', title: 'ECALT builds a learning journey', body: 'The AI creates a multi-step path: concept → explanation → examples → quiz → next level. Each step is written at the right depth for the learner.' },
                 { step: '3', title: 'They explore at their own pace', body: 'Journeys are saved. Your child can pause, revisit, and deepen their understanding whenever curiosity strikes.' },
-                { step: '4', title: 'Their Passport grows', body: 'Every topic explored becomes a node in their personal Knowledge Passport — a visual map of everything they\'ve learned.' },
+                { step: '4', title: 'You stay in the loop', body: 'Your Family dashboard shows their progress, streaks, and topics — plus a weekly digest email every Sunday if you want it.' },
               ].map(({ step, title, body }) => (
                 <div key={step} className="glass-card rounded-2xl p-5 flex gap-4">
                   <div className="w-7 h-7 rounded-full bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center shrink-0">
@@ -84,6 +86,41 @@ export default function Parents() {
                   </div>
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* Getting your child an account */}
+          <section className="mb-10">
+            <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
+              <Users size={18} className="text-violet-500" /> Getting your child an account
+            </h2>
+            <div className="space-y-3">
+              <div className="glass-card rounded-2xl p-5">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">You create it (recommended)</p>
+                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Sign in with Google, open your <Link to="/family" className="text-violet-600 dark:text-violet-400 underline">Family dashboard</Link>,
+                  and add your child: their name, date of birth, a consent review, and a login you set for them.
+                  They sign in with that email and password at{' '}
+                  <Link to="/kids-login" className="text-violet-600 dark:text-violet-400 underline">ecalt.com/kids-login</Link> —
+                  their own account, linked to yours.
+                </p>
+              </div>
+              <div className="glass-card rounded-2xl p-5">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">They sign up, you approve</p>
+                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                  Teens (13–17) can sign up themselves with Google. Their account stays inactive until we
+                  email you and you review and approve it. Approving while signed in also links them to your
+                  Family dashboard.
+                </p>
+              </div>
+              <div className="glass-card rounded-2xl p-5">
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">Identity verification, where required</p>
+                <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                  For younger children, and for all minors in India, regulations require a stronger signal
+                  that a real adult consented. We use a quick card check (₹0/€0 — nothing is charged, no card
+                  stored). Elsewhere, email approval plus a follow-up notice is enough.
+                </p>
+              </div>
             </div>
           </section>
 
@@ -120,30 +157,53 @@ export default function Parents() {
             </div>
           </section>
 
-          {/* What parents see and control */}
+          {/* What parents see */}
           <section className="mb-10">
             <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
-              <Eye size={18} className="text-violet-500" /> What you can see and control
+              <Eye size={18} className="text-violet-500" /> What you can see
+            </h2>
+            <div className="glass-card rounded-2xl p-5 space-y-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              <p>From your Family dashboard, for each linked child you can see:</p>
+              <ul className="list-disc list-inside space-y-1 pl-1">
+                <li>The topics they explore and the journeys they create</li>
+                <li>Their progress and streaks</li>
+                <li>Their quiz scores</li>
+                <li>The titles of their AI conversations and how many messages they contain</li>
+                <li>Full conversation transcripts <span className="text-slate-400">— only if you turn that on, and your child is told</span></li>
+              </ul>
+              <p>
+                Your child sees exactly the same list on their own Profile page. We think oversight works
+                best when it isn't a secret — the same approach Google Family Link takes.
+              </p>
+            </div>
+          </section>
+
+          {/* What parents control */}
+          <section className="mb-10">
+            <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 mb-4 flex items-center gap-2">
+              <SlidersHorizontal size={18} className="text-violet-500" /> What you can control
             </h2>
             <div className="glass-card rounded-2xl p-5 space-y-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
               <p>
-                <span className="font-medium text-slate-700 dark:text-slate-200">Passport view:</span>{' '}
-                Every topic your child has explored is visible in their Knowledge Passport. You can sign in with
-                their account to review it any time.
+                <span className="font-medium text-slate-700 dark:text-slate-200">Pause:</span>{' '}
+                Suspend the account temporarily — exam week, screen-time reset, whatever you need.
               </p>
               <p>
-                <span className="font-medium text-slate-700 dark:text-slate-200">Data download:</span>{' '}
-                From Profile → Privacy &amp; Data, you can download a full JSON export of everything stored —
-                journeys, progress, questions asked.
+                <span className="font-medium text-slate-700 dark:text-slate-200">AI chat:</span>{' '}
+                Turn the conversational tutor off entirely; journeys and quizzes keep working.
               </p>
               <p>
-                <span className="font-medium text-slate-700 dark:text-slate-200">Account deletion:</span>{' '}
-                You can delete the account and all data at any time, permanently.
+                <span className="font-medium text-slate-700 dark:text-slate-200">Content level:</span>{' '}
+                Pin the depth of generated content to kids, teens, or adult level.
               </p>
               <p>
-                <span className="font-medium text-slate-700 dark:text-slate-200">Consent withdrawal:</span>{' '}
-                Email <a href="mailto:support@ecalt.com" className="text-violet-600 dark:text-violet-400 underline">support@ecalt.com</a> at
-                any time to revoke consent and trigger immediate deletion.
+                <span className="font-medium text-slate-700 dark:text-slate-200">Data export:</span>{' '}
+                Download everything we store about your child as a JSON file, any time.
+              </p>
+              <p>
+                <span className="font-medium text-slate-700 dark:text-slate-200">Withdraw consent / delete:</span>{' '}
+                Withdrawing consent pauses the account immediately and deletes it after a 14-day grace
+                window (you can undo). Deleting removes everything permanently, right away.
               </p>
             </div>
           </section>
@@ -155,7 +215,7 @@ export default function Parents() {
             </h2>
             <div className="glass-card rounded-2xl p-5 space-y-3 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
               <p>ECALT's AI is configured with strict content guardrails at the model level — it will not generate harmful, adult, or abusive content regardless of what is asked.</p>
-              <p>We require parental consent for every learner under 18 before any data is stored. The account stays inactive until a parent clicks the confirmation link.</p>
+              <p>We require parental consent for every learner under 18 before the account activates. Consent is reviewed and explicitly granted by you — never assumed from a clicked link alone — and we follow up by email so an unexpected approval can be reported and reversed.</p>
               <p>We never sell data. We show no ads. We don't profile your child for marketing — ours or anyone else's.</p>
               <p>Our payment partner is Razorpay (India) or Stripe (international) — both are regulated, PCI-DSS compliant processors. We never see or store your card number.</p>
             </div>

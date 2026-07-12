@@ -1,6 +1,8 @@
 import { useState } from 'react'
-import { Loader2, CheckCircle } from 'lucide-react'
+import { Loader2, CheckCircle, Mail } from 'lucide-react'
 import { useAuth } from '../../lib/AuthContext'
+import { apiErrorCode } from '../../lib/api'
+import { resendConsentEmail } from '../../lib/familyApi'
 
 interface Props {
   onSent: (parentEmail: string) => void
@@ -103,6 +105,37 @@ interface SentProps {
 }
 
 export function ConsentSentScreen({ parentEmail, onSignOut }: SentProps) {
+  const { getToken } = useAuth()
+  const [email, setEmail] = useState(parentEmail)
+  const [resending, setResending] = useState(false)
+  const [resendNote, setResendNote] = useState<string | null>(null)
+  const [resendError, setResendError] = useState<string | null>(null)
+
+  const handleResend = async () => {
+    if (resending) return
+    setResending(true)
+    setResendNote(null)
+    setResendError(null)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error('no session')
+      const data = await resendConsentEmail(token)
+      setEmail(data.parent_email || email)
+      setResendNote(`Email re-sent to ${data.parent_email || email}.`)
+    } catch (err: unknown) {
+      const status = (err as { status?: number })?.status
+      if (status === 429) {
+        setResendError('Too many resends — please wait an hour and try again.')
+      } else if (apiErrorCode(err) === 'not_pending') {
+        setResendError("This account isn't waiting for consent anymore. Try signing in again.")
+      } else {
+        setResendError("Couldn't resend the email. Please try again.")
+      }
+    } finally {
+      setResending(false)
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
       <div className="glass-card rounded-3xl p-8 max-w-sm w-full shadow-2xl text-center">
@@ -113,11 +146,23 @@ export function ConsentSentScreen({ parentEmail, onSignOut }: SentProps) {
         <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
           We've emailed your parent at
         </p>
-        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-4 break-all">{parentEmail}</p>
+        <p className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-4 break-all">{email}</p>
         <p className="text-sm text-slate-600 dark:text-slate-400 mb-1">
           Once they confirm, you'll be able to start learning on ECALT.
         </p>
         <p className="text-xs text-slate-400 dark:text-slate-500 mb-6">The link expires in 7 days.</p>
+
+        {resendNote && <p className="mb-3 text-xs text-emerald-600 dark:text-emerald-400" role="status">{resendNote}</p>}
+        {resendError && <p className="mb-3 text-xs text-rose-600 dark:text-rose-400" role="alert">{resendError}</p>}
+
+        <button
+          onClick={handleResend}
+          disabled={resending}
+          className="w-full mb-3 px-4 py-2.5 rounded-xl text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-violet-300 dark:hover:border-violet-600 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+        >
+          {resending ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+          Resend email
+        </button>
         <button onClick={onSignOut} className="w-full btn-primary">
           Sign out
         </button>

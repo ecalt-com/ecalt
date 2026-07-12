@@ -33,11 +33,12 @@ function UserAvatar({ photoURL, displayName }: { photoURL: string | null; displa
 
 export default function Navigation() {
   const { pathname } = useLocation()
-  const { user, loading, signIn, signOut } = useAuth()
+  const { user, loading, role, signIn, signOut } = useAuth()
   const { isAdmin } = useSubscription()
   const [open, setOpen] = useState(false)
   const baseLinks = user ? AUTH_LINKS : PUBLIC_LINKS
-  const visibleLinks = isAdmin ? [...baseLinks, { to: '/admin', label: 'Admin' }] : baseLinks
+  const withFamily = user && role === 'parent' ? [...baseLinks, { to: '/family', label: 'Family' }] : baseLinks
+  const visibleLinks = isAdmin ? [...withFamily, { to: '/admin', label: 'Admin' }] : withFamily
 
   return (
     <>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Loader2, MessageCircle, Mail, Clock, Globe2, Download, Trash2, AlertTriangle, X, CreditCard, Ticket } from 'lucide-react'
+import { Loader2, MessageCircle, Mail, Clock, Globe2, Download, Trash2, AlertTriangle, X, CreditCard, Ticket, Eye } from 'lucide-react'
 import clsx from 'clsx'
 import Navigation from '../components/Navigation'
 import PageMeta from '../components/PageMeta'
@@ -15,6 +15,7 @@ import {
   optOutWhatsApp,
   type NotificationPreferences,
 } from '../lib/api'
+import { getMyFamily, type MyFamily } from '../lib/familyApi'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
@@ -68,6 +69,7 @@ export default function Profile() {
 
   // Privacy & data
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [family, setFamily] = useState<MyFamily | null>(null)
   const [exporting, setExporting] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleteInput, setDeleteInput] = useState('')
@@ -88,6 +90,9 @@ export default function Profile() {
         .then(r => r.ok ? r.json() : null)
         .then(data => { if (data) setProfile(data) })
         .catch(() => {})
+      // Family-link transparency: minors linked to a parent are told what
+      // the parent can see (UK Children's Code expectation).
+      getMyFamily(token).then(setFamily).catch(() => {})
     })
   }, [user, getToken])
 
@@ -195,8 +200,15 @@ export default function Profile() {
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
-        const detail = typeof body.detail === 'string' ? body.detail : ''
-        setDeleteError(detail.includes('already_deleted') ? 'This account has already been deleted.' : 'Something went wrong. Please try again.')
+        const detailStr = typeof body.detail === 'string' ? body.detail : ''
+        const detailCode = typeof body.detail === 'object' && body.detail ? body.detail.error : ''
+        if (detailCode === 'managed_children_exist' || detailStr.includes('managed_children_exist')) {
+          setDeleteError("You manage children's accounts. Delete them from your Family dashboard before deleting your own account.")
+        } else if (detailStr.includes('already_deleted')) {
+          setDeleteError('This account has already been deleted.')
+        } else {
+          setDeleteError('Something went wrong. Please try again.')
+        }
         return
       }
       await signOut()
@@ -239,6 +251,26 @@ export default function Profile() {
               <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt className="text-slate-500">Email</dt><dd className="text-slate-800 dark:text-slate-200 break-all">{user.email || '—'}</dd></div>
             </dl>
           </div>
+
+          {/* Family transparency — shown to any account linked to a parent */}
+          {family?.linked && (
+            <div className="glass-card rounded-2xl p-5 mb-5 border-l-4 border-violet-500">
+              <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+                <Eye size={13} className="text-violet-500" /> Family link
+              </h2>
+              <p className="text-sm text-slate-700 dark:text-slate-300 mb-2">
+                Your account is linked to <span className="font-medium">{family.parent_name || 'your parent'}</span>'s family.
+                They can see:
+              </p>
+              <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1">
+                {family.parent_can_see?.topics_and_journeys && <li>• Topics you explore and your journeys</li>}
+                {family.parent_can_see?.progress_and_streaks && <li>• Your progress and streaks</li>}
+                {family.parent_can_see?.quiz_scores && <li>• Your quiz scores</li>}
+                {family.parent_can_see?.conversation_titles && !family.parent_can_see?.full_conversations && <li>• The titles of your AI conversations (not the messages)</li>}
+                {family.parent_can_see?.full_conversations && <li>• Your full AI conversations</li>}
+              </ul>
+            </div>
+          )}
 
           {/* Subscription card */}
           <div className="glass-card rounded-2xl p-5 mb-5">

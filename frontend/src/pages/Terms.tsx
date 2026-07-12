@@ -2,7 +2,7 @@ import Navigation from '../components/Navigation'
 import PageMeta from '../components/PageMeta'
 import { FileText } from 'lucide-react'
 
-const LAST_UPDATED = 'June 2026'
+const LAST_UPDATED = 'July 2026'
 const CONTACT_EMAIL = 'support@ecalt.com'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -40,22 +40,53 @@ export default function Terms() {
 
           <Section title="1. Who these terms apply to">
             <p>
-              <span className="font-medium text-slate-700 dark:text-slate-200">Account holder (parent or guardian):</span>{' '}
-              The adult who creates the account, agrees to these terms, and holds all billing responsibility.
-              Must be 18 or older.
+              <span className="font-medium text-slate-700 dark:text-slate-200">Adult learners (18+):</span>{' '}
+              sign up for themselves and hold their own account and billing responsibility.
             </p>
             <p>
-              <span className="font-medium text-slate-700 dark:text-slate-200">Learner (child or teen):</span>{' '}
-              The person who uses ECALT to learn. Learners under 18 require a confirmed parental account
-              before any data is stored or the service is used.
+              <span className="font-medium text-slate-700 dark:text-slate-200">Teens (13–17):</span>{' '}
+              may sign up themselves, but the account stays inactive until a parent or guardian
+              reviews and approves it. The approving parent accepts these terms on the teen's behalf.
             </p>
             <p>
-              By signing in or creating an account you confirm you are the parent or guardian
-              of the learner, or that you are 18 or older using the service for yourself.
+              <span className="font-medium text-slate-700 dark:text-slate-200">Children (under 13):</span>{' '}
+              cannot sign up themselves. A parent or guardian creates and manages their account from the
+              Family dashboard, where available.
+            </p>
+            <p>
+              By approving or creating an account for a learner under 18 you confirm you are their
+              parent or legal guardian.
             </p>
           </Section>
 
-          <Section title="2. What ECALT is">
+          <Section title="2. Parent-managed accounts">
+            <p>
+              <span className="font-medium text-slate-700 dark:text-slate-200">Credentials:</span>{' '}
+              For accounts you create from the Family dashboard, you set and are responsible for your
+              child's login email and password — keeping them safe, sharing them only with your child,
+              and resetting them if compromised.
+            </p>
+            <p>
+              <span className="font-medium text-slate-700 dark:text-slate-200">Your controls:</span>{' '}
+              You may pause the account, disable AI chat, set a content level, export data, withdraw
+              consent, or delete the account at any time from the Family dashboard. Withdrawing consent
+              pauses the account immediately and deletes it after a 14-day grace window.
+            </p>
+            <p>
+              <span className="font-medium text-slate-700 dark:text-slate-200">Turning 18:</span>{' '}
+              When a linked learner turns 18, the family link is removed automatically: parental
+              controls and visibility end, and the learner continues as an adult account holder who
+              accepts these terms for themselves.
+            </p>
+            <p>
+              <span className="font-medium text-slate-700 dark:text-slate-200">Family plan seats:</span>{' '}
+              The Family subscription covers the subscribing parent plus up to 4 linked children
+              (5 members total), sharing one usage budget. Children beyond the seat limit, or without a
+              linked subscribed parent, use the free tier unless separately subscribed.
+            </p>
+          </Section>
+
+          <Section title="3. What ECALT is">
             <p>
               ECALT is an AI-powered learning platform. It generates explanations, learning journeys,
               quizzes, and knowledge maps in response to questions. It is an educational tool — not
@@ -68,7 +99,7 @@ export default function Terms() {
             </p>
           </Section>
 
-          <Section title="3. Acceptable use">
+          <Section title="4. Acceptable use">
             <p>You agree not to:</p>
             <ul className="list-disc list-inside space-y-1 pl-1">
               <li>Use ECALT for any purpose other than personal, non-commercial learning.</li>
@@ -82,7 +113,7 @@ export default function Terms() {
             </p>
           </Section>
 
-          <Section title="4. Subscriptions and billing">
+          <Section title="5. Subscriptions and billing">
             <p>
               ECALT offers a free tier and paid subscription plans. Paid plans are billed monthly
               or annually as chosen at checkout.
@@ -98,7 +129,7 @@ export default function Terms() {
             </p>
           </Section>
 
-          <Section title="5. Refund policy">
+          <Section title="6. Refund policy">
             <div className="glass rounded-xl p-4 border border-violet-200 dark:border-violet-800/40">
               <p className="font-semibold text-slate-700 dark:text-slate-200 mb-2">First-time subscriber guarantee</p>
               <p>
@@ -115,7 +146,7 @@ export default function Terms() {
             </p>
           </Section>
 
-          <Section title="6. AI disclosure">
+          <Section title="7. AI disclosure">
             <p>
               ECALT uses large language models (including Claude by Anthropic) to generate learning content.
               AI responses are:
@@ -132,7 +163,7 @@ export default function Terms() {
             </p>
           </Section>
 
-          <Section title="7. Intellectual property">
+          <Section title="8. Intellectual property">
             <p>
               ECALT's platform, branding, AI models, interface, and curated content are owned by
               AUB Edulearn. You may not copy, reproduce, or redistribute them.
@@ -144,7 +175,7 @@ export default function Terms() {
             </p>
           </Section>
 
-          <Section title="8. Governing law">
+          <Section title="9. Governing law">
             <p>
               These terms are governed by the laws of India. Any dispute arising from your use of
               ECALT will be subject to the exclusive jurisdiction of courts in Navi Mumbai,
@@ -154,7 +185,7 @@ export default function Terms() {
             </p>
           </Section>
 
-          <Section title="9. Changes to these terms">
+          <Section title="10. Changes to these terms">
             <p>
               We will notify account holders by email at least 14 days before any material change
               takes effect. Continued use after the effective date constitutes acceptance of the

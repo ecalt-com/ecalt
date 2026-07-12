@@ -7,7 +7,21 @@ import { getImpersonationSessionId } from './impersonationStore'
 // VITE_API_URL can still override both (e.g. to hit Railway directly from dev).
 const BASE = import.meta.env.VITE_API_URL || ''
 
-async function request<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
+export interface ApiError extends Error {
+  status: number
+  detail: unknown
+}
+
+// detail.error code from a structured {error, message} error body, or null.
+export function apiErrorCode(err: unknown): string | null {
+  const detail = (err as ApiError)?.detail
+  if (detail && typeof detail === 'object' && 'error' in detail) {
+    return String((detail as { error: unknown }).error)
+  }
+  return null
+}
+
+export async function request<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (token) headers['Authorization'] = `Bearer ${token}`
   const impersonationId = getImpersonationSessionId()
@@ -21,11 +35,12 @@ async function request<T>(path: string, init?: RequestInit, token?: string): Pro
     const body = await res.json().catch(() => ({ detail: 'Unknown error' }))
     const err = new Error(
       typeof body.detail === 'string' ? body.detail : (body.detail?.message ?? `Request failed: ${res.status}`)
-    ) as Error & { status: number; detail: unknown }
+    ) as ApiError
     err.status = res.status
     err.detail = body.detail
     throw err
   }
+  if (res.status === 204) return undefined as T
   return res.json()
 }
 
@@ -124,6 +139,10 @@ export interface UserProfile {
   whatsapp_opted_in?: boolean
   has_notification_prefs?: boolean
   profession?: string
+  role?: 'learner' | 'parent'
+  account_status?: string
+  consent_given_at?: string | null
+  consent_status?: string | null
 }
 
 // ── Notification preferences ──────────────────────────────────────────────────

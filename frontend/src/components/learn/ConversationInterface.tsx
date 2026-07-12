@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
-import { Send, Loader2 } from 'lucide-react'
+import { Send, Loader2, MessageCircleOff } from 'lucide-react'
 import clsx from 'clsx'
 import MarkdownContent from '../MarkdownContent'
 import WarmthIndicator from './WarmthIndicator'
 import UpgradePrompt from '../UpgradePrompt'
+import AccountPausedScreen from '../AccountPausedScreen'
 import { useAuth } from '../../lib/AuthContext'
 import { useSubscription } from '../../lib/SubscriptionContext'
 import { getImpersonationSessionId } from '../../lib/impersonationStore'
@@ -34,6 +35,10 @@ export default function ConversationInterface({
   const [isStreaming, setIsStreaming] = useState(false)
   const [messageCount, setMessageCount] = useState(0)
   const [limitReason, setLimitReason] = useState<string | null>(null)
+  // Parental controls (403 from /chat/stream): chat turned off, or the whole
+  // account paused from the Family dashboard.
+  const [chatDisabled, setChatDisabled] = useState(false)
+  const [accountPaused, setAccountPaused] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -52,7 +57,7 @@ export default function ConversationInterface({
   }, [sparkInput, onSparkConsumed])
 
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isStreaming) return
+    if (!text.trim() || isStreaming || chatDisabled) return
     if (isLimited) { setLimitReason('free_trial_exhausted'); return }
     const token = await getToken()
     if (!token) return
@@ -89,6 +94,15 @@ export default function ConversationInterface({
         setMessages(prev => prev.slice(0, -2))
         refreshSubscription()
         return
+      }
+
+      if (response.status === 403) {
+        const data = await response.json().catch(() => ({}))
+        const code = data.detail?.error
+        setMessages(prev => prev.slice(0, -2))
+        if (code === 'account_paused') { setAccountPaused(true); return }
+        if (code === 'chat_disabled') { setChatDisabled(true); return }
+        throw new Error(`HTTP 403`)
       }
 
       if (!response.ok || !response.body) throw new Error(`HTTP ${response.status}`)
@@ -157,7 +171,7 @@ export default function ConversationInterface({
       setIsStreaming(false)
       onMessageComplete()
     }
-  }, [conversationId, getToken, isLimited, isStreaming, onMessageComplete, refreshSubscription])
+  }, [chatDisabled, conversationId, getToken, isLimited, isStreaming, onMessageComplete, refreshSubscription])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -210,6 +224,17 @@ export default function ConversationInterface({
         <div ref={bottomRef} />
       </div>
 
+      {/* Parental controls */}
+      {accountPaused && <AccountPausedScreen />}
+      {chatDisabled && (
+        <div className="mx-4 mb-2 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3 flex items-center gap-2">
+          <MessageCircleOff size={15} className="text-amber-600 dark:text-amber-400 shrink-0" />
+          <p className="text-xs text-amber-800 dark:text-amber-300">
+            AI chat is turned off for your account. Your parent can turn it back on from their Family dashboard.
+          </p>
+        </div>
+      )}
+
       {/* Upgrade prompt */}
       {limitReason && (
         <UpgradePrompt reason={limitReason} onDismiss={() => setLimitReason(null)} />
@@ -224,17 +249,17 @@ export default function ConversationInterface({
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask anything…"
-            disabled={isStreaming}
+            placeholder={chatDisabled ? 'AI chat is turned off' : 'Ask anything…'}
+            disabled={isStreaming || chatDisabled}
             className="flex-1 bg-transparent text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 resize-none outline-none py-1.5 px-2 max-h-32 leading-relaxed"
             style={{ overflowY: input.split('\n').length > 3 ? 'auto' : 'hidden' }}
           />
           <button
             onClick={() => sendMessage(input)}
-            disabled={!input.trim() || isStreaming}
+            disabled={!input.trim() || isStreaming || chatDisabled}
             className={clsx(
               'shrink-0 w-8 h-8 rounded-lg flex items-center justify-center transition-all',
-              input.trim() && !isStreaming
+              input.trim() && !isStreaming && !chatDisabled
                 ? 'bg-violet-600 text-white hover:bg-violet-500'
                 : 'bg-slate-200 dark:bg-slate-700/50 text-slate-400 dark:text-slate-500 cursor-not-allowed'
             )}

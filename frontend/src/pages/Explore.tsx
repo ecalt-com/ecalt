@@ -6,7 +6,8 @@ import Navigation from '../components/Navigation'
 import CuriosityInput from '../components/CuriosityInput'
 import StepNode from '../components/StepNode'
 import StepUpgradePanel from '../components/StepUpgradePanel'
-import { previewJourney, confirmJourney, markStepComplete, saveProfession, getUserProfile } from '../lib/api'
+import AccountPausedScreen from '../components/AccountPausedScreen'
+import { previewJourney, confirmJourney, markStepComplete, saveProfession, getUserProfile, apiErrorCode } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { usePageTitle } from '../lib/usePageTitle'
 import type { Journey, JourneyStep, LearnerPurpose, TopicExpertise } from '../lib/types'
@@ -68,6 +69,7 @@ export default function Explore() {
   const [steps, setSteps] = useState<JourneyStep[]>([])
   const [error, setError] = useState<string | null>(null)
   const [budgetExceeded, setBudgetExceeded] = useState(false)
+  const [accountPaused, setAccountPaused] = useState(false)
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null)
 
   // Intent state
@@ -155,6 +157,9 @@ export default function Explore() {
     } catch (err: any) {
       if (err?.status === 402) {
         setBudgetExceeded(true)
+      } else if (err?.status === 403 && apiErrorCode(err) === 'account_paused') {
+        setAccountPaused(true)
+        return
       } else {
         setError(err instanceof Error ? err.message : 'Failed to generate journey. Please try again.')
       }
@@ -221,6 +226,9 @@ export default function Explore() {
     } catch (err: any) {
       if (err?.status === 402) {
         setBudgetExceeded(true)
+      } else if (err?.status === 403 && apiErrorCode(err) === 'account_paused') {
+        setAccountPaused(true)
+        return
       } else {
         setError(err instanceof Error ? err.message : 'Failed to regenerate. Please try again.')
       }
@@ -277,6 +285,8 @@ export default function Explore() {
       </div>
 
       <Navigation />
+
+      {accountPaused && <AccountPausedScreen />}
 
       <div className="relative min-h-screen pt-24 pb-16 px-4">
         <div className="max-w-3xl mx-auto">

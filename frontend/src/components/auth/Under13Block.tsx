@@ -23,7 +23,8 @@ export default function Under13Block({ onDismiss }: Props) {
           To protect younger learners, we can't create an account for you right now.
         </p>
         <p className="text-sm text-slate-600 dark:text-slate-400 mb-6">
-          Ask a parent or guardian to create an ECALT account — they can use it together with you!
+          Soon, your parent will be able to create an account just for you from their
+          Family dashboard at ecalt.com/family — ask them to keep an eye out!
         </p>
         <button onClick={goHome} className="w-full btn-primary">
           ← Back to Home

@@ -2,7 +2,7 @@ import Navigation from '../components/Navigation'
 import PageMeta from '../components/PageMeta'
 import { Shield, Mail, MapPin } from 'lucide-react'
 
-const LAST_UPDATED = 'June 2026'
+const LAST_UPDATED = 'July 2026'
 const CONTACT_EMAIL = 'support@ecalt.com'
 const OFFICE_ADDRESS = 'AUB Edulearn, WeGrow Office, Plot No. 88, 8th Floor, Proxima, Arunachal Bhavan, 19, Sector 30A, Vashi, Navi Mumbai, Maharashtra – 400703'
 
@@ -46,7 +46,8 @@ export default function PrivacyPolicy() {
             <ul className="text-sm text-slate-600 dark:text-slate-300 space-y-1.5">
               <li>✦ We collect only what's needed to run the learning service.</li>
               <li>✦ We never sell your data. No ads. No third-party marketing profiling.</li>
-              <li>✦ Children under 18 need a parent to confirm their account before anything is stored.</li>
+              <li>✦ Learners under 18 need a parent's reviewed, verified consent before their account activates.</li>
+              <li>✦ Parents can review, export, delete, and control their child's account from the Family dashboard.</li>
               <li>✦ You can download or delete all your data at any time.</li>
               <li>✦ Questions? Email us at <a href={`mailto:${CONTACT_EMAIL}`} className="text-violet-600 dark:text-violet-400 underline">{CONTACT_EMAIL}</a> — a human reads every message.</li>
             </ul>
@@ -64,39 +65,73 @@ export default function PrivacyPolicy() {
           <Section title="2. What we collect — and why">
             <p className="font-medium text-slate-700 dark:text-slate-200">From the parent / account holder:</p>
             <ul className="list-disc list-inside space-y-1 pl-1">
-              <li>Name and email address (from Google Sign-In), used to send consent confirmation and account notices.</li>
-              <li>Consent records: date and time you confirmed your child's account, kept for legal compliance.</li>
+              <li>Name and email address (from Google Sign-In), used to send consent requests, receipts, and account notices.</li>
+              <li>Consent records: what you consented to, when, how it was verified, and under which policy version — kept for legal compliance.</li>
             </ul>
-            <p className="font-medium text-slate-700 dark:text-slate-200 pt-2">From the child / learner:</p>
+            <p className="font-medium text-slate-700 dark:text-slate-200 pt-2">From learners aged 13–17 (self-signup):</p>
             <ul className="list-disc list-inside space-y-1 pl-1">
-              <li>First name and Google account ID, used to personalise their experience.</li>
+              <li>Name and email from Google sign-in, used to personalise their experience.</li>
               <li>Learning questions, journeys, and progress — the core service data.</li>
-              <li>AI-generated knowledge nodes (topics explored), stored in their Passport.</li>
-              <li>Birth year (not full date of birth), used solely to enforce the age gate.</li>
+              <li>AI conversations with the tutor, and AI-generated knowledge topics stored in their Passport.</li>
+              <li>Birth year and month (not the exact day), used solely for age checks.</li>
+              <li>Country, recorded once at signup as the consent jurisdiction.</li>
+            </ul>
+            <p className="font-medium text-slate-700 dark:text-slate-200 pt-2">From children under 13 (parent-created accounts):</p>
+            <ul className="list-disc list-inside space-y-1 pl-1">
+              <li>The same learning data, but the login identity (name, email) is created and controlled by the parent.</li>
+              <li>AI chat is off by default for under-13s; a parent must explicitly enable it.</li>
             </ul>
             <p className="font-medium text-slate-700 dark:text-slate-200 pt-2">We do NOT collect:</p>
             <ul className="list-disc list-inside space-y-1 pl-1">
-              <li>Location (beyond country for payment routing)</li>
+              <li>Location (beyond country for payment routing and consent jurisdiction)</li>
               <li>Device identifiers or browser fingerprints</li>
               <li>Photos, voice, or any biometric data</li>
             </ul>
+            <p className="pt-1">
+              We never use children's data for advertising, marketing profiling, or behavioural tracking.
+            </p>
           </Section>
 
           <Section title="3. How parental consent works">
             <p>
-              When a learner under 18 signs up, we send a confirmation email to their parent or guardian.
-              The account is inactive — no data is stored beyond the parent's email — until the parent
-              clicks the confirmation link. The link expires in 7 days. If the parent does not confirm,
-              all data is deleted automatically.
+              Every learner under 18 needs a parent or guardian's consent before their account activates.
+              There are two paths:
             </p>
+            <ul className="list-disc list-inside space-y-1 pl-1">
+              <li><span className="font-medium">Parent-created:</span> you create the account from your Family dashboard, reviewing and accepting the data disclosure as part of setup.</li>
+              <li><span className="font-medium">Teen self-signup:</span> the teen signs up and names you; we email you a review page where you explicitly approve or decline. The link expires in 7 days, and nothing activates until you decide.</li>
+            </ul>
+            <p className="font-medium text-slate-700 dark:text-slate-200 pt-2">How we verify it's really a parent:</p>
+            <ul className="list-disc list-inside space-y-1 pl-1">
+              <li><span className="font-medium">Email-plus</span> (teens 13+ in most countries): your emailed approval, plus a delayed follow-up notice with a one-click "this wasn't me" link that suspends the account immediately.</li>
+              <li><span className="font-medium">Card verification</span> (all under-13s, and all minors in India): a card check via our payment processor confirms an adult is consenting. Nothing is charged and no card details are stored by us.</li>
+            </ul>
+            <p className="font-medium text-slate-700 dark:text-slate-200 pt-2">Age thresholds by region:</p>
             <p>
-              Parents can withdraw consent at any time by emailing{' '}
-              <a href={`mailto:${CONTACT_EMAIL}`} className="text-violet-600 dark:text-violet-400 underline">{CONTACT_EMAIL}</a>.
-              Withdrawal triggers immediate account deletion.
+              The age at which someone can consent to data processing themselves varies by law — for
+              example 13 in the US (COPPA) and UK, 13–16 across the EU (GDPR Art. 8), and 18 in India
+              (DPDP Act 2023). We record your country at signup and apply the strictest rule that fits:
+              every minor needs parental consent on ECALT, and your jurisdiction decides how strongly we
+              verify it.
+            </p>
+            <p className="pt-1">
+              If our privacy policy materially changes, we notify consenting parents and ask them to
+              re-accept the new version before continuing.
             </p>
           </Section>
 
-          <Section title="4. Our promise">
+          <Section title="4. Parental rights">
+            <p>As the consenting parent, you can at any time — from your Family dashboard, no support email needed:</p>
+            <ul className="list-disc list-inside space-y-1 pl-1">
+              <li><span className="font-medium">Review</span> your child's learning activity: topics, journeys, progress, quiz scores, and conversation titles (full transcripts only if you enable it — your child is told what you can see).</li>
+              <li><span className="font-medium">Export</span> everything we store about your child as a JSON file.</li>
+              <li><span className="font-medium">Control</span> the account: pause it, disable AI chat, set a content level, and manage the weekly digest.</li>
+              <li><span className="font-medium">Withdraw consent</span> — the account pauses immediately and is deleted after a 14-day grace window (you can undo within the window).</li>
+              <li><span className="font-medium">Delete</span> the account and all its data immediately and permanently.</li>
+            </ul>
+          </Section>
+
+          <Section title="5. Our promise">
             <p className="font-semibold text-slate-800 dark:text-slate-100">
               We will never sell your child's data. We will never show them ads.
               We will never profile them for any marketing purpose — ours or anyone else's.
@@ -108,21 +143,28 @@ export default function PrivacyPolicy() {
             </p>
           </Section>
 
-          <Section title="5. Data retention and your rights">
+          <Section title="6. Data retention and your rights">
             <ul className="list-disc list-inside space-y-1.5 pl-1">
               <li><span className="font-medium">Active accounts:</span> data is retained while the account is active.</li>
-              <li><span className="font-medium">Deleted accounts:</span> purged within 30 days of deletion request.</li>
-              <li><span className="font-medium">Consent records:</span> retained for 3 years as required by law.</li>
+              <li><span className="font-medium">Pending accounts:</span> if parental consent never arrives, the account and all associated data (including the login credential) are deleted after 30 days.</li>
+              <li><span className="font-medium">Inactive child accounts:</span> after 12 months of inactivity we notify the parent; if the account stays unused for another 30 days, deletion is scheduled with a 14-day grace window the parent can cancel.</li>
+              <li><span className="font-medium">Consent withdrawal:</span> the account pauses immediately and is deleted after a 14-day grace window.</li>
+              <li><span className="font-medium">Deleted accounts:</span> personal data is removed immediately on deletion; every deletion is logged.</li>
+              <li><span className="font-medium">Consent proof:</span> consent events are retained in pseudonymised form (no name or email) as legally required evidence that consent existed.</li>
+              <li><span className="font-medium">Un-actioned policy re-consent:</span> if a parent doesn't re-accept a materially changed policy, the child's account is paused 30 days after the notice.</li>
+              <li><span className="font-medium">Turning 18:</span> the family link is graduated — parental controls are removed and the learner re-consents as an adult.</li>
             </ul>
             <p className="pt-1">
               You have the right to access, correct, and delete your data at any time.
               Signed-in users can download or delete their data from{' '}
-              <a href="/profile" className="text-violet-600 dark:text-violet-400 underline">Profile → Privacy &amp; Data</a>.
+              <a href="/profile" className="text-violet-600 dark:text-violet-400 underline">Profile → Privacy &amp; Data</a>;
+              parents manage their children's data from the{' '}
+              <a href="/family" className="text-violet-600 dark:text-violet-400 underline">Family dashboard</a>.
               For any other request, email <a href={`mailto:${CONTACT_EMAIL}`} className="text-violet-600 dark:text-violet-400 underline">{CONTACT_EMAIL}</a>.
             </p>
           </Section>
 
-          <Section title="6. Security">
+          <Section title="7. Security">
             <p>
               All data in transit is encrypted via TLS 1.2+. Data at rest is encrypted by our
               storage provider (Supabase/AWS). We use Firebase Auth for authentication — we never
@@ -133,7 +175,7 @@ export default function PrivacyPolicy() {
             </p>
           </Section>
 
-          <Section title="7. Cookies">
+          <Section title="8. Cookies">
             <p>
               We use only essential session cookies (Firebase Auth). We do not use advertising
               cookies, analytics cookies, or any third-party tracking pixels beyond Vercel
@@ -141,11 +183,12 @@ export default function PrivacyPolicy() {
             </p>
           </Section>
 
-          <Section title="8. Changes to this policy">
+          <Section title="9. Changes to this policy">
             <p>
               We will notify you by email (at the address in your account) at least 14 days before
-              any material change to this policy takes effect. Continued use after the effective
-              date constitutes acceptance.
+              any material change to this policy takes effect. Where the change affects a child's
+              data, the consenting parent is asked to review and re-accept the new version — and the
+              child's account is paused if they don't.
             </p>
           </Section>
 
