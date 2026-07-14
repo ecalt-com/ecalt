@@ -52,7 +52,7 @@ interface UserProfile {
 }
 
 export default function Profile() {
-  const { user, loading: authLoading, getToken, signOut } = useAuth()
+  const { user, loading: authLoading, getToken, signOut, role } = useAuth()
   const { addToast } = useToast()
   const { plan, couponExtras, loading: subLoading } = useSubscription()
   const { country, loading: geoLoading } = useGeo()
@@ -251,6 +251,21 @@ export default function Profile() {
               <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt className="text-slate-500">Email</dt><dd className="text-slate-800 dark:text-slate-200 break-all">{user.email || '—'}</dd></div>
             </dl>
           </div>
+
+          {/* Family dashboard entry point for parents */}
+          {role === 'parent' && (
+            <div className="glass-card rounded-2xl p-5 mb-5 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-500 uppercase tracking-wide mb-1">Family</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  See what your children are learning and manage their accounts.
+                </p>
+              </div>
+              <button onClick={() => navigate('/family')} className="btn-primary text-xs shrink-0">
+                Family dashboard →
+              </button>
+            </div>
+          )}
 
           {/* Family transparency — shown to any account linked to a parent */}
           {family?.linked && (

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { HelmetProvider } from 'react-helmet-async'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
@@ -53,6 +53,11 @@ function PageSkeleton() {
 
 function AppShell() {
   const { needsOnboarding, postSignInPhase, parentEmail, completeBirthYear, markConsentSent, dismissPostSignIn } = useAuth()
+  const { pathname } = useLocation()
+  // The consent pages are parent-facing and often opened on the child's
+  // device, where the child's session is active — the child's own gate
+  // overlays must not cover them.
+  const suppressGates = pathname.startsWith('/consent/')
 
   return (
     <>
@@ -96,16 +101,16 @@ function AppShell() {
       </Suspense>
 
       {/* Post-sign-in compliance gates — rendered in order of priority */}
-      {postSignInPhase === 'birth_year' && (
+      {!suppressGates && postSignInPhase === 'birth_year' && (
         <BirthYearGate onSubmit={completeBirthYear} />
       )}
-      {postSignInPhase === 'under_13' && (
+      {!suppressGates && postSignInPhase === 'under_13' && (
         <Under13Block onDismiss={dismissPostSignIn} />
       )}
-      {postSignInPhase === 'consent_pending' && (
+      {!suppressGates && postSignInPhase === 'consent_pending' && (
         <ParentalConsentForm onSent={markConsentSent} />
       )}
-      {postSignInPhase === 'consent_sent' && parentEmail && (
+      {!suppressGates && postSignInPhase === 'consent_sent' && parentEmail && (
         <ConsentSentScreen parentEmail={parentEmail} onSignOut={dismissPostSignIn} />
       )}
 

@@ -9,3 +9,6 @@ const app = initializeApp({
 
 export const firebaseAuth = getAuth(app)
 export const googleProvider = new GoogleAuthProvider()
+// Always show the account chooser: on shared family devices, silently reusing
+// the child's Google session would sign the parent in as the child.
+googleProvider.setCustomParameters({ prompt: 'select_account' })

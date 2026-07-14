@@ -23,6 +23,7 @@ interface AuthContextValue {
   signInWithEmail: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   getToken: () => Promise<string | null>
+  refreshRole: () => Promise<void>
   dismissOnboarding: () => void
   completeBirthYear: (birthYear: number, birthMonth?: number, country?: string) => Promise<void>
   submitParentalConsent: (parentEmail: string) => Promise<void>
@@ -41,6 +42,7 @@ const AuthContext = createContext<AuthContextValue>({
   signInWithEmail: async () => {},
   signOut: async () => {},
   getToken: async () => null,
+  refreshRole: async () => {},
   dismissOnboarding: () => {},
   completeBirthYear: async () => {},
   submitParentalConsent: async () => {},
@@ -323,12 +325,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [])
 
+  // Role changes server-side mid-session (approving a consent request or
+  // creating the first child promotes learner → parent). Callers that trigger
+  // those actions refresh here so the Family nav link appears immediately.
+  const refreshRole = useCallback(async (): Promise<void> => {
+    const u = userRef.current
+    if (!u) return
+    try {
+      const token = await u.getIdToken()
+      const res = await fetch('/api/v1/users/me', { headers: { Authorization: `Bearer ${token}` } })
+      if (res.ok) {
+        const profile = await res.json()
+        if (profile.role) setRole(profile.role)
+      }
+    } catch { /* non-critical */ }
+  }, [])
+
   const dismissOnboarding = () => setNeedsOnboarding(false)
 
   return (
     <AuthContext.Provider value={{
       user, loading, needsOnboarding, postSignInPhase, parentEmail, role,
-      signIn, signInWithEmail, signOut, getToken,
+      signIn, signInWithEmail, signOut, getToken, refreshRole,
       dismissOnboarding, completeBirthYear, submitParentalConsent, markConsentSent, dismissPostSignIn,
     }}>
       {children}

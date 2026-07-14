@@ -29,7 +29,7 @@ const needsCardVerification = (child: FamilyChild) =>
   child.verification_tier === 'card' && child.verification_status !== 'verified'
 
 export default function Family() {
-  const { user, loading: authLoading, getToken } = useAuth()
+  const { user, loading: authLoading, getToken, refreshRole } = useAuth()
   const { addToast } = useToast()
   const navigate = useNavigate()
   const [params, setParams] = useSearchParams()
@@ -247,7 +247,7 @@ export default function Family() {
       {showWizard && (
         <AddChildWizard
           onClose={() => setShowWizard(false)}
-          onCreated={loadChildren}
+          onCreated={() => { loadChildren(); refreshRole() }}
         />
       )}
     </>

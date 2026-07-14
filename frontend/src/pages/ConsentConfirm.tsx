@@ -26,7 +26,7 @@ export default function ConsentConfirm() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const token = params.get('token')
-  const { user, loading: authLoading, getToken } = useAuth()
+  const { user, loading: authLoading, getToken, refreshRole } = useAuth()
 
   const [phase, setPhase] = useState<Phase>('loading')
   const [childName, setChildName] = useState<string | null>(null)
@@ -34,6 +34,10 @@ export default function ConsentConfirm() {
   const [linkedToFamily, setLinkedToFamily] = useState(false)
   const [submitting, setSubmitting] = useState<'approve' | 'decline' | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  // Shared-device case: the link is often opened on the child's laptop where
+  // the child's own session is active. Anonymous mode ignores that session
+  // and uses the tokenless-capability endpoint instead.
+  const [anonymousMode, setAnonymousMode] = useState(false)
 
   // Read-only status check. Never approves anything — a human click below is
   // the entire point of this page.
@@ -65,7 +69,7 @@ export default function ConsentConfirm() {
       // Signed-in adults approve via the family endpoint — it also links the
       // child to their Family dashboard. Anonymous falls back to the plain
       // consent endpoint.
-      const authToken = user ? await getToken() : null
+      const authToken = user && !anonymousMode ? await getToken() : null
       const data = authToken
         ? await (approved ? approveLinkRequest(token, authToken) : declineLinkRequest(token, authToken))
         : await decideConsent(token, approved)
@@ -73,9 +77,11 @@ export default function ConsentConfirm() {
       setMessage(data.message ?? null)
       if (data.status === 'confirmed') {
         setLinkedToFamily(Boolean(authToken))
+        if (authToken) refreshRole()  // approval promotes learner → parent
         setPhase('confirmed')
       } else if (data.status === 'verification_required') {
         setLinkedToFamily(Boolean(authToken))
+        if (authToken) refreshRole()
         setPhase('verification_required')
       } else if (data.status === 'already_confirmed') {
         setPhase('already_confirmed')
@@ -87,9 +93,11 @@ export default function ConsentConfirm() {
       if (code === 'token_expired') { setPhase('expired'); return }
       if (code === 'invalid_token') { setPhase('invalid'); return }
       if (code === 'self_approval' || code === 'consent_pending') {
-        setActionError("This link is meant for your parent or guardian — you can't approve your own account. Please ask them to open the email.")
+        setAnonymousMode(true)
+        setActionError("This browser is signed in as the child, and a child can't approve their own account. If you're the parent, use the button below to approve without an account — or sign in with your own Google account.")
       } else if (code === 'adult_account_required' || code === 'no_account') {
-        setActionError('Only an active adult account can approve from a signed-in session. Sign out and use "Approve without an account", or sign in with your own Google account.')
+        setAnonymousMode(true)
+        setActionError('This signed-in account can\'t approve. If you\'re the parent, approve without an account below, or sign in with your own Google account.')
       } else {
         setActionError((err as ApiError)?.message || 'Something went wrong. Please try again.')
       }
@@ -159,6 +167,21 @@ export default function ConsentConfirm() {
                 </div>
               )}
 
+              {user && !anonymousMode && (
+                <p className="mb-4 text-[11px] text-slate-400 dark:text-slate-500 text-center">
+                  Approving as <span className="font-medium text-slate-500 dark:text-slate-400">{user.email}</span>
+                  {' '}—{' '}
+                  <button onClick={() => setAnonymousMode(true)} className="underline hover:text-slate-600 dark:hover:text-slate-300">
+                    not you? Approve without an account
+                  </button>
+                </p>
+              )}
+              {user && anonymousMode && (
+                <p className="mb-4 text-[11px] text-slate-400 dark:text-slate-500 text-center">
+                  Deciding without an account — the signed-in session on this device won't be used.
+                </p>
+              )}
+
               {actionError && (
                 <p className="mb-3 text-xs text-rose-600 dark:text-rose-400" role="alert">{actionError}</p>
               )}
@@ -178,7 +201,7 @@ export default function ConsentConfirm() {
                   className="flex-1 btn-primary flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   {submitting === 'approve' ? <Loader2 size={14} className="animate-spin" /> : null}
-                  {user ? 'Approve account' : 'Approve without an account'}
+                  {user && !anonymousMode ? 'Approve account' : 'Approve without an account'}
                 </button>
               </div>
             </>
@@ -217,6 +240,13 @@ export default function ConsentConfirm() {
               {linkedToFamily ? (
                 <button onClick={() => navigate('/family')} className="w-full btn-primary">
                   Verify from your Family dashboard
+                </button>
+              ) : user ? (
+                <button
+                  onClick={() => { setAnonymousMode(false); setActionError(null); setPhase('review') }}
+                  className="w-full btn-primary"
+                >
+                  Review and approve as {user.email}
                 </button>
               ) : (
                 <GoogleSignInButton label="Sign in with Google to continue" />
