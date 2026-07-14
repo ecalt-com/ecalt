@@ -143,6 +143,8 @@ export interface UserProfile {
   account_status?: string
   consent_given_at?: string | null
   consent_status?: string | null
+  birth_year?: number | null
+  birth_month?: number | null
 }
 
 // ── Notification preferences ──────────────────────────────────────────────────

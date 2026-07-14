@@ -42,6 +42,10 @@ class UserProfile(BaseModel):
     account_status: str = "active"
     consent_given_at: Optional[datetime] = None
     needs_birth_year: bool = False
+    # Echoed back so a pending teen who re-logs in can resubmit the consent
+    # request (the upsert's teen branch requires birth_year in the body).
+    birth_year: Optional[int] = None
+    birth_month: Optional[int] = None
     profession: Optional[str] = None
     role: str = "learner"  # 'parent' once they manage a family
 

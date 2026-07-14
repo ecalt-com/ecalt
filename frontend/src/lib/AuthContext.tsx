@@ -66,6 +66,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // auth changes triggered by signInWithPopup.
   const initialAuthCheckDone = useRef(false)
 
+  // A pending teen who refreshes or re-logs in lands back on the parent-email
+  // form; submitting it re-POSTs /users, whose teen branch requires birth_year
+  // in the body. Recover it from the profile so the form still works.
+  const enterConsentPending = (profile: { birth_year?: number | null; birth_month?: number | null }) => {
+    if (profile.birth_year != null) setPendingBirthYear(profile.birth_year)
+    if (profile.birth_month != null) setPendingBirthMonth(profile.birth_month)
+    setPostSignInPhase('consent_pending')
+  }
+
   useEffect(() => {
     const unsub = onAuthStateChanged(firebaseAuth, async u => {
       userRef.current = u
@@ -97,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               pendingUserRef.current = u
               setPostSignInPhase('birth_year')
             } else if (profile.account_status === 'parental_consent_pending') {
-              setPostSignInPhase('consent_pending')
+              enterConsentPending(profile)
             } else if (profile.onboarding_done === false) {
               setNeedsOnboarding(true)
             }
@@ -151,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return
         }
         if (profile.account_status === 'parental_consent_pending') {
-          setPostSignInPhase('consent_pending')
+          enterConsentPending(profile)
           return
         }
         if (profile.onboarding_done === false) {
@@ -181,7 +190,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const profile = await res.json()
         if (profile.role) setRole(profile.role)
         if (profile.account_status === 'parental_consent_pending') {
-          setPostSignInPhase('consent_pending')
+          enterConsentPending(profile)
           return
         }
         if (profile.onboarding_done === false) {
@@ -235,6 +244,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (profile.role) setRole(profile.role)
         pendingUserRef.current = null
         if (profile.account_status === 'parental_consent_pending') {
+          setPendingBirthYear(birthYear)
+          setPendingBirthMonth(birthMonth ?? null)
+          setPendingCountry(country ?? null)
           setPostSignInPhase('consent_pending')
           return
         }
