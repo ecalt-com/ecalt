@@ -55,9 +55,10 @@ function AppShell() {
   const { needsOnboarding, postSignInPhase, parentEmail, completeBirthYear, markConsentSent, dismissPostSignIn } = useAuth()
   const { pathname } = useLocation()
   // The consent pages are parent-facing and often opened on the child's
-  // device, where the child's session is active — the child's own gate
-  // overlays must not cover them.
-  const suppressGates = pathname.startsWith('/consent/')
+  // device, where the child's session is active — the child's pending-consent
+  // overlays must not cover them. The birth-year gate stays: a parent signing
+  // in fresh on the consent page still needs their adult account established.
+  const suppressChildGates = pathname.startsWith('/consent/')
 
   return (
     <>
@@ -101,16 +102,16 @@ function AppShell() {
       </Suspense>
 
       {/* Post-sign-in compliance gates — rendered in order of priority */}
-      {!suppressGates && postSignInPhase === 'birth_year' && (
+      {postSignInPhase === 'birth_year' && (
         <BirthYearGate onSubmit={completeBirthYear} />
       )}
-      {!suppressGates && postSignInPhase === 'under_13' && (
+      {postSignInPhase === 'under_13' && (
         <Under13Block onDismiss={dismissPostSignIn} />
       )}
-      {!suppressGates && postSignInPhase === 'consent_pending' && (
+      {!suppressChildGates && postSignInPhase === 'consent_pending' && (
         <ParentalConsentForm onSent={markConsentSent} />
       )}
-      {!suppressGates && postSignInPhase === 'consent_sent' && parentEmail && (
+      {!suppressChildGates && postSignInPhase === 'consent_sent' && parentEmail && (
         <ConsentSentScreen parentEmail={parentEmail} onSignOut={dismissPostSignIn} />
       )}
 

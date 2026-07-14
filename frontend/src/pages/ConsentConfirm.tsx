@@ -26,7 +26,7 @@ export default function ConsentConfirm() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const token = params.get('token')
-  const { user, loading: authLoading, getToken, refreshRole } = useAuth()
+  const { user, loading: authLoading, getToken, refreshRole, signIn } = useAuth()
 
   const [phase, setPhase] = useState<Phase>('loading')
   const [childName, setChildName] = useState<string | null>(null)
@@ -60,6 +60,17 @@ export default function ConsentConfirm() {
         setPhase(apiErrorCode(err) === 'token_expired' ? 'expired' : 'invalid')
       })
   }, [token])
+
+  // Shared laptop: the child is signed in, but the parent wants to approve as
+  // themselves. signIn always prompts the Google account chooser and replaces
+  // the session; a first-time parent then gets the adult birth-year gate.
+  const handleSwitchAccount = async () => {
+    setActionError(null)
+    setAnonymousMode(false)
+    try {
+      await signIn()
+    } catch { /* popup closed — keep the page as-is */ }
+  }
 
   const decide = async (approved: boolean) => {
     if (!token || submitting) return
@@ -168,17 +179,28 @@ export default function ConsentConfirm() {
               )}
 
               {user && !anonymousMode && (
-                <p className="mb-4 text-[11px] text-slate-400 dark:text-slate-500 text-center">
-                  Approving as <span className="font-medium text-slate-500 dark:text-slate-400">{user.email}</span>
-                  {' '}—{' '}
-                  <button onClick={() => setAnonymousMode(true)} className="underline hover:text-slate-600 dark:hover:text-slate-300">
-                    not you? Approve without an account
-                  </button>
-                </p>
+                <div className="mb-4 text-[11px] text-slate-400 dark:text-slate-500 text-center space-y-1">
+                  <p>
+                    Approving as <span className="font-medium text-slate-500 dark:text-slate-400">{user.email}</span>
+                  </p>
+                  <p>
+                    Not you?{' '}
+                    <button onClick={handleSwitchAccount} className="underline hover:text-slate-600 dark:hover:text-slate-300">
+                      Sign in with your own Google account
+                    </button>
+                    {' '}·{' '}
+                    <button onClick={() => setAnonymousMode(true)} className="underline hover:text-slate-600 dark:hover:text-slate-300">
+                      approve without an account
+                    </button>
+                  </p>
+                </div>
               )}
               {user && anonymousMode && (
                 <p className="mb-4 text-[11px] text-slate-400 dark:text-slate-500 text-center">
-                  Deciding without an account — the signed-in session on this device won't be used.
+                  Deciding without an account — the signed-in session on this device won't be used.{' '}
+                  <button onClick={handleSwitchAccount} className="underline hover:text-slate-600 dark:hover:text-slate-300">
+                    Sign in with your own Google account instead
+                  </button>
                 </p>
               )}
 
