@@ -242,7 +242,8 @@ def list_children(uid: str = Depends(get_active_user)):
 
 # ── Path B: authenticated approval of a child-initiated consent request ──────
 
-def _decide_link_request(token: str, approved: bool, request: Request, uid: str) -> dict:
+async def _decide_link_request(token: str, approved: bool, request: Request, uid: str) -> dict:
+    # async so ensure_future (approval receipt email) has a running event loop.
     parent = _require_adult_parent(uid)
 
     from app.api.v1.endpoints.users import _load_consent_token
@@ -354,13 +355,13 @@ def _decide_link_request(token: str, approved: bool, request: Request, uid: str)
 
 
 @router.post("/link-requests/{token}/approve", summary="Approve a child's consent request (authenticated)")
-def approve_link_request(token: str, request: Request, uid: str = Depends(get_active_user)):
-    return _decide_link_request(token, True, request, uid)
+async def approve_link_request(token: str, request: Request, uid: str = Depends(get_active_user)):
+    return await _decide_link_request(token, True, request, uid)
 
 
 @router.post("/link-requests/{token}/decline", summary="Decline a child's consent request (authenticated)")
-def decline_link_request(token: str, request: Request, uid: str = Depends(get_active_user)):
-    return _decide_link_request(token, False, request, uid)
+async def decline_link_request(token: str, request: Request, uid: str = Depends(get_active_user)):
+    return await _decide_link_request(token, False, request, uid)
 
 
 # ── Card micro-verification (Stripe SetupIntent via hosted Checkout) ─────────

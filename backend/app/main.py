@@ -25,6 +25,14 @@ async def lifespan(_app: FastAPI):
     setup_logging(settings.LOG_LEVEL, settings.ENVIRONMENT)
     if settings.ENVIRONMENT != "development" and not settings.NOTIFICATION_SIGNING_SECRET:
         raise RuntimeError("NOTIFICATION_SIGNING_SECRET must be set in production")
+    # SMTP is blocked on most Railway plans — the Brevo HTTP API key is
+    # effectively required in production; make the active transport auditable.
+    email_transport = (
+        "brevo-api" if settings.BREVO_API_KEY
+        else "smtp" if settings.SMTP_HOST and settings.SMTP_LOGIN
+        else "none"
+    )
+    logging.getLogger("ecalt.startup").info("email transport: %s", email_transport)
     from app.core.database import _get_pool, warm_pool
     try:
         _get_pool()

@@ -422,7 +422,9 @@ def consent_decide(body: ConsentDecisionRequest, request: Request):
 
 @router.post("/consent/resend", summary="Resend the parental consent email")
 @limiter.limit("3/hour")
-def consent_resend(request: Request, uid: str = Depends(get_required_user)):
+async def consent_resend(request: Request, uid: str = Depends(get_required_user)):
+    # async so ensure_future below has a running event loop (a sync endpoint
+    # runs in a worker thread, where it raises "no current event loop").
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("SELECT account_status, jurisdiction FROM users WHERE uid = %s", (uid,))
