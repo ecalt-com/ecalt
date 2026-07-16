@@ -145,7 +145,15 @@ async def _queue_processor() -> None:
 # ── Job 2: Daily spark dispatch ───────────────────────────────────────────────
 
 async def _daily_spark_dispatch() -> None:
-    """Send daily spark to users whose local time is currently 07:00–09:00."""
+    """Send daily spark to onboarded users whose local time is currently 07:00–09:00.
+
+    Users with no declared interests or who have never been active are skipped —
+    the re-engagement ladder owns dormant accounts. The angle rotates daily
+    through what they actually explored (domain_mastery) plus declared interests,
+    so consecutive emails don't rehash the same topic pair.
+    """
+    from datetime import date
+
     from app.core.database import get_db
     from app.services.notification_service import notification_service
 
@@ -154,13 +162,22 @@ async def _daily_spark_dispatch() -> None:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT u.uid, u.email, u.display_name,
-                           COALESCE(ui.topics, ARRAY['science']) AS topics,
-                           COALESCE(np.preferred_channel, 'email') AS preferred_channel
+                    SELECT u.uid, u.email, u.display_name, ui.topics,
+                           COALESCE(np.preferred_channel, 'email') AS preferred_channel,
+                           (SELECT array_agg(dm.domain ORDER BY dm.mastery_level DESC)
+                              FROM domain_mastery dm WHERE dm.uid = u.uid) AS mastery_domains,
+                           (SELECT array_agg(concept) FROM (
+                                SELECT kn.concept FROM knowledge_nodes kn
+                                WHERE kn.uid = u.uid
+                                  AND kn.discovered_at >= now() - interval '30 days'
+                                ORDER BY kn.discovered_at DESC LIMIT 5
+                            ) recent) AS recent_concepts
                     FROM users u
-                    LEFT JOIN user_interests ui ON ui.uid = u.uid
+                    JOIN user_interests ui ON ui.uid = u.uid
                     LEFT JOIN notification_preferences np ON np.uid = u.uid
-                    WHERE EXTRACT(HOUR FROM (now() AT TIME ZONE COALESCE(np.timezone, 'UTC'))) BETWEEN 7 AND 9
+                    WHERE u.last_active_date IS NOT NULL
+                      AND array_length(ui.topics, 1) >= 1
+                      AND EXTRACT(HOUR FROM (now() AT TIME ZONE COALESCE(np.timezone, 'UTC'))) BETWEEN 7 AND 9
                       AND {not_sent}
                     LIMIT 200
                     """.format(not_sent=_not_sent_recently("daily_spark", 1)),
@@ -172,7 +189,14 @@ async def _daily_spark_dispatch() -> None:
 
     for u in users:
         try:
-            topics = list(u["topics"] or ["science"])
+            explored = [d for d in (u["mastery_domains"] or []) if d]
+            declared = [t for t in (u["topics"] or []) if t]
+            concepts = [c for c in (u["recent_concepts"] or []) if c]
+            # Explored domains lead: they reflect what the user actually does
+            pool = list(dict.fromkeys(explored + declared))
+            if not pool:
+                continue
+            angle = pool[date.today().toordinal() % len(pool)]
             await notification_service.send_notification(
                 uid=u["uid"],
                 email=u["email"],
@@ -180,8 +204,9 @@ async def _daily_spark_dispatch() -> None:
                 channel=u["preferred_channel"],
                 context={
                     "name": u["display_name"] or "",
-                    "topics": ", ".join(topics[:3]),
-                    "angle": topics[0],
+                    "topics": ", ".join(pool[:4]),
+                    "angle": angle,
+                    "recent_concepts": ", ".join(concepts) or "none yet",
                 },
             )
         except Exception as e:

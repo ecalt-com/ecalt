@@ -65,12 +65,12 @@ ABSOLUTE RULES:
 
 FORMAT RULES:
 - WhatsApp short_message: under 130 chars, conversational, warm — a link will be appended automatically. Start with their first name.
-- Email body_html: 2–3 short paragraphs + a single clear CTA button at the end
+- Email body_html: 2–3 short paragraphs of HTML. Do NOT include any links, URLs, buttons, or <a> tags — a CTA button with the correct link is appended automatically.
 - Email subject: reference their specific topic or the unresolved thought. Never: "You've been away" or "Your account"
 
 Return a JSON object with exactly these keys:
   subject       — email subject line (max 60 chars)
-  body_html     — HTML email body with CTA button
+  body_html     — HTML email body (paragraphs only, NO links or buttons)
   short_message — WhatsApp plain text (max 130 chars, starts with first name, NO URL)
 
 Return ONLY the raw JSON. No markdown fences. No explanation."""

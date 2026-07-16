@@ -1,35 +1,19 @@
 """Generates notification copy using the nudge AI interaction type."""
 import json
 import logging
+import re
 
 from app.services.fingerprint_service import inject_fingerprint
 from app.services.provider_service import complete_text, get_config, get_notification_template
 
 logger = logging.getLogger("app.services.copy_generator")
 
-_NUDGE_SYSTEM_DEFAULT = """\
-You are the voice of ECALT — an AI-powered curiosity learning platform.
-Write a notification message that feels like it's coming from a brilliant friend, not a marketing bot.
-
-Rules:
-- Address the user by their first name naturally — not robotically
-- WhatsApp short_message must feel conversational, warm, under 130 chars — a link will be appended automatically
-- Put the actual insight or hook IN the message body, not just "click here to find out"
-- Email body_html: 2-3 short paragraphs + a single clear CTA button at the end
-- No exclamation mark overload, no corporate language, no clickbait
-- Make it feel like the platform genuinely noticed something specific about their learning
-
-Return a JSON object with exactly these keys:
-  subject       — email subject line (max 60 chars)
-  body_html     — HTML email body with CTA button
-  short_message — WhatsApp plain text (max 130 chars, conversational, starts with their first name, NO URL)
-
-Return ONLY the raw JSON. No markdown fences. No explanation."""
-
 _TEMPLATES_FALLBACK: dict[str, str] = {
     "daily_spark": (
         "User's name: {name}. Recent topics: {topics}. Today's angle: {angle}. "
-        "Send a personalised daily curiosity nudge that connects to what they've been exploring. "
+        "Concepts they explored recently: {recent_concepts}. "
+        "Send a personalised daily curiosity nudge that connects to what they've been exploring — "
+        "reference one of their recent concepts when relevant, and stay on today's angle. "
         "Make the short_message feel like a fascinating question from a smart friend."
     ),
     "re_engagement": (
@@ -161,7 +145,7 @@ async def generate_copy(notification_type: str, context: dict, uid: str | None =
         short = copy.get("short_message") or _FALLBACK["short_message"]
         return {
             "subject": copy.get("subject") or _FALLBACK["subject"],
-            "body_html": copy.get("body_html") or _FALLBACK["body_html"],
+            "body_html": _ensure_cta(copy.get("body_html") or _FALLBACK["body_html"]),
             "short_message": _append_link(short),
         }
     except Exception as e:
@@ -169,7 +153,38 @@ async def generate_copy(notification_type: str, context: dict, uid: str | None =
         fallback = dict(_FALLBACK)
         base = f"Hey {first}! Something new is waiting for you on ECALT." if first != "there" else _FALLBACK["short_message"]
         fallback["short_message"] = _append_link(base)
+        fallback["body_html"] = _ensure_cta(fallback["body_html"])
         return fallback
+
+
+def _learn_link() -> str:
+    from app.core.config import settings
+    frontend_url = (getattr(settings, "FRONTEND_URL", None) or "https://ecalt.vercel.app").rstrip("/")
+    return f"{frontend_url}/learn"
+
+
+_CTA_TPL = """\
+<p style="font-family:sans-serif;margin-top:24px">
+  <a href="{link}"
+     style="display:inline-block;padding:12px 24px;background:#4f46e5;color:#fff;
+            border-radius:6px;text-decoration:none;font-weight:bold;font-family:sans-serif">
+    Keep exploring
+  </a>
+</p>"""
+
+
+def _ensure_cta(body_html: str) -> str:
+    """Make every link in the email body point at the real /learn URL.
+
+    The model is instructed not to emit links, but a nano model can't be
+    trusted with that — rewrite any href it invents and append a
+    server-rendered CTA button if the body has no link at all.
+    """
+    link = _learn_link()
+    body_html = re.sub(r"""href=(["'])[^"']*\1""", f'href="{link}"', body_html)
+    if link not in body_html:
+        body_html += _CTA_TPL.format(link=link)
+    return body_html
 
 
 def _append_link(short: str) -> str:
