@@ -40,7 +40,25 @@
       "Bash(venv/bin/pip install *)",
       "Bash(/Users/biswambarpradhan/PycharmProjects/election-tracker/venv/bin/pip show *)",
       "Bash(venv/bin/pytest tests/ -v)",
-      "WebFetch(domain:claude.ai)"
+      "WebFetch(domain:claude.ai)",
+      "Bash(grep -n \"fetch\\('/api/v1/chat/stream\\\\|fetch\\(\\\\`/api/v1/chat\" /Users/biswambarpradhan/UpSkill/ecalt/frontend/src/components/learn/ConversationInterface.tsx)",
+      "Bash(supabase --version)",
+      "Bash(claude mcp *)",
+      "Bash(git -C /Users/biswambarpradhan/UpSkill/ecalt status)",
+      "Bash(git -C /Users/biswambarpradhan/UpSkill/ecalt log --oneline -3)",
+      "Bash(git *)",
+      "Bash(venv/bin/python *)",
+      "mcp__supabase__get_project_url",
+      "mcp__supabase__execute_sql",
+      "mcp__supabase__apply_migration",
+      "mcp__supabase__list_tables",
+      "Bash(awk -F: '{print $1}')",
+      "Bash(awk '/^## 4/,/^## 5/' /Users/biswambarpradhan/UpSkill/ecalt/docs/children-data-dpia.md)",
+      "Bash(npx eslint *)",
+      "Bash(ps -eo pid,ppid,lstart,command)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "supabase"
+  ]
 }
