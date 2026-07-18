@@ -39,11 +39,16 @@ async def lifespan(_app: FastAPI):
         warm_pool()
     except Exception:
         pass  # logged inside; don't prevent startup
-    from app.services.scheduler import setup_scheduler
-    sched = setup_scheduler()
-    sched.start()
+    sched = None
+    if settings.SCHEDULER_ENABLED:
+        from app.services.scheduler import setup_scheduler
+        sched = setup_scheduler()
+        sched.start()
+    else:
+        logging.getLogger("ecalt.startup").info("scheduler disabled (SCHEDULER_ENABLED=false)")
     yield
-    sched.shutdown(wait=False)
+    if sched:
+        sched.shutdown(wait=False)
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(

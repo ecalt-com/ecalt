@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # Set to false to disable a channel globally (overrides per-user prefs)
     NOTIFICATIONS_EMAIL_ENABLED: bool = True
     NOTIFICATIONS_WHATSAPP_ENABLED: bool = True
+    # Exactly ONE instance may run the notification scheduler. A second
+    # instance (e.g. local dev against the shared DB) races the daily-cap
+    # check and double-sends — keep this false everywhere but production.
+    SCHEDULER_ENABLED: bool = True
 
     @property
     def allowed_origins(self) -> list[str]:
