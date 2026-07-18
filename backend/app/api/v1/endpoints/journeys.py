@@ -19,6 +19,7 @@ from app.services.ai_service import (
 )
 from app.services.subscription_service import check_budget, record_usage
 from app.services.provider_service import get_config
+from app.services.image_service import generate_and_attach_hero
 from app.services.suggestion_service import generate_next_level, pick_suggestions
 from app.services.interest_profile_service import get_interest_profile, invalidate as invalidate_profile
 
@@ -151,6 +152,7 @@ def _row_to_journey(row: dict) -> Journey:
         steps=steps,
         tags=tags if isinstance(tags, list) else list(tags),
         icon=row.get("icon", "🎯"),
+        hero_image_url=row.get("hero_image_url"),
         created_at=str(row.get("created_at", "")),
     )
 
@@ -277,7 +279,7 @@ def _reason_for(j: Journey, profile) -> tuple[str, str]:
 
 
 @router.get("/recommendations", response_model=RecommendationsResponse, summary="Personalised journey recommendations")
-async def journey_recommendations(ctx: tuple = Depends(get_acting_uid)):
+async def journey_recommendations(background_tasks: BackgroundTasks, ctx: tuple = Depends(get_acting_uid)):
     uid, _ = ctx
     """
     Returns up to 6 journey recommendations ranked by the user's interest profile.
@@ -417,6 +419,7 @@ async def journey_recommendations(ctx: tuple = Depends(get_acting_uid)):
                             )
                 except Exception:
                     logger.exception("recommendations: failed to persist gap-fill journey")
+                background_tasks.add_task(generate_and_attach_hero, journey, uid)
                 template = _REASON_TEMPLATES.get(sig.signal_type, _REASON_TEMPLATES["interest"])
                 recommendations.append(RecommendationItem(
                     journey=journey,
@@ -477,7 +480,7 @@ class SuggestionsResponse(BaseModel):
     response_model=SuggestionsResponse,
     summary="Post-completion suggestions: next level + similar journeys, unique to the user",
 )
-async def journey_suggestions(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
+async def journey_suggestions(journey_id: str, background_tasks: BackgroundTasks, ctx: tuple = Depends(get_acting_uid)):
     uid, _ = ctx
     source = _db_journey(journey_id) or _journey_map.get(journey_id)
     if not source:
@@ -569,6 +572,8 @@ async def journey_suggestions(journey_id: str, ctx: tuple = Depends(get_acting_u
     if next_level is None and source_completed:
         next_level = await generate_next_level(uid, source)
         generated = next_level is not None
+        if next_level is not None:
+            background_tasks.add_task(generate_and_attach_hero, next_level, uid)
 
     return SuggestionsResponse(
         next_level=next_level,

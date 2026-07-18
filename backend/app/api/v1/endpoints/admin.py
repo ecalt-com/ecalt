@@ -674,6 +674,26 @@ def get_cost_analysis(_uid: str = Depends(get_admin_user)):
     }
 
 
+@router.post("/journeys/{journey_id}/hero-image/regenerate")
+async def regenerate_hero_image(journey_id: str, _uid: str = Depends(get_admin_user)):
+    """Force-regenerate a journey's hero image (moderation / quality hatch).
+
+    Runs synchronously so the admin sees the result; charged to no user budget.
+    """
+    from app.api.v1.endpoints.journeys import _db_journey, _journey_map
+    from app.services.image_service import generate_and_attach_hero, images_enabled
+
+    if not images_enabled():
+        raise HTTPException(status_code=503, detail="Image storage not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)")
+    journey = _db_journey(journey_id) or _journey_map.get(journey_id)
+    if not journey:
+        raise HTTPException(status_code=404, detail="Journey not found")
+    url = await generate_and_attach_hero(journey, None)
+    if not url:
+        raise HTTPException(status_code=502, detail="Hero image generation failed — see server logs")
+    return {"journey_id": journey_id, "hero_image_url": url}
+
+
 @router.get("/content-stats")
 def get_content_stats(journey_id: Optional[str] = None, _uid: str = Depends(get_admin_user)):
     with get_db() as conn:

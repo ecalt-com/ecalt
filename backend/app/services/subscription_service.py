@@ -2,7 +2,7 @@ import logging
 from datetime import date
 
 from app.core.database import get_db
-from app.services.provider_service import cost_for_tokens
+from app.services.provider_service import cost_for_tokens, cost_for_images
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +291,55 @@ def record_usage(
             pass
     except Exception:
         pass
+
+
+def record_image_usage(
+    uid: str,
+    model: str,
+    count: int = 1,
+    interaction_type: str = "journey_image",
+) -> None:
+    """Debit generated images against the same monthly budget as tokens.
+
+    Images have no token counts — only a flat per-image cost — so token columns
+    get zeros and estimated_cost_cents carries the whole charge.
+    """
+    cost_cents = cost_for_images(model, count)
+    period_start = date.today().replace(day=1)
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO token_usage (uid, period_start, input_tokens, output_tokens, estimated_cost_cents, message_count, cached_input_tokens)
+                    VALUES (%s, %s, 0, 0, %s, 1, 0)
+                    ON CONFLICT (uid, period_start) DO UPDATE SET
+                        estimated_cost_cents  = token_usage.estimated_cost_cents + EXCLUDED.estimated_cost_cents,
+                        message_count         = token_usage.message_count + 1,
+                        updated_at            = now()
+                    """,
+                    (uid, period_start, cost_cents),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO usage_by_interaction
+                        (uid, period_start, interaction_type, input_tokens, output_tokens,
+                         cached_input_tokens, estimated_cost_cents, request_count)
+                    VALUES (%s, %s, %s, 0, 0, 0, %s, %s)
+                    ON CONFLICT (uid, period_start, interaction_type) DO UPDATE SET
+                        estimated_cost_cents = usage_by_interaction.estimated_cost_cents + EXCLUDED.estimated_cost_cents,
+                        request_count        = usage_by_interaction.request_count + EXCLUDED.request_count,
+                        updated_at           = now()
+                    """,
+                    (uid, period_start, interaction_type, cost_cents, count),
+                )
+        logger.info(
+            "budget.image_usage_recorded",
+            extra={"uid": uid, "interaction": interaction_type, "model": model,
+                   "images": count, "call_cost_cents": round(cost_cents, 4)},
+        )
+    except Exception:
+        logger.exception("record_image_usage failed uid=%s", uid)
 
 
 def get_budget_status(uid: str) -> dict:

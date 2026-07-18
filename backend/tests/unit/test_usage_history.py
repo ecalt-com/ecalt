@@ -160,7 +160,7 @@ class TestNoUnknownInteractionType:
         "daily_chat", "onboarding", "fingerprint", "mind_signature",
         "spark", "daily_spark", "knowledge_extraction",
         "journey", "step_content", "content_critic", "quiz", "nudge",
-        "journey_tutor",
+        "journey_tutor", "journey_image",
     }
 
     def test_all_provider_default_config_types_are_known(self):

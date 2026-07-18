@@ -11,6 +11,7 @@ from app.services.subscription_service import check_budget, record_usage
 from app.services.provider_service import get_config
 from app.services.interest_profile_service import invalidate as invalidate_profile
 from app.services.content_filter import check_topic_scope
+from app.services.image_service import generate_and_attach_hero
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -259,6 +260,7 @@ async def explore_confirm(
         data.get("learner_purpose"),
         data.get("topic_expertise"),
     )
+    background_tasks.add_task(generate_and_attach_hero, journey, uid)
 
     return ExploreResponse(journey=journey)
 
@@ -345,5 +347,6 @@ async def explore(
         request.learner_purpose,
         request.topic_expertise,
     )
+    background_tasks.add_task(generate_and_attach_hero, journey, uid)
 
     return ExploreResponse(journey=journey)

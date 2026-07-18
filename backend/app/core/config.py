@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     # tier (plan Phase 2) is live; 13+ children can be parent-created regardless.
     ENABLE_MANAGED_CHILDREN: bool = False
     MAX_CHILDREN_PER_PARENT: int = 5
+    # Supabase Storage — hero images bucket. Service-role key is required for
+    # uploads (bypasses RLS); leave empty to disable image generation entirely.
+    SUPABASE_URL: str = ""
+    SUPABASE_SERVICE_ROLE_KEY: str = ""
+
     # Postgres — prefer DATABASE_URL (Supabase pooler); fallback to individual params
     DATABASE_URL: str = ""
     DB_HOST: str = ""

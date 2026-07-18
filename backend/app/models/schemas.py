@@ -46,6 +46,7 @@ class Journey(BaseModel):
     steps: List[JourneyStep] = Field(..., description="Ordered list of learning steps")
     tags: List[str] = Field(..., description="Topic tags for filtering and discovery")
     icon: str = Field(..., description="Emoji icon representing the journey topic")
+    hero_image_url: Optional[str] = Field(None, description="Public URL of the generated hero/cover image (null until the background generation lands; icon is the fallback)")
     created_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
         description="ISO 8601 UTC timestamp of when the journey was created",

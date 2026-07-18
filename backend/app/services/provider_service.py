@@ -488,6 +488,7 @@ DEFAULT_CONFIG: dict[str, dict] = {
     "content_critic":       {"provider": "openai", "model": "gpt-4.1-nano"},
     "quiz":                 {"provider": "openai", "model": "gpt-4o-mini"},
     "journey_tutor":        {"provider": "openai", "model": "gpt-4.1-nano"},
+    "journey_image":        {"provider": "openai", "model": "gpt-image-1-mini"},
 }
 
 # Cost per token in cents (input, output)
@@ -504,6 +505,15 @@ COST_PER_TOKEN: dict[str, dict[str, float]] = {
     "gpt-4.1":                   {"input": 0.000200, "output": 0.000800},
     "gpt-4-turbo":               {"input": 0.001000, "output": 0.003000},
     "o1-mini":                   {"input": 0.000300, "output": 0.001200},
+}
+
+# Cost per generated image in cents (1024×1024 at the quality image_service
+# requests for that model). Images bypass token accounting entirely, so they
+# get their own flat-rate table.
+COST_PER_IMAGE: dict[str, float] = {
+    "gpt-image-1-mini": 0.9,   # medium quality
+    "gpt-image-1":      4.2,   # medium quality
+    "dall-e-3":         4.0,   # standard quality
 }
 
 # ── Lazy clients ──────────────────────────────────────────────────────────────
@@ -733,6 +743,11 @@ def cost_for_tokens(model: str, input_tokens: int, output_tokens: int) -> float:
     """Return estimated cost in cents."""
     rates = COST_PER_TOKEN.get(model, {"input": 0.000080, "output": 0.000400})
     return (input_tokens * rates["input"]) + (output_tokens * rates["output"])
+
+
+def cost_for_images(model: str, count: int = 1) -> float:
+    """Return estimated cost in cents for generated images."""
+    return COST_PER_IMAGE.get(model, 4.2) * count
 
 
 # ── Non-streaming completion ──────────────────────────────────────────────────

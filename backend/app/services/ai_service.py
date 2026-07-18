@@ -1,7 +1,9 @@
 import json
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from xml.etree import ElementTree
 
 from app.models.schemas import Journey, JourneyStep
 from app.services.fingerprint_service import inject_fingerprint
@@ -11,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 # Bump whenever the step-content contract or style prompt changes materially.
 # Cached step_content rows with a lower prompt_version are lazily regenerated.
-CONTENT_PROMPT_VERSION = 2
+CONTENT_PROMPT_VERSION = 3
 
 # Critic scores below this (specificity or topicality) trigger one regeneration.
 _CRITIC_MIN_SCORE = 3
@@ -88,6 +90,20 @@ Then the body, chosen by step type (## headings, bold key terms):
              connecting it to two other domains, then a short section naming
              explicitly what is NOT yet understood.
 
+OPTIONAL DIAGRAM — one per step, only when a visual genuinely aids understanding
+(typical for concept and practice steps; omit for challenge/explore unless
+essential). Place it inside the content markdown at the point it helps most,
+with a one-line lead-in sentence before it. Use ONE of:
+  - a fenced ```mermaid code block: flowchart TD/LR or sequenceDiagram only,
+    max 12 nodes, labels under 6 words, no styling directives; or
+  - an inline <svg viewBox="0 0 640 360"> labeled diagram: max 40 elements,
+    only basic shapes (rect, circle, ellipse, line, polyline, polygon, path,
+    text, g, defs, marker) — no scripts, no event handlers, no href/xlink
+    attributes, no external references, no embedded images.
+Pick the archetype that fits: process flow, labeled parts, or side-by-side
+comparison. Every part must be labeled with real terms from this step — a
+diagram that could illustrate a different topic is worse than no diagram.
+
 EVERY step ENDS with two things, as the final paragraph:
 1. One sentence in **bold** — the single most testable insight of this step
    (the quiz's primary target).
@@ -110,6 +126,57 @@ QUIZ ANCHOR RULES:
     implication → "Given X, what does this mean for Z?"
     exception   → "Under what conditions does X break down?"
     connection  → "How does X relate to [another concept in this content]?" """
+
+
+# ── Diagram sanitization ──────────────────────────────────────────────────────
+# Model-emitted SVG is rendered in learners' browsers; anything not on this
+# allowlist is dropped (the step then ships without its diagram — fail open).
+
+_SVG_ALLOWED_TAGS = {
+    "svg", "g", "defs", "marker", "title", "desc",
+    "rect", "circle", "ellipse", "line", "polyline", "polygon", "path",
+    "text", "tspan", "linearGradient", "radialGradient", "stop",
+}
+_SVG_BLOCK_RE = re.compile(r"<svg\b.*?</svg\s*>", re.IGNORECASE | re.DOTALL)
+_SVG_MAX_ELEMENTS = 60
+
+
+def _svg_is_safe(svg: str) -> bool:
+    """True only if the SVG parses and contains nothing but allowlisted
+    presentational elements/attributes."""
+    try:
+        root = ElementTree.fromstring(svg)
+    except ElementTree.ParseError:
+        return False
+    elements = list(root.iter())
+    if len(elements) > _SVG_MAX_ELEMENTS:
+        return False
+    for el in elements:
+        tag = el.tag.rsplit("}", 1)[-1]  # strip xmlns prefix
+        if tag not in _SVG_ALLOWED_TAGS:
+            return False
+        for attr, value in el.attrib.items():
+            name = attr.rsplit("}", 1)[-1].lower()
+            if name.startswith("on") or "href" in name:
+                return False
+            if "javascript:" in value.lower() or "data:" in value.lower():
+                return False
+    return True
+
+
+def sanitize_step_diagrams(content: str) -> str:
+    """Drop unsafe/malformed inline SVG from step content; keep at most one."""
+    kept_one = False
+
+    def _check(match: re.Match) -> str:
+        nonlocal kept_one
+        if kept_one or not _svg_is_safe(match.group(0)):
+            logger.info("step diagram dropped (unsafe, malformed, or duplicate SVG)")
+            return ""
+        kept_one = True
+        return match.group(0)
+
+    return _SVG_BLOCK_RE.sub(_check, content)
 
 
 def _covered_block(covered_lines: list[str], cap: int = 900) -> str:
@@ -236,7 +303,7 @@ async def generate_step_content(
             interaction_type="step_content",
             system=system,
             user_content=attempt_content,
-            max_tokens=3200,
+            max_tokens=3600,
         )
         total_in += in_tok
         total_out += out_tok
@@ -251,7 +318,7 @@ async def generate_step_content(
             last_err = exc
             logger.warning("generate_step_content attempt %d: JSON parse error: %s", attempt + 1, exc)
             continue
-        content = data["content"]
+        content = sanitize_step_diagrams(data["content"])
         quiz_anchors = data.get("quiz_anchors", [])
 
         if not run_critic or attempt == 1:
