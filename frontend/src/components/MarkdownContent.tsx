@@ -1,5 +1,32 @@
 import type { ReactNode } from 'react'
 import { Sparkles, Target, Lightbulb } from 'lucide-react'
+import { MermaidDiagram, SvgDiagram } from './StepDiagram'
+
+// ── Diagram extraction ────────────────────────────────────────────────────────
+// Step content may embed one ```mermaid fence or one inline <svg> (server-
+// sanitized). Peel those out first so the double-newline block splitter can't
+// tear a diagram apart.
+
+type Chunk =
+  | { kind: 'text';    text: string }
+  | { kind: 'mermaid'; code: string }
+  | { kind: 'svg';     svg: string }
+
+const DIAGRAM_RE = /```mermaid\s*\n([\s\S]*?)```|(<svg\b[\s\S]*?<\/svg\s*>)/gi
+
+function extractDiagrams(content: string): Chunk[] {
+  const chunks: Chunk[] = []
+  let last = 0
+  for (const m of content.matchAll(DIAGRAM_RE)) {
+    const idx = m.index ?? 0
+    if (idx > last) chunks.push({ kind: 'text', text: content.slice(last, idx) })
+    if (m[1] !== undefined) chunks.push({ kind: 'mermaid', code: m[1].trim() })
+    else chunks.push({ kind: 'svg', svg: m[2] })
+    last = idx + m[0].length
+  }
+  if (last < content.length) chunks.push({ kind: 'text', text: content.slice(last) })
+  return chunks
+}
 
 // ── Inline renderer ───────────────────────────────────────────────────────────
 
@@ -128,13 +155,33 @@ function classify(raw: string, idx: number, total: number): Block {
 
 // ── Renderer ──────────────────────────────────────────────────────────────────
 
+type RenderBlock = Block | { t: 'mermaid'; code: string } | { t: 'svg'; svg: string }
+
 export default function MarkdownContent({ content }: { content: string }) {
-  const rawBlocks = content.split(/\n{2,}/).map(b => b.trim()).filter(Boolean)
-  const blocks    = rawBlocks.map((b, i) => classify(b, i, rawBlocks.length))
+  // Diagrams first (kept whole), then the usual double-newline block split.
+  const pieces: Array<{ raw: string } | { diagram: RenderBlock }> = []
+  for (const chunk of extractDiagrams(content)) {
+    if (chunk.kind === 'text') {
+      for (const b of chunk.text.split(/\n{2,}/).map(b => b.trim()).filter(Boolean)) {
+        pieces.push({ raw: b })
+      }
+    } else if (chunk.kind === 'mermaid') {
+      pieces.push({ diagram: { t: 'mermaid', code: chunk.code } })
+    } else {
+      pieces.push({ diagram: { t: 'svg', svg: chunk.svg } })
+    }
+  }
+  const blocks: RenderBlock[] = pieces.map((p, i) =>
+    'diagram' in p ? p.diagram : classify(p.raw, i, pieces.length)
+  )
 
   return (
     <div className="space-y-4 text-sm">
       {blocks.map((block, i) => {
+
+        // ── Diagrams ────────────────────────────────────────────────────────
+        if (block.t === 'mermaid') return <MermaidDiagram key={i} code={block.code} />
+        if (block.t === 'svg')     return <SvgDiagram key={i} svg={block.svg} />
 
         // ── Opening hook ────────────────────────────────────────────────────
         if (block.t === 'hook') return (

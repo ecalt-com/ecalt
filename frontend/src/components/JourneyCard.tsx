@@ -4,7 +4,8 @@ import clsx from 'clsx'
 import type { Journey } from '../lib/types'
 
 interface JourneyCardProps {
-  journey: Pick<Journey, 'id' | 'title' | 'description' | 'icon' | 'difficulty' | 'tags' | 'estimated_hours' | 'steps'>
+  journey: Pick<Journey, 'id' | 'title' | 'description' | 'icon' | 'difficulty' | 'tags' | 'estimated_hours' | 'steps'> &
+    Partial<Pick<Journey, 'hero_image_url'>>
   progress?: number
 }
 
@@ -17,13 +18,29 @@ const difficultyStyle: Record<string, string> = {
 export default function JourneyCard({ journey, progress }: JourneyCardProps) {
   return (
     <Link to={`/journey/${journey.id}`} className="block h-full">
-      <div className="glass-card rounded-2xl p-6 h-full flex flex-col group cursor-pointer">
-        <div className="flex items-start justify-between mb-4">
-          <span className="text-4xl leading-none">{journey.icon}</span>
-          <span className={clsx('px-2.5 py-1 rounded-full text-xs font-medium border', difficultyStyle[journey.difficulty])}>
-            {journey.difficulty}
-          </span>
-        </div>
+      <div className="glass-card rounded-2xl h-full flex flex-col group cursor-pointer overflow-hidden">
+        {journey.hero_image_url && (
+          <div className="relative aspect-[16/9] shrink-0">
+            <img
+              src={journey.hero_image_url}
+              alt={journey.title}
+              loading="lazy"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            <span className={clsx('absolute top-3 right-3 px-2.5 py-1 rounded-full text-xs font-medium border backdrop-blur-sm', difficultyStyle[journey.difficulty])}>
+              {journey.difficulty}
+            </span>
+          </div>
+        )}
+        <div className="p-6 flex flex-col flex-1">
+        {!journey.hero_image_url && (
+          <div className="flex items-start justify-between mb-4">
+            <span className="text-4xl leading-none">{journey.icon}</span>
+            <span className={clsx('px-2.5 py-1 rounded-full text-xs font-medium border', difficultyStyle[journey.difficulty])}>
+              {journey.difficulty}
+            </span>
+          </div>
+        )}
 
         <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100 mb-2 group-hover:text-violet-600 dark:group-hover:text-violet-300 transition-colors leading-snug">
           {journey.title}
@@ -54,6 +71,7 @@ export default function JourneyCard({ journey, progress }: JourneyCardProps) {
             ))}
           </div>
           <ChevronRight size={15} className="text-slate-300 dark:text-slate-700 group-hover:text-violet-500 dark:group-hover:text-violet-400 group-hover:translate-x-1 transition-all duration-200" />
+        </div>
         </div>
       </div>
     </Link>

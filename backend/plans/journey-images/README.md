@@ -12,7 +12,7 @@
 | 1 SVG/mermaid diagrams | ✅ done | Diagram rules in `_STEP_CONTENT_CONTRACT` (code-side, no DB prompt write needed); `sanitize_step_diagrams` allowlist sanitizer; `CONTENT_PROMPT_VERSION` 2→3 (cached steps lazily regenerate); step max_tokens 3200→3600. Critic extension deferred — sanitizer covers broken SVG, mermaid fails soft client-side |
 | 2 Hero images | ✅ done | `image_service.py` (generate → WebP → Supabase Storage via httpx, budget-checked, never raises); hooks: explore confirm + legacy, recommendations gap-fill, generated next-level; `Journey.hero_image_url` in schema + `_row_to_journey`; admin `POST /admin/journeys/{id}/hero-image/regenerate`; `scripts/generate_curated_heroes.py` (not yet run — needs service key) |
 | 3 Per-step images | ⏳ deferred | on-demand / paid-tier, per plan |
-| 4 Frontend | 📄 spec written | `frontend-changes.md` in this folder |
+| 4 Frontend | ✅ done | Hero on `JourneyCard` + journey hero card (async refetch); mermaid/SVG rendering in `MarkdownContent` via `StepDiagram.tsx` (mermaid npm dep, lazy chunk). Details in `frontend-changes.md` |
 
 Tests: `tests/unit/test_journey_images.py` (15 tests); suite green except pre-existing `TestChatStream::test_custom_interaction_type_passed_to_stream_chat`. Volume check (prod, last 60d): 77 journeys → ~40/mo → **~$0.35/mo** at gpt-image-1-mini.
 

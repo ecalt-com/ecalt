@@ -23,6 +23,7 @@ export interface Journey {
   steps: JourneyStep[]
   tags: string[]
   icon: string
+  hero_image_url?: string | null
   created_at: string
 }
 

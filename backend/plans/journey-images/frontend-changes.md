@@ -1,4 +1,14 @@
-# Journey Images — Frontend Changes (spec, not implemented)
+# Journey Images — Frontend Changes
+
+**Status: implemented 2026-07-18.** Hero images render on `JourneyCard` (16:9
+header, emoji fallback) and as a background wash on the `Journey.tsx` hero card
+(with a one-shot 15s refetch for journeys <2min old); diagrams render via
+`MarkdownContent` → `StepDiagram.tsx` (mermaid lazy-loaded with
+`securityLevel: 'strict'`, dark-mode theme; server-sanitized SVG in a white
+panel). CSP already allowed `img-src https:` — no `vercel.json` change.
+Original spec below.
+
+---
 
 Backend is live-ready (see README status). Two independent frontend pieces:
 

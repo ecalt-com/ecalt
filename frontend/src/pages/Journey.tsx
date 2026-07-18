@@ -165,6 +165,23 @@ export default function Journey() {
         setJourney(j)
         setSteps(j.steps.map(s => ({ ...s, completed: completedIds.includes(s.id) })))
 
+        // The hero image lands async ~5–30s after journey creation. For a
+        // fresh journey without one, refetch once so the header fills in.
+        const ageMs = Date.now() - new Date(j.created_at).getTime()
+        if (!j.hero_image_url && ageMs >= 0 && ageMs < 2 * 60_000) {
+          setTimeout(() => {
+            getJourney(id, token ?? undefined)
+              .then(fresh => {
+                if (fresh.hero_image_url) {
+                  setJourney(prev => prev && prev.id === fresh.id
+                    ? { ...prev, hero_image_url: fresh.hero_image_url }
+                    : prev)
+                }
+              })
+              .catch(() => {})
+          }, 15_000)
+        }
+
         // "More like this" (best-effort, non-blocking): signed-in users get
         // history-aware suggestions; guests get plain tag overlap.
         if (token) {
@@ -294,6 +311,19 @@ export default function Journey() {
             <div className="relative rounded-3xl overflow-hidden mb-8 border border-violet-200/40 dark:border-violet-500/20 shadow-xl shadow-violet-500/5">
               {/* Background gradient */}
               <div className="absolute inset-0 bg-gradient-to-br from-violet-50 via-white to-indigo-50/60 dark:from-slate-900 dark:via-slate-900/95 dark:to-indigo-950/40" />
+              {journey.hero_image_url && (
+                <>
+                  <img
+                    src={journey.hero_image_url}
+                    alt=""
+                    aria-hidden="true"
+                    loading="lazy"
+                    className="absolute inset-0 w-full h-full object-cover opacity-25 dark:opacity-20"
+                  />
+                  {/* Readability wash over the image */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/85 via-white/60 to-white/30 dark:from-slate-950/85 dark:via-slate-950/60 dark:to-slate-950/30" />
+                </>
+              )}
               <div className="absolute top-0 right-0 w-64 h-64 bg-violet-400/8 dark:bg-violet-500/8 rounded-full blur-3xl" />
 
               <div className="relative p-5 sm:p-8">
