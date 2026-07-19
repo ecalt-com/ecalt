@@ -35,6 +35,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         title="The Code of Life: DNA Decoded",
         description="From double helix to protein factories — unlock the molecular language that makes you, you.",
         age_group="all", difficulty="beginner", estimated_hours=3.0, icon="🧬",
+        hero_image_url="https://jfgofptxwydthyompcqb.supabase.co/storage/v1/object/public/journey-images/journey-dna.webp",
         tags=["biology", "genetics", "molecules"],
         steps=[
             JourneyStep(id="dna-1", title="What is DNA?", description="Discover the molecule that holds the blueprint for all life on Earth", type="concept", estimated_minutes=15),
@@ -52,6 +53,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         title="How Machines Actually Learn",
         description="Strip away the hype — understand the math, patterns, and intuition behind AI with zero jargon.",
         age_group="adults", difficulty="intermediate", estimated_hours=4.0, icon="🤖",
+        hero_image_url="https://jfgofptxwydthyompcqb.supabase.co/storage/v1/object/public/journey-images/journey-ml.webp",
         tags=["AI", "math", "technology"],
         steps=[
             JourneyStep(id="ml-1", title="What is learning, really?", description="Before machines can learn, we need to understand what learning actually means", type="concept", estimated_minutes=15),
@@ -70,6 +72,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         title="From Gunpowder to Orbit",
         description="Newton's laws meet engineering to explain how humans punch through Earth's gravity.",
         age_group="all", difficulty="beginner", estimated_hours=2.5, icon="🚀",
+        hero_image_url="https://jfgofptxwydthyompcqb.supabase.co/storage/v1/object/public/journey-images/journey-rockets.webp",
         tags=["physics", "engineering", "space"],
         steps=[
             JourneyStep(id="r-1", title="Newton's Third Law", description="Every action has an equal and opposite reaction — the engine of rocketry", type="concept", estimated_minutes=15),
@@ -87,6 +90,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         title="Music Theory Without the Boring Parts",
         description="Why do minor chords feel sad? Why does a melody feel unresolved? Discover the physics of beauty.",
         age_group="all", difficulty="beginner", estimated_hours=3.0, icon="🎵",
+        hero_image_url="https://jfgofptxwydthyompcqb.supabase.co/storage/v1/object/public/journey-images/journey-music.webp",
         tags=["music", "creativity", "acoustics"],
         steps=[
             JourneyStep(id="m-1", title="What is Sound?", description="Vibrations, frequencies, and why your ear tells a story from air waves", type="concept", estimated_minutes=15),
@@ -103,6 +107,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         title="Why Does Climate Change?",
         description="Atmospheric physics, feedback loops, and what the data says — no politics, just the science.",
         age_group="adults", difficulty="intermediate", estimated_hours=3.5, icon="🌍",
+        hero_image_url="https://jfgofptxwydthyompcqb.supabase.co/storage/v1/object/public/journey-images/journey-climate.webp",
         tags=["climate", "science", "environment"],
         steps=[
             JourneyStep(id="c-1", title="The Greenhouse Effect", description="How certain gases trap heat like a blanket around the planet", type="concept", estimated_minutes=20),
@@ -120,6 +125,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
         title="Money: How It Actually Works",
         description="Interest, inflation, and investing — the financial literacy school never taught you.",
         age_group="adults", difficulty="beginner", estimated_hours=2.0, icon="💰",
+        hero_image_url="https://jfgofptxwydthyompcqb.supabase.co/storage/v1/object/public/journey-images/journey-finance.webp",
         tags=["finance", "investing", "life skills"],
         steps=[
             JourneyStep(id="f-1", title="What is Money, Actually?", description="Beyond paper and coins — money as trust, debt, and collective agreement", type="concept", estimated_minutes=15),
