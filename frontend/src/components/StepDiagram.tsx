@@ -25,8 +25,16 @@ export function MermaidDiagram({ code }: { code: string }) {
           securityLevel: 'strict',
           theme: isDark ? 'dark' : 'neutral',
           fontFamily: 'inherit',
+          // Never inject mermaid's "Syntax error in text" bomb diagram into
+          // the DOM — invalid source must degrade to nothing.
+          suppressErrorRendering: true,
         })
         try {
+          const ok = await mermaid.parse(code, { suppressErrors: true })
+          if (!ok) {
+            if (!cancelled) setFailed(true)
+            return
+          }
           const { svg: rendered } = await mermaid.render(idRef.current, code)
           if (!cancelled) setSvg(rendered)
         } catch {

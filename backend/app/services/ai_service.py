@@ -15,7 +15,9 @@ logger = logging.getLogger(__name__)
 # Cached step_content rows with a lower prompt_version are lazily regenerated.
 # v4: diagrams became mandatory for concept/practice steps (v3 phrasing was
 # "optional when it helps" — models skipped them 98% of the time).
-CONTENT_PROMPT_VERSION = 4
+# v5: mermaid label hygiene — special characters in labels broke the parser,
+# so v4 rows may carry diagrams that render as nothing.
+CONTENT_PROMPT_VERSION = 5
 
 # Critic scores below this (specificity or topicality) trigger one regeneration.
 _CRITIC_MIN_SCORE = 3
@@ -99,7 +101,10 @@ narrative/biographical with no process, structure, or comparison to show —
 that is rare; when in doubt, include one. For challenge/explore steps,
 include one only when it clarifies the scenario.
 Prefer a fenced ```mermaid code block: flowchart TD/LR or sequenceDiagram
-only, max 12 nodes, labels under 6 words, no styling directives. Use an
+only, max 12 nodes, no styling directives. Node labels must be under 6
+words and contain ONLY letters, numbers, spaces and hyphens — no
+parentheses, brackets, quotes, colons, commas, percent signs or slashes
+(these break the mermaid parser). Same rule for edge labels. Use an
 inline <svg viewBox="0 0 640 360"> labeled diagram instead only when a
 spatial labeled-parts layout is essential: max 40 elements, only basic
 shapes (rect, circle, ellipse, line, polyline, polygon, path, text, g,
