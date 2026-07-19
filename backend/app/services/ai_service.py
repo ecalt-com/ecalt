@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 # Bump whenever the step-content contract or style prompt changes materially.
 # Cached step_content rows with a lower prompt_version are lazily regenerated.
-CONTENT_PROMPT_VERSION = 3
+# v4: diagrams became mandatory for concept/practice steps (v3 phrasing was
+# "optional when it helps" — models skipped them 98% of the time).
+CONTENT_PROMPT_VERSION = 4
 
 # Critic scores below this (specificity or topicality) trigger one regeneration.
 _CRITIC_MIN_SCORE = 3
@@ -90,16 +92,19 @@ Then the body, chosen by step type (## headings, bold key terms):
              connecting it to two other domains, then a short section naming
              explicitly what is NOT yet understood.
 
-OPTIONAL DIAGRAM — one per step, only when a visual genuinely aids understanding
-(typical for concept and practice steps; omit for challenge/explore unless
-essential). Place it inside the content markdown at the point it helps most,
-with a one-line lead-in sentence before it. Use ONE of:
-  - a fenced ```mermaid code block: flowchart TD/LR or sequenceDiagram only,
-    max 12 nodes, labels under 6 words, no styling directives; or
-  - an inline <svg viewBox="0 0 640 360"> labeled diagram: max 40 elements,
-    only basic shapes (rect, circle, ellipse, line, polyline, polygon, path,
-    text, g, defs, marker) — no scripts, no event handlers, no href/xlink
-    attributes, no external references, no embedded images.
+DIAGRAM — every concept and practice step MUST include exactly ONE diagram
+inside the content markdown, placed right after the section it illustrates,
+with a one-line lead-in sentence. Omit it ONLY if the step is purely
+narrative/biographical with no process, structure, or comparison to show —
+that is rare; when in doubt, include one. For challenge/explore steps,
+include one only when it clarifies the scenario.
+Prefer a fenced ```mermaid code block: flowchart TD/LR or sequenceDiagram
+only, max 12 nodes, labels under 6 words, no styling directives. Use an
+inline <svg viewBox="0 0 640 360"> labeled diagram instead only when a
+spatial labeled-parts layout is essential: max 40 elements, only basic
+shapes (rect, circle, ellipse, line, polyline, polygon, path, text, g,
+defs, marker) — no scripts, no event handlers, no href/xlink attributes,
+no external references, no embedded images.
 Pick the archetype that fits: process flow, labeled parts, or side-by-side
 comparison. Every part must be labeled with real terms from this step — a
 diagram that could illustrate a different topic is worse than no diagram.
