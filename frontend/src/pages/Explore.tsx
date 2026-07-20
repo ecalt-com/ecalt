@@ -7,7 +7,7 @@ import CuriosityInput from '../components/CuriosityInput'
 import StepNode from '../components/StepNode'
 import StepUpgradePanel from '../components/StepUpgradePanel'
 import AccountPausedScreen from '../components/AccountPausedScreen'
-import { previewJourney, confirmJourney, markStepComplete, saveProfession, getUserProfile, apiErrorCode } from '../lib/api'
+import { previewJourney, confirmJourney, saveProfession, getUserProfile, apiErrorCode } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { usePageTitle } from '../lib/usePageTitle'
 import type { Journey, JourneyStep, LearnerPurpose, TopicExpertise } from '../lib/types'
@@ -54,8 +54,7 @@ type ExplorePhase =
   | 'loading'          // calling /preview
   | 'confirming'       // preview shown, awaiting user decision
   | 'refining'         // collecting structured feedback on rejected preview
-  | 'confirming_save'  // calling /confirm
-  | 'ready'            // confirmed + persisted, show full step list
+  | 'confirming_save'  // calling /confirm, then navigate to /journey/:id
   | 'error'
 
 export default function Explore() {
@@ -70,7 +69,6 @@ export default function Explore() {
   const [error, setError] = useState<string | null>(null)
   const [budgetExceeded, setBudgetExceeded] = useState(false)
   const [accountPaused, setAccountPaused] = useState(false)
-  const [expandedStepId, setExpandedStepId] = useState<string | null>(null)
 
   // Intent state
   const [pendingQuestion, setPendingQuestion] = useState('')
@@ -174,9 +172,7 @@ export default function Explore() {
     if (!token) { navigate('/'); return }
     try {
       const { journey: confirmed } = await confirmJourney(previewToken, token)
-      setJourney(confirmed)
-      setSteps(confirmed.steps)
-      setPhase('ready')
+      navigate(`/journey/${confirmed.id}`)
     } catch (err: any) {
       if (err?.status === 404) {
         // Preview expired — regenerate
@@ -235,47 +231,6 @@ export default function Explore() {
       setPhase('error')
     }
   }
-
-  const goExplore = (question: string) => {
-    if (!question.trim()) {
-      setPhase('idle')
-      navigate('/explore')
-      return
-    }
-    setPendingQuestion(question)
-    setPhase('intent')
-    navigate(`/explore?q=${encodeURIComponent(question)}`, { replace: true })
-  }
-
-  const isStepLocked = (index: number) => steps.slice(0, index).some(s => !s.completed)
-
-  const completeStep = async (stepId: string) => {
-    const index = steps.findIndex(s => s.id === stepId)
-    if (index === -1 || !journey) return
-    if (steps[index].completed || isStepLocked(index)) return
-    setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: true } : s))
-    const token = await getToken()
-    if (token) {
-      try {
-        await markStepComplete(journey.id, stepId, token)
-      } catch {
-        setSteps(prev => prev.map(s => s.id === stepId ? { ...s, completed: false } : s))
-      }
-    }
-  }
-
-  const toggleExpanded = (stepId: string) =>
-    setExpandedStepId(prev => (prev === stepId ? null : stepId))
-
-  const beginJourney = () => {
-    const target = steps.find(s => !s.completed) ?? steps[0]
-    if (!target) return
-    setExpandedStepId(target.id)
-    document.getElementById(`step-${target.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
-  const completed = steps.filter(s => s.completed).length
-  const progress  = steps.length > 0 ? Math.round((completed / steps.length) * 100) : 0
 
   return (
     <>
@@ -576,7 +531,7 @@ export default function Explore() {
               </div>
 
               {/* Journey preview (read-only — no Begin button yet) */}
-              <JourneyHeader journey={journey} steps={steps} progress={0} completed={0} showBegin={false} />
+              <JourneyHeader journey={journey} steps={steps} />
 
               <div className="flex items-center gap-3 mb-8">
                 <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
@@ -600,46 +555,6 @@ export default function Explore() {
             </div>
           )}
 
-          {/* ── Ready: full journey ── */}
-          {phase === 'ready' && journey && (
-            <div className="animate-in">
-              <JourneyHeader
-                journey={journey}
-                steps={steps}
-                progress={progress}
-                completed={completed}
-                showBegin={true}
-                onBegin={beginJourney}
-                onAskElse={() => goExplore('')}
-              />
-
-              <div className="flex items-center gap-3 mb-8">
-                <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-                <span className="text-xs text-slate-400 uppercase tracking-widest">Your Path</span>
-                <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
-              </div>
-
-              {steps.map((step, i) => (
-                <StepNode
-                  key={step.id}
-                  step={step}
-                  index={i}
-                  isLast={i === steps.length - 1}
-                  journeyId={journey.id}
-                  getToken={getToken}
-                  onToggle={completeStep}
-                  expanded={expandedStepId === step.id}
-                  onExpandToggle={toggleExpanded}
-                  locked={isStepLocked(i)}
-                />
-              ))}
-
-              <div className="mt-16 pt-8 border-t border-slate-200 dark:border-slate-800/50">
-                <p className="text-center text-slate-500 text-sm mb-6">Curious about something else?</p>
-                <CuriosityInput onExplore={goExplore} />
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </>
@@ -652,14 +567,9 @@ export default function Explore() {
 interface JourneyHeaderProps {
   journey: Journey
   steps: JourneyStep[]
-  progress: number
-  completed: number
-  showBegin: boolean
-  onBegin?: () => void
-  onAskElse?: () => void
 }
 
-function JourneyHeader({ journey, steps, progress, completed, showBegin, onBegin, onAskElse }: JourneyHeaderProps) {
+function JourneyHeader({ journey, steps }: JourneyHeaderProps) {
   return (
     <div className="mb-10">
       <div className="flex items-start gap-3 mb-4">
@@ -688,29 +598,6 @@ function JourneyHeader({ journey, steps, progress, completed, showBegin, onBegin
         ))}
       </div>
 
-      {completed > 0 && (
-        <div className="mb-5">
-          <div className="flex justify-between text-xs text-slate-500 mb-1.5">
-            <span>{completed} of {steps.length} steps complete</span>
-            <span>{progress}%</span>
-          </div>
-          <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-violet-600 to-cyan-500 rounded-full transition-all duration-500"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        </div>
-      )}
-
-      {showBegin && (
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-          <button onClick={onBegin} className="btn-primary flex items-center justify-center gap-2">
-            <Zap size={14} fill="currentColor" />Begin Journey
-          </button>
-          <button onClick={onAskElse} className="btn-ghost text-center">Ask something else</button>
-        </div>
-      )}
     </div>
   )
 }
