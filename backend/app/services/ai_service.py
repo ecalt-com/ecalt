@@ -174,6 +174,32 @@ def _svg_is_safe(svg: str) -> bool:
     return True
 
 
+# Matches a backslash NOT followed by a JSON escape the content contract
+# actually relies on: \" \\ \/ \uXXXX, and \n specifically for the
+# "\n\n between blocks" paragraph convention. Models routinely write
+# LaTeX-ish notation (\times, \frac{}{}, \tau, \beta, \rho, \(, \)) whose
+# second character is often t/b/f/r — technically valid JSON escapes
+# (tab/backspace/form-feed/CR), so json.loads would NOT raise on those,
+# it would silently turn "\times" into a tab character followed by
+# "imes". Because that case never raises, it can't be caught by a
+# try-then-repair-on-failure approach — this repair must always run, not
+# just as a fallback. It's a no-op on content that only uses the safe
+# escapes above, so already-valid output is never altered.
+_STRAY_BACKSLASH_RE = re.compile(r'\\(?!["\\/nu])')
+
+
+def _loads_ai_json(raw: str):
+    """json.loads after repairing backslashes an LLM wrote as literal text
+    (LaTeX-ish notation, stray punctuation) rather than as JSON escapes.
+
+    Known gap: \\n immediately followed by a letter (\\nu, \\nabla, \\neq)
+    is indistinguishable from an intended newline escape and is left
+    as-is — rarer in practice, and safer than risking the \\n\\n
+    paragraph-break convention the frontend renderer depends on.
+    """
+    return json.loads(_STRAY_BACKSLASH_RE.sub(r"\\\\", raw))
+
+
 def sanitize_step_diagrams(content: str) -> str:
     """Drop unsafe/malformed inline SVG from step content; keep at most one."""
     kept_one = False
@@ -225,7 +251,7 @@ async def _critique_step_content(
             from app.services.subscription_service import record_usage
             record_usage(uid, in_tok, out_tok, cfg["model"], interaction_type="content_critic")
         start, end = raw.find("{"), raw.rfind("}") + 1
-        scores = json.loads(raw[start:end])
+        scores = _loads_ai_json(raw[start:end])
         specificity = int(scores.get("specificity", 5))
         topicality = int(scores.get("topicality", 5))
         complaint = str(scores.get("complaint", ""))[:300]
@@ -323,7 +349,7 @@ async def generate_step_content(
             last_err = ValueError("AI did not return valid content JSON")
             continue
         try:
-            data = json.loads(raw[start:end])
+            data = _loads_ai_json(raw[start:end])
         except json.JSONDecodeError as exc:
             last_err = exc
             logger.warning("generate_step_content attempt %d: JSON parse error: %s", attempt + 1, exc)
@@ -645,7 +671,7 @@ async def generate_journey(
             logger.warning("generate_journey attempt %d: no JSON in response", attempt + 1)
             continue
         try:
-            data = json.loads(raw[start:end])
+            data = _loads_ai_json(raw[start:end])
             break
         except json.JSONDecodeError as exc:
             last_err = exc
