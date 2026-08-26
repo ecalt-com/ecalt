@@ -26,6 +26,7 @@ import { ContentTab } from './admin/tabs/ContentTab'
 import { PromptsTab } from './admin/tabs/PromptsTab'
 import { NotificationTemplatesTab } from './admin/tabs/NotificationTemplatesTab'
 import { ImpersonationLogTab } from './admin/tabs/ImpersonationLogTab'
+import { MarketplaceQueueTab } from './admin/tabs/MarketplaceQueueTab'
 
 
 export default function Admin() {
@@ -602,6 +603,10 @@ export default function Admin() {
               loadingDropoff={loadingDropoff}
               onExpandJourney={handleExpandJourney}
             />
+          )}
+
+          {tab === 'marketplace' && (
+            <MarketplaceQueueTab getToken={getToken} />
           )}
 
           {tab === 'impersonation-log' && (

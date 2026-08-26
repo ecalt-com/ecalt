@@ -1,11 +1,12 @@
 import json
 import logging
+import uuid
 import openai as _openai
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query, Request, Response
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
-from app.models.schemas import Journey, JourneyStep, JourneysResponse, JourneyWithProgress, StepContentResponse
+from app.models.schemas import Journey, JourneyStep, JourneysResponse, JourneyWithProgress, StepContentResponse, ExploreResponse
 from app.core.auth import get_optional_user, get_required_user, get_optional_acting_uid, get_acting_uid
 from app.core.database import get_db
 from app.core.limiter import limiter
@@ -160,7 +161,20 @@ def _row_to_journey(row: dict) -> Journey:
         icon=row.get("icon", "🎯"),
         hero_image_url=row.get("hero_image_url"),
         created_at=str(row.get("created_at", "")),
+        marketplace_status=row.get("marketplace_status", "private"),
+        popularity_score=float(row.get("popularity_score") or 0),
+        like_count=int(row.get("like_count") or 0),
+        forked_from_id=row.get("forked_from_id"),
     )
+
+
+def _invalidate_recommendation_cache(uid: str) -> None:
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM journey_recommendations WHERE uid = %s", (uid,))
+    except Exception:
+        logger.debug("journeys: recommendation cache invalidation failed (non-fatal)")
 
 
 def _db_journey(journey_id: str) -> Optional[Journey]:
@@ -464,6 +478,195 @@ async def journey_recommendations(background_tasks: BackgroundTasks, ctx: tuple 
         cached=False,
         generated_at=datetime.now(timezone.utc).isoformat(),
     )
+
+
+_MARKETPLACE_DEFAULT_LIMIT = 20
+_MARKETPLACE_MAX_LIMIT = 50
+
+
+class MarketplaceResponse(BaseModel):
+    journeys: list[Journey] = []
+    total: int
+    limit: int
+    offset: int
+
+
+@router.get(
+    "/marketplace",
+    response_model=MarketplaceResponse,
+    summary="Browse published, community-popular journeys",
+)
+async def marketplace_journeys(
+    response: Response,
+    age_group: Optional[str] = None,
+    difficulty: Optional[str] = None,
+    tag: Optional[str] = None,
+    limit: int = Query(_MARKETPLACE_DEFAULT_LIMIT, ge=1, le=_MARKETPLACE_MAX_LIMIT),
+    offset: int = Query(0, ge=0),
+    uid: Optional[str] = Depends(get_optional_acting_uid),
+):
+    """Journeys are surfaced here automatically once a scheduled job flags them as
+    popular (unique learners / likes) and an admin approves them — see
+    `_marketplace_popularity_scan` and `/admin/marketplace-queue`."""
+    response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300"
+
+    filters = ["marketplace_status = 'published'"]
+    params: list = []
+    if uid:
+        filters.append("uid IS DISTINCT FROM %s")
+        params.append(uid)
+    if age_group:
+        filters.append("age_group = %s")
+        params.append(age_group)
+    if difficulty:
+        filters.append("difficulty = %s")
+        params.append(difficulty)
+    if tag:
+        filters.append("%s = ANY(tags)")
+        params.append(tag)
+    where_clause = " AND ".join(filters)
+
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT COUNT(*) AS n FROM journeys WHERE {where_clause}", params)
+                total = int(cur.fetchone()["n"])
+                cur.execute(
+                    f"""
+                    SELECT * FROM journeys
+                    WHERE {where_clause}
+                    ORDER BY popularity_score DESC, created_at DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    params + [limit, offset],
+                )
+                journeys = [_row_to_journey(dict(r)) for r in cur.fetchall()]
+    except Exception:
+        logger.exception("marketplace: listing query failed")
+        raise HTTPException(status_code=500, detail="Failed to load marketplace")
+
+    return MarketplaceResponse(journeys=journeys, total=total, limit=limit, offset=offset)
+
+
+class LikeResponse(BaseModel):
+    liked: bool
+    like_count: int
+
+
+@router.post(
+    "/{journey_id}/like",
+    response_model=LikeResponse,
+    summary="Toggle a like on a journey (feeds the marketplace popularity score)",
+)
+async def toggle_journey_like(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
+    uid, _ = ctx
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM journeys WHERE id = %s", (journey_id,))
+                if not cur.fetchone():
+                    raise HTTPException(status_code=404, detail="Journey not found")
+
+                cur.execute(
+                    "DELETE FROM journey_likes WHERE uid = %s AND journey_id = %s",
+                    (uid, journey_id),
+                )
+                if cur.rowcount:
+                    liked = False
+                    cur.execute(
+                        "UPDATE journeys SET like_count = GREATEST(like_count - 1, 0) "
+                        "WHERE id = %s RETURNING like_count",
+                        (journey_id,),
+                    )
+                else:
+                    cur.execute(
+                        "INSERT INTO journey_likes (uid, journey_id) VALUES (%s, %s)",
+                        (uid, journey_id),
+                    )
+                    liked = True
+                    cur.execute(
+                        "UPDATE journeys SET like_count = like_count + 1 "
+                        "WHERE id = %s RETURNING like_count",
+                        (journey_id,),
+                    )
+                like_count = int(cur.fetchone()["like_count"])
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("failed to toggle journey like")
+        raise HTTPException(status_code=500, detail="Failed to update like")
+
+    return LikeResponse(liked=liked, like_count=like_count)
+
+
+@router.post(
+    "/{journey_id}/fork",
+    response_model=ExploreResponse,
+    summary="Fork a published marketplace journey into your own journeys",
+)
+async def fork_journey(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
+    """Mirrors POST /explore/confirm: persists an independent copy owned by the
+    forking user. The fork starts private again — it earns its own place in the
+    marketplace rather than inheriting the source's popularity/approval."""
+    uid, _ = ctx
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM journeys WHERE id = %s AND marketplace_status = 'published'",
+                    (journey_id,),
+                )
+                row = cur.fetchone()
+    except Exception:
+        logger.exception("fork: source lookup failed")
+        raise HTTPException(status_code=500, detail="Fork failed")
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Marketplace journey not found")
+
+    source = dict(row)
+    new_id = str(uuid.uuid4())
+    steps_json = source["steps"] if isinstance(source["steps"], str) else json.dumps(source["steps"])
+
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO journeys
+                        (id, uid, question, title, description, age_group, difficulty,
+                         estimated_hours, steps, tags, icon, is_curated,
+                         learner_purpose, topic_expertise, hero_image_url, forked_from_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, FALSE, %s, %s, %s, %s)
+                    """,
+                    (
+                        new_id, uid, source["question"], source["title"], source["description"],
+                        source["age_group"], source["difficulty"], source["estimated_hours"],
+                        steps_json, source.get("tags") or [], source.get("icon", "🎯"),
+                        source.get("learner_purpose"), source.get("topic_expertise"),
+                        source.get("hero_image_url"), journey_id,
+                    ),
+                )
+                # Copy cached step content so the fork doesn't need to re-warm via AI.
+                cur.execute(
+                    """
+                    INSERT INTO step_content (journey_id, step_id, content, quiz_anchors, model, prompt_version, image_url)
+                    SELECT %s, step_id, content, quiz_anchors, model, prompt_version, image_url
+                    FROM step_content WHERE journey_id = %s
+                    """,
+                    (new_id, journey_id),
+                )
+    except Exception:
+        logger.exception("fork: failed to persist forked journey")
+        raise HTTPException(status_code=500, detail="Failed to fork journey")
+
+    invalidate_profile(uid)
+    _invalidate_recommendation_cache(uid)
+
+    forked = _db_journey(new_id)
+    if not forked:
+        raise HTTPException(status_code=500, detail="Fork saved but could not be reloaded")
+    return ExploreResponse(journey=forked)
 
 
 @router.get("/{journey_id}", response_model=Journey, summary="Get a journey by ID")

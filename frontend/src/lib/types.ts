@@ -12,6 +12,8 @@ export interface JourneyStep {
   content?: string
 }
 
+export type MarketplaceStatus = 'private' | 'pending_review' | 'published' | 'rejected'
+
 export interface Journey {
   id: string
   question: string
@@ -25,6 +27,10 @@ export interface Journey {
   icon: string
   hero_image_url?: string | null
   created_at: string
+  marketplace_status: MarketplaceStatus
+  popularity_score: number
+  like_count: number
+  forked_from_id?: string | null
 }
 
 export type LearnerPurpose = 'research_paper' | 'professional_growth' | 'personal_curiosity' | 'teaching_others' | 'fun'

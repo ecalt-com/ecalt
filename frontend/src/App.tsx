@@ -28,6 +28,7 @@ const MindSignature = lazy(() => import('./pages/MindSignature'))
 const Verify        = lazy(() => import('./pages/Verify'))
 const Explore       = lazy(() => import('./pages/Explore'))
 const Journeys      = lazy(() => import('./pages/Journeys'))
+const Marketplace   = lazy(() => import('./pages/Marketplace'))
 const Journey       = lazy(() => import('./pages/Journey'))
 const Passport      = lazy(() => import('./pages/Passport'))
 const Profile       = lazy(() => import('./pages/Profile'))
@@ -72,6 +73,7 @@ function AppShell() {
           <Route path="/verify/:hash" element={<ErrorBoundary><Verify /></ErrorBoundary>} />
           <Route path="/explore" element={<ErrorBoundary><Explore /></ErrorBoundary>} />
           <Route path="/journeys" element={<ErrorBoundary><Journeys /></ErrorBoundary>} />
+          <Route path="/marketplace" element={<ErrorBoundary><Marketplace /></ErrorBoundary>} />
           <Route path="/journey/:id" element={<ErrorBoundary><Journey /></ErrorBoundary>} />
           <Route path="/passport" element={<ErrorBoundary><Passport /></ErrorBoundary>} />
           <Route path="/profile" element={<ErrorBoundary><Profile /></ErrorBoundary>} />

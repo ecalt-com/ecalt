@@ -10,6 +10,7 @@ Jobs registered:
   daily 10:00   — mind_signature_nudge
   every 6h      — journey_completion_nudge
   Sunday 18:00  — weekly_digest_dispatch
+  every 6h      — marketplace_popularity_scan
 """
 import json
 import logging
@@ -1011,6 +1012,62 @@ async def _lifecycle_retention() -> None:
             logger.error("lifecycle.retention: uid=%s failed: %s", r["uid"], e)
 
 
+# ── Marketplace popularity scan (runs every 6h) ──────────────────────────────
+
+_POPULARITY_WEIGHT_LEARNERS = 3
+_POPULARITY_WEIGHT_LIKES = 2
+_MIN_UNIQUE_LEARNERS = 5
+_MIN_LIKES = 3
+
+
+async def _marketplace_popularity_scan() -> None:
+    """Recompute popularity_score for user-generated journeys, then move any
+    still-private journey that crosses the popularity bar into the admin
+    review queue. Never touches a journey an admin already reviewed
+    (pending_review / published / rejected) — admin decisions are sticky.
+    """
+    from app.core.database import get_db
+
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE journeys j
+                    SET popularity_score = sub.score
+                    FROM (
+                        SELECT j2.id,
+                               COUNT(DISTINCT up.uid) * %s + j2.like_count * %s AS score
+                        FROM journeys j2
+                        LEFT JOIN user_progress up ON up.journey_id = j2.id
+                        WHERE j2.uid IS NOT NULL AND j2.is_curated = FALSE
+                        GROUP BY j2.id, j2.like_count
+                    ) sub
+                    WHERE j.id = sub.id AND j.popularity_score IS DISTINCT FROM sub.score
+                    """,
+                    (_POPULARITY_WEIGHT_LEARNERS, _POPULARITY_WEIGHT_LIKES),
+                )
+                cur.execute(
+                    """
+                    UPDATE journeys j
+                    SET marketplace_status = 'pending_review'
+                    FROM (
+                        SELECT j2.id, COUNT(DISTINCT up.uid) AS unique_learners
+                        FROM journeys j2
+                        LEFT JOIN user_progress up ON up.journey_id = j2.id
+                        WHERE j2.uid IS NOT NULL AND j2.is_curated = FALSE
+                          AND j2.marketplace_status = 'private'
+                        GROUP BY j2.id
+                    ) sub
+                    WHERE j.id = sub.id
+                      AND (sub.unique_learners >= %s OR j.like_count >= %s)
+                    """,
+                    (_MIN_UNIQUE_LEARNERS, _MIN_LIKES),
+                )
+    except Exception as e:
+        logger.error("marketplace_popularity_scan failed: %s", e)
+
+
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -1030,6 +1087,7 @@ def setup_scheduler() -> AsyncIOScheduler:
                                               "hour": 17, "minute": 0},   "family_digest_dispatch"),
         (_scheduled_deletion_dispatch, "cron", {"hour": 3, "minute": 30}, "scheduled_deletion_dispatch"),
         (_family_lifecycle_dispatch,   "cron", {"hour": 4, "minute": 0},  "family_lifecycle_dispatch"),
+        (_marketplace_popularity_scan, "cron", {"hour": "*/6"},           "marketplace_popularity_scan"),
     ]
     for func, trigger, kwargs, job_id in jobs:
         scheduler.add_job(func, trigger, id=job_id, replace_existing=True, **kwargs)

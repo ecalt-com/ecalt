@@ -694,6 +694,62 @@ async def regenerate_hero_image(journey_id: str, _uid: str = Depends(get_admin_u
     return {"journey_id": journey_id, "hero_image_url": url}
 
 
+@router.get("/marketplace-queue")
+def list_marketplace_queue(_uid: str = Depends(get_admin_user)):
+    """Journeys a scheduled job has flagged as popular, awaiting publish/reject."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, uid, title, description, icon, age_group, difficulty,
+                       popularity_score, like_count, created_at
+                FROM journeys
+                WHERE marketplace_status = 'pending_review'
+                ORDER BY popularity_score DESC
+                """
+            )
+            return {"queue": [dict(r) for r in cur.fetchall()]}
+
+
+def _set_marketplace_status(journey_id: str, status: str, reviewer_uid: str) -> dict:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE journeys
+                SET marketplace_status = %s,
+                    marketplace_reviewed_at = now(),
+                    marketplace_reviewed_by = %s
+                WHERE id = %s
+                RETURNING id, marketplace_status
+                """,
+                (status, reviewer_uid, journey_id),
+            )
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Journey not found")
+    return dict(row)
+
+
+@router.post("/marketplace-queue/{journey_id}/approve")
+def approve_marketplace_journey(journey_id: str, uid: str = Depends(get_admin_user)):
+    """Publish a pending journey to the marketplace."""
+    return _set_marketplace_status(journey_id, "published", uid)
+
+
+@router.post("/marketplace-queue/{journey_id}/reject")
+def reject_marketplace_journey(journey_id: str, uid: str = Depends(get_admin_user)):
+    """Reject a pending journey. The popularity job never re-flags a rejected journey."""
+    return _set_marketplace_status(journey_id, "rejected", uid)
+
+
+@router.post("/marketplace-queue/{journey_id}/reset")
+def reset_marketplace_journey(journey_id: str, uid: str = Depends(get_admin_user)):
+    """Send a journey back to private — unpublishes a live one, or gives a
+    rejected one another chance to be reconsidered by the popularity job."""
+    return _set_marketplace_status(journey_id, "private", uid)
+
+
 @router.get("/content-stats")
 def get_content_stats(journey_id: Optional[str] = None, _uid: str = Depends(get_admin_user)):
     with get_db() as conn:

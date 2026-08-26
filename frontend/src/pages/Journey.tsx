@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Clock, BookOpen, Share2, Award, TrendingUp, Loader2, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Clock, BookOpen, Share2, Award, TrendingUp, Loader2, MessageCircle, Heart, Plus } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import StepNode from '../components/StepNode'
 import PageMeta from '../components/PageMeta'
 import JourneyTutor from '../components/journey/JourneyTutor'
-import { getJourney, getJourneys, getProgress, getJourneySuggestions, markStepComplete } from '../lib/api'
+import { getJourney, getJourneys, getProgress, getJourneySuggestions, markStepComplete, toggleJourneyLike, forkJourney } from '../lib/api'
 import type { JourneySuggestions } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useToast } from '../lib/ToastContext'
@@ -121,6 +121,10 @@ export default function Journey() {
   const [showCompletion, setShowCompletion] = useState(false)
   const [expandedStepId, setExpandedStepId] = useState<string | null>(null)
   const [tutorOpen, setTutorOpen] = useState(false)
+  const [liked, setLiked] = useState(false)
+  const [likeCount, setLikeCount] = useState(0)
+  const [liking, setLiking] = useState(false)
+  const [forking, setForking] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -134,6 +138,8 @@ export default function Journey() {
     setShowCompletion(false)
     setExpandedStepId(null)
     setTutorOpen(false)
+    setLiked(false)
+    setLikeCount(0)
 
     // Client-side fallback when the suggestions endpoint is unavailable
     const relatedByTags = (j: JourneyType, token?: string) => {
@@ -164,6 +170,7 @@ export default function Journey() {
         }
         setJourney(j)
         setSteps(j.steps.map(s => ({ ...s, completed: completedIds.includes(s.id) })))
+        setLikeCount(j.like_count)
 
         // The hero image lands async ~5–30s after journey creation. For a
         // fresh journey without one, refetch once so the header fills in.
@@ -235,6 +242,40 @@ export default function Journey() {
           )
         }
       }
+    }
+  }
+
+  const handleLike = async () => {
+    if (!id || liking) return
+    if (!user) { navigate('/'); return }
+    setLiking(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await toggleJourneyLike(id, token)
+      setLiked(res.liked)
+      setLikeCount(res.like_count)
+    } catch {
+      addToast("Couldn't update like", 'error')
+    } finally {
+      setLiking(false)
+    }
+  }
+
+  const handleFork = async () => {
+    if (!id || forking) return
+    if (!user) { navigate('/'); return }
+    setForking(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await forkJourney(id, token)
+      addToast('Added to your journeys')
+      navigate(`/journey/${res.journey.id}`)
+    } catch {
+      addToast("Couldn't add this journey", 'error')
+    } finally {
+      setForking(false)
     }
   }
 
@@ -413,6 +454,24 @@ export default function Journey() {
                   >
                     <Share2 size={13} />Share
                   </button>
+                  <button
+                    onClick={handleLike}
+                    disabled={liking}
+                    className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
+                  >
+                    <Heart size={13} className={liked ? 'fill-rose-500 text-rose-500' : ''} />
+                    {likeCount}
+                  </button>
+                  {journey.marketplace_status === 'published' && (
+                    <button
+                      onClick={handleFork}
+                      disabled={forking}
+                      className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
+                    >
+                      {forking ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                      Add to my journeys
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

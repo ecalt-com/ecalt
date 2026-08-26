@@ -391,6 +391,19 @@ export interface PromptHistoryEntry {
   reset_to_default: boolean
 }
 
+export interface MarketplaceQueueItem {
+  id: string
+  uid: string
+  title: string
+  description: string
+  icon: string | null
+  age_group: string | null
+  difficulty: string | null
+  popularity_score: number
+  like_count: number
+  created_at: string
+}
+
 export interface NotificationTemplateRow {
   notification_type: string
   template:          string

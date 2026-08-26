@@ -51,6 +51,10 @@ class Journey(BaseModel):
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
         description="ISO 8601 UTC timestamp of when the journey was created",
     )
+    marketplace_status: str = Field("private", description="private | pending_review | published | rejected")
+    popularity_score: float = Field(0, description="Denormalized popularity score used to rank the marketplace")
+    like_count: int = Field(0, description="Number of users who liked this journey")
+    forked_from_id: Optional[str] = Field(None, description="Source journey id if this was forked from the marketplace")
 
     model_config = {
         "json_schema_extra": {

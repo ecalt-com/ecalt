@@ -9,12 +9,14 @@ import { useSubscription } from '../lib/SubscriptionContext'
 const PUBLIC_LINKS = [
   { to: '/explore', label: 'Explore' },
   { to: '/journeys', label: 'Journeys' },
+  { to: '/marketplace', label: 'Marketplace' },
   { to: '/pricing', label: 'Pricing' },
 ]
 
 const AUTH_LINKS = [
   { to: '/explore', label: 'Explore' },
   { to: '/journeys', label: 'Journeys' },
+  { to: '/marketplace', label: 'Marketplace' },
   { to: '/passport', label: 'Passport' },
   { to: '/mind-signature', label: 'Mind Signature' },
 ]

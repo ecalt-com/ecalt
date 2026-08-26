@@ -76,6 +76,37 @@ export interface JourneySuggestions {
 export const getJourneySuggestions = (journeyId: string, token: string): Promise<JourneySuggestions> =>
   request(`/api/v1/journeys/${journeyId}/suggestions`, undefined, token)
 
+export interface MarketplaceFilters {
+  age_group?: string
+  difficulty?: string
+  tag?: string
+  limit?: number
+  offset?: number
+}
+
+export interface MarketplaceResponse {
+  journeys: Journey[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export const getMarketplace = (filters: MarketplaceFilters = {}, token?: string): Promise<MarketplaceResponse> => {
+  const params = new URLSearchParams()
+  if (filters.age_group) params.set('age_group', filters.age_group)
+  if (filters.difficulty) params.set('difficulty', filters.difficulty)
+  if (filters.tag) params.set('tag', filters.tag)
+  params.set('limit', String(filters.limit ?? 20))
+  params.set('offset', String(filters.offset ?? 0))
+  return request(`/api/v1/journeys/marketplace?${params}`, undefined, token)
+}
+
+export const toggleJourneyLike = (journeyId: string, token: string): Promise<{ liked: boolean; like_count: number }> =>
+  request(`/api/v1/journeys/${journeyId}/like`, { method: 'POST' }, token)
+
+export const forkJourney = (journeyId: string, token: string): Promise<{ journey: Journey }> =>
+  request(`/api/v1/journeys/${journeyId}/fork`, { method: 'POST' }, token)
+
 export const getProgress = (journeyId: string, token: string): Promise<{ journey_id: string; completed_step_ids: string[] }> =>
   request(`/api/v1/progress/${journeyId}`, undefined, token)
 
