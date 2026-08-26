@@ -170,3 +170,44 @@ class TestFork:
     def test_fork_requires_auth(self, anon_client):
         r = anon_client.post("/api/v1/journeys/src-journey/fork")
         assert r.status_code == 401
+
+
+class TestSubmitToMarketplace:
+    def test_owner_can_submit_private_journey(self, client):
+        db = _db(fetchone=[{"uid": TEST_UID, "marketplace_status": "private"},
+                            {"marketplace_status": "pending_review"}])
+        with patch("app.api.v1.endpoints.journeys.get_db", db):
+            r = client.post("/api/v1/journeys/mine/submit-to-marketplace")
+        assert r.status_code == 200
+        assert r.json() == {"marketplace_status": "pending_review"}
+
+    def test_owner_can_resubmit_rejected_journey(self, client):
+        db = _db(fetchone=[{"uid": TEST_UID, "marketplace_status": "rejected"},
+                            {"marketplace_status": "pending_review"}])
+        with patch("app.api.v1.endpoints.journeys.get_db", db):
+            r = client.post("/api/v1/journeys/mine/submit-to-marketplace")
+        assert r.status_code == 200
+        assert r.json() == {"marketplace_status": "pending_review"}
+
+    def test_already_published_is_a_noop(self, client):
+        db = _db(fetchone=[{"uid": TEST_UID, "marketplace_status": "published"}])
+        with patch("app.api.v1.endpoints.journeys.get_db", db):
+            r = client.post("/api/v1/journeys/mine/submit-to-marketplace")
+        assert r.status_code == 200
+        assert r.json() == {"marketplace_status": "published"}
+
+    def test_non_owner_gets_403(self, client):
+        db = _db(fetchone=[{"uid": "someone-else", "marketplace_status": "private"}])
+        with patch("app.api.v1.endpoints.journeys.get_db", db):
+            r = client.post("/api/v1/journeys/not-mine/submit-to-marketplace")
+        assert r.status_code == 403
+
+    def test_missing_journey_404(self, client):
+        db = _db(fetchone=[None])
+        with patch("app.api.v1.endpoints.journeys.get_db", db):
+            r = client.post("/api/v1/journeys/nope/submit-to-marketplace")
+        assert r.status_code == 404
+
+    def test_requires_auth(self, anon_client):
+        r = anon_client.post("/api/v1/journeys/mine/submit-to-marketplace")
+        assert r.status_code == 401

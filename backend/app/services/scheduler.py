@@ -1016,8 +1016,12 @@ async def _lifecycle_retention() -> None:
 
 _POPULARITY_WEIGHT_LEARNERS = 3
 _POPULARITY_WEIGHT_LIKES = 2
-_MIN_UNIQUE_LEARNERS = 5
-_MIN_LIKES = 3
+# Bootstrap-phase thresholds — deliberately low while the platform has few
+# users. unique_learners counts the creator's own completion too, so >=2
+# still requires at least one other person to have used it. Raise these as
+# real traffic grows (see docs/frontend-changes-course-marketplace.md).
+_MIN_UNIQUE_LEARNERS = 2
+_MIN_LIKES = 1
 
 
 async def _marketplace_popularity_scan() -> None:

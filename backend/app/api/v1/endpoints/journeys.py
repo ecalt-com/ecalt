@@ -142,7 +142,7 @@ SAMPLE_JOURNEYS: list[Journey] = [
 _journey_map = {j.id: j for j in SAMPLE_JOURNEYS}
 
 
-def _row_to_journey(row: dict) -> Journey:
+def _row_to_journey(row: dict, viewer_uid: Optional[str] = None) -> Journey:
     steps_data = row.get("steps") or []
     if isinstance(steps_data, str):
         steps_data = json.loads(steps_data)
@@ -165,6 +165,7 @@ def _row_to_journey(row: dict) -> Journey:
         popularity_score=float(row.get("popularity_score") or 0),
         like_count=int(row.get("like_count") or 0),
         forked_from_id=row.get("forked_from_id"),
+        is_owner=bool(viewer_uid and row.get("uid") == viewer_uid),
     )
 
 
@@ -177,13 +178,13 @@ def _invalidate_recommendation_cache(uid: str) -> None:
         logger.debug("journeys: recommendation cache invalidation failed (non-fatal)")
 
 
-def _db_journey(journey_id: str) -> Optional[Journey]:
+def _db_journey(journey_id: str, viewer_uid: Optional[str] = None) -> Optional[Journey]:
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute("SELECT * FROM journeys WHERE id = %s", (journey_id,))
                 row = cur.fetchone()
-                return _row_to_journey(dict(row)) if row else None
+                return _row_to_journey(dict(row), viewer_uid) if row else None
     except Exception:
         return None
 
@@ -209,7 +210,7 @@ async def list_journeys(response: Response, uid: Optional[str] = Depends(get_opt
                         (uid,),
                     )
                     rows = cur.fetchall()
-                    user_journeys = [_row_to_journey(dict(r)) for r in rows]
+                    user_journeys = [_row_to_journey(dict(r), uid) for r in rows]
 
                     # Fetch per-journey step completion counts for this user.
                     cur.execute(
@@ -663,15 +664,63 @@ async def fork_journey(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
     invalidate_profile(uid)
     _invalidate_recommendation_cache(uid)
 
-    forked = _db_journey(new_id)
+    forked = _db_journey(new_id, uid)
     if not forked:
         raise HTTPException(status_code=500, detail="Fork saved but could not be reloaded")
     return ExploreResponse(journey=forked)
 
 
+class SubmitToMarketplaceResponse(BaseModel):
+    marketplace_status: str
+
+
+@router.post(
+    "/{journey_id}/submit-to-marketplace",
+    response_model=SubmitToMarketplaceResponse,
+    summary="Creator opt-in: ask for this journey to be reviewed for the marketplace",
+)
+async def submit_to_marketplace(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
+    """Puts the caller's own journey into the admin review queue immediately,
+    without waiting for the popularity job. Still requires admin approval
+    before it's publicly listed — this only requests review, it never
+    publishes directly. A no-op if already pending/published."""
+    uid, _ = ctx
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT uid, marketplace_status FROM journeys WHERE id = %s",
+                    (journey_id,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    raise HTTPException(status_code=404, detail="Journey not found")
+                if row["uid"] != uid:
+                    raise HTTPException(status_code=403, detail="You can only submit your own journeys")
+                if row["marketplace_status"] in ("pending_review", "published"):
+                    return SubmitToMarketplaceResponse(marketplace_status=row["marketplace_status"])
+
+                cur.execute(
+                    """
+                    UPDATE journeys SET marketplace_status = 'pending_review'
+                    WHERE id = %s
+                    RETURNING marketplace_status
+                    """,
+                    (journey_id,),
+                )
+                updated = cur.fetchone()
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("failed to submit journey to marketplace")
+        raise HTTPException(status_code=500, detail="Failed to submit")
+
+    return SubmitToMarketplaceResponse(marketplace_status=updated["marketplace_status"])
+
+
 @router.get("/{journey_id}", response_model=Journey, summary="Get a journey by ID")
 async def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional_user)):
-    journey = _db_journey(journey_id) or _journey_map.get(journey_id)
+    journey = _db_journey(journey_id, uid) or _journey_map.get(journey_id)
     if not journey:
         raise HTTPException(status_code=404, detail="Journey not found")
     return journey

@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Clock, BookOpen, Share2, Award, TrendingUp, Loader2, MessageCircle, Heart, Plus } from 'lucide-react'
+import { ArrowLeft, Clock, BookOpen, Share2, Award, TrendingUp, Loader2, MessageCircle, Heart, Plus, Send, CheckCircle2 } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import StepNode from '../components/StepNode'
 import PageMeta from '../components/PageMeta'
 import JourneyTutor from '../components/journey/JourneyTutor'
-import { getJourney, getJourneys, getProgress, getJourneySuggestions, markStepComplete, toggleJourneyLike, forkJourney } from '../lib/api'
+import { getJourney, getJourneys, getProgress, getJourneySuggestions, markStepComplete, toggleJourneyLike, forkJourney, submitToMarketplace } from '../lib/api'
 import type { JourneySuggestions } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import { useToast } from '../lib/ToastContext'
@@ -125,6 +125,7 @@ export default function Journey() {
   const [likeCount, setLikeCount] = useState(0)
   const [liking, setLiking] = useState(false)
   const [forking, setForking] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -276,6 +277,27 @@ export default function Journey() {
       addToast("Couldn't add this journey", 'error')
     } finally {
       setForking(false)
+    }
+  }
+
+  const handleSubmitToMarketplace = async () => {
+    if (!id || submitting) return
+    if (!user) { navigate('/'); return }
+    setSubmitting(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const res = await submitToMarketplace(id, token)
+      setJourney(prev => prev ? { ...prev, marketplace_status: res.marketplace_status as JourneyType['marketplace_status'] } : prev)
+      addToast(
+        res.marketplace_status === 'pending_review'
+          ? 'Submitted — an admin will review it for the marketplace'
+          : 'This journey is already in review or published',
+      )
+    } catch {
+      addToast("Couldn't submit for review", 'error')
+    } finally {
+      setSubmitting(false)
     }
   }
 
@@ -462,7 +484,7 @@ export default function Journey() {
                     <Heart size={13} className={liked ? 'fill-rose-500 text-rose-500' : ''} />
                     {likeCount}
                   </button>
-                  {journey.marketplace_status === 'published' && (
+                  {journey.marketplace_status === 'published' && !journey.is_owner && (
                     <button
                       onClick={handleFork}
                       disabled={forking}
@@ -471,6 +493,28 @@ export default function Journey() {
                       {forking ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
                       Add to my journeys
                     </button>
+                  )}
+                  {journey.is_owner && (journey.marketplace_status === 'private' || journey.marketplace_status === 'rejected') && (
+                    <button
+                      onClick={handleSubmitToMarketplace}
+                      disabled={submitting}
+                      className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
+                    >
+                      {submitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                      {journey.marketplace_status === 'rejected' ? 'Resubmit to Marketplace' : 'Submit to Marketplace'}
+                    </button>
+                  )}
+                  {journey.is_owner && journey.marketplace_status === 'pending_review' && (
+                    <span className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-400/10 w-full sm:w-auto">
+                      <Loader2 size={12} />
+                      Pending marketplace review
+                    </span>
+                  )}
+                  {journey.is_owner && journey.marketplace_status === 'published' && (
+                    <span className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-400/10 w-full sm:w-auto">
+                      <CheckCircle2 size={12} />
+                      Live in Marketplace
+                    </span>
                   )}
                 </div>
               </div>

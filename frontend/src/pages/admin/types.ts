@@ -399,6 +399,7 @@ export interface MarketplaceQueueItem {
   icon: string | null
   age_group: string | null
   difficulty: string | null
+  marketplace_status: 'private' | 'pending_review' | 'published' | 'rejected'
   popularity_score: number
   like_count: number
   created_at: string

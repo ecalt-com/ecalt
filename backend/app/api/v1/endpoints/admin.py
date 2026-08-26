@@ -695,18 +695,36 @@ async def regenerate_hero_image(journey_id: str, _uid: str = Depends(get_admin_u
 
 
 @router.get("/marketplace-queue")
-def list_marketplace_queue(_uid: str = Depends(get_admin_user)):
-    """Journeys a scheduled job has flagged as popular, awaiting publish/reject."""
+def list_marketplace_queue(
+    status: str = "pending_review",
+    search: Optional[str] = None,
+    _uid: str = Depends(get_admin_user),
+):
+    """Journeys awaiting publish/reject (default: what the popularity job has
+    flagged). Pass status=all + search to browse/feature any journey directly,
+    bypassing the popularity job entirely — useful while real traffic is low."""
+    filters = ["is_curated = FALSE"]
+    params: list = []
+    if status != "all":
+        filters.append("marketplace_status = %s")
+        params.append(status)
+    if search:
+        filters.append("title ILIKE %s")
+        params.append(f"%{search}%")
+    where_clause = " AND ".join(filters)
+
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                """
+                f"""
                 SELECT id, uid, title, description, icon, age_group, difficulty,
-                       popularity_score, like_count, created_at
+                       marketplace_status, popularity_score, like_count, created_at
                 FROM journeys
-                WHERE marketplace_status = 'pending_review'
-                ORDER BY popularity_score DESC
-                """
+                WHERE {where_clause}
+                ORDER BY popularity_score DESC, created_at DESC
+                LIMIT 100
+                """,
+                params,
             )
             return {"queue": [dict(r) for r in cur.fetchall()]}
 

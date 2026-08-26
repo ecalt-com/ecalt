@@ -55,6 +55,7 @@ class Journey(BaseModel):
     popularity_score: float = Field(0, description="Denormalized popularity score used to rank the marketplace")
     like_count: int = Field(0, description="Number of users who liked this journey")
     forked_from_id: Optional[str] = Field(None, description="Source journey id if this was forked from the marketplace")
+    is_owner: bool = Field(False, description="Whether the requesting user owns this journey (per-request, not cached)")
 
     model_config = {
         "json_schema_extra": {

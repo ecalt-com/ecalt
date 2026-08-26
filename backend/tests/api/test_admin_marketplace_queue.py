@@ -76,6 +76,14 @@ class TestQueueListing:
         r = anon_client.get("/api/v1/admin/marketplace-queue")
         assert r.status_code == 401
 
+    def test_status_all_lets_admin_browse_and_search_everything(self, admin_client):
+        rows = [{"id": "j1", "uid": "u1", "title": "Quantum Basics", "marketplace_status": "private", "popularity_score": 0, "like_count": 0}]
+        db = _db(fetchall=[rows])
+        with patch("app.api.v1.endpoints.admin.get_db", db):
+            r = admin_client.get("/api/v1/admin/marketplace-queue?status=all&search=quantum")
+        assert r.status_code == 200
+        assert r.json() == {"queue": rows}
+
 
 class TestApproveRejectReset:
     def test_approve_publishes(self, admin_client):

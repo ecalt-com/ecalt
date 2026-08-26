@@ -107,6 +107,11 @@ export const toggleJourneyLike = (journeyId: string, token: string): Promise<{ l
 export const forkJourney = (journeyId: string, token: string): Promise<{ journey: Journey }> =>
   request(`/api/v1/journeys/${journeyId}/fork`, { method: 'POST' }, token)
 
+// Creator opt-in: request marketplace review for one of your own journeys,
+// without waiting for the popularity job. Still needs admin approval.
+export const submitToMarketplace = (journeyId: string, token: string): Promise<{ marketplace_status: string }> =>
+  request(`/api/v1/journeys/${journeyId}/submit-to-marketplace`, { method: 'POST' }, token)
+
 export const getProgress = (journeyId: string, token: string): Promise<{ journey_id: string; completed_step_ids: string[] }> =>
   request(`/api/v1/progress/${journeyId}`, undefined, token)
 

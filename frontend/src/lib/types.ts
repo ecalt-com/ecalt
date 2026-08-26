@@ -31,6 +31,7 @@ export interface Journey {
   popularity_score: number
   like_count: number
   forked_from_id?: string | null
+  is_owner: boolean
 }
 
 export type LearnerPurpose = 'research_paper' | 'professional_growth' | 'personal_curiosity' | 'teaching_others' | 'fun'
