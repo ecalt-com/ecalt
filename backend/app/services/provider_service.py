@@ -489,6 +489,9 @@ DEFAULT_CONFIG: dict[str, dict] = {
     "quiz":                 {"provider": "openai", "model": "gpt-4o-mini"},
     "journey_tutor":        {"provider": "openai", "model": "gpt-4.1-nano"},
     "journey_image":        {"provider": "openai", "model": "gpt-image-1-mini"},
+    "visual_planner":       {"provider": "openai", "model": "gpt-4.1-nano"},
+    "visual_recipe":        {"provider": "openai", "model": "gpt-4.1-mini"},
+    "visual_image":         {"provider": "openai", "model": "gpt-image-1-mini"},
 }
 
 # Cost per token in cents (input, output)

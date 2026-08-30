@@ -1,4 +1,4 @@
-import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus, QuizQuestion, QuizSet, QuizHint, QuizResult } from './types'
+import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus, QuizQuestion, QuizSet, QuizHint, QuizResult, StepVisualResponse, VisualEventType } from './types'
 export type { LearnerPurpose, TopicExpertise, QuizVerdict } from './types'
 import { getImpersonationSessionId } from './impersonationStore'
 
@@ -148,6 +148,23 @@ export const getStepContent = (journeyId: string, stepId: string, token?: string
 // Synchronous full rewrite of a step's content (rate-limited server-side).
 export const regenerateStepContent = (journeyId: string, stepId: string, token: string): Promise<StepContent> =>
   request(`/api/v1/journeys/${journeyId}/steps/${stepId}/content/regenerate`, { method: 'POST' }, token)
+
+// ── Visual Intelligence ────────────────────────────────────────────────────────
+// Read-only — never triggers planning (see backend
+// plans/visual-intelligence/frontend-changes.md). Safe to call whether or not
+// the feature is enabled server-side; a disabled/unplanned step just returns
+// status "pending"/"unavailable".
+
+export const getStepVisual = (journeyId: string, stepId: string, token?: string): Promise<StepVisualResponse> =>
+  request(`/api/v1/journeys/${journeyId}/steps/${stepId}/visual`, undefined, token)
+
+export const postVisualEvent = (
+  journeyId: string,
+  stepId: string,
+  body: { eventType: VisualEventType; vloId: string; sessionId: string; eventData?: Record<string, unknown> },
+  token: string,
+): Promise<{ status: string }> =>
+  request(`/api/v1/journeys/${journeyId}/steps/${stepId}/visual/events`, { method: 'POST', body: JSON.stringify(body) }, token)
 
 export type StepFeedbackTag = 'too_generic' | 'too_basic' | 'too_advanced' | 'inaccurate' | 'loved_it'
 

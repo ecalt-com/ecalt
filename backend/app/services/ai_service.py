@@ -490,6 +490,21 @@ async def warm_journey_steps(
                 if uid:
                     record_usage(uid, in_tok, out_tok, model, interaction_type="step_content")
                 covered.extend(_anchor_facts(quiz_anchors))
+
+                # No-op while VISUAL_INTELLIGENCE_ENABLED is False (default);
+                # never raises, so it can't affect step warming either way.
+                from app.services.visual_orchestrator_service import plan_visual_for_step
+                await plan_visual_for_step(
+                    journey_id=journey.id,
+                    step_id=step.id,
+                    step_title=step.title,
+                    content=content,
+                    learning_objective=step.core_question or step.description,
+                    age_group=journey.age_group,
+                    difficulty=journey.difficulty,
+                    uid=uid,
+                )
+
                 break
             except Exception as exc:
                 logger.warning(

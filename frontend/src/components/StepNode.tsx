@@ -1,12 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2, Lock } from 'lucide-react'
-import type { JourneyStep } from '../lib/types'
-import { getStepContent } from '../lib/api'
+import type { JourneyStep, StepVisualResponse } from '../lib/types'
+import { getStepContent, getStepVisual } from '../lib/api'
 import MarkdownContent from './MarkdownContent'
 import QuizCard from './QuizCard'
 import StepFeedbackBar from './StepFeedbackBar'
 import StepUpgradePanel from './StepUpgradePanel'
+import VisualLearningObject from './visual/VisualLearningObject'
 
 const typeConfig = {
   concept:   { icon: BookOpen, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 border-violet-200 dark:bg-violet-400/10 dark:border-violet-400/20', label: 'Learn' },
@@ -59,6 +60,7 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
     prevExpanded.current = expanded
   }, [expanded, locked])
   const [content, setContent] = useState<string | null>(null)
+  const [visual, setVisual] = useState<StepVisualResponse | null>(null)
   const [loadingContent, setLoadingContent] = useState(false)
   const [contentError, setContentError] = useState<string | null>(null)
   const [budgetExceeded, setBudgetExceeded] = useState(false)
@@ -80,6 +82,10 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
       const token = await getToken()
       const res = await getStepContent(journeyId, step.id, token ?? undefined)
       setContent(res.content)
+      // Best-effort, non-blocking — a visual is a bonus, never a requirement
+      // for the lesson to render (VISUAL_INTELLIGENCE_ENABLED is off by
+      // default server-side, so this normally just returns "pending").
+      getStepVisual(journeyId, step.id, token ?? undefined).then(setVisual).catch(() => {})
       if (!token) {
         // Guests can't take quizzes (auth required) — for them, viewing the
         // content still completes the step locally. Signed-in users complete
@@ -206,6 +212,16 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
               {content && !loadingContent && (
                 <div className="pt-4">
                   <MarkdownContent content={content} />
+                  {visual?.status === 'ready' && (
+                    <div className="mt-4">
+                      <VisualLearningObject
+                        journeyId={journeyId}
+                        stepId={step.id}
+                        stepVisual={visual}
+                        getToken={getToken}
+                      />
+                    </div>
+                  )}
                   {!isGuest && (
                     <StepFeedbackBar
                       journeyId={journeyId}

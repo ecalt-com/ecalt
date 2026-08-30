@@ -65,6 +65,17 @@ class Settings(BaseSettings):
     # check and double-sends — keep this false everywhere but production.
     SCHEDULER_ENABLED: bool = True
 
+    # Visual Intelligence Layer — off by default. Planning without any
+    # renderer to route to just spends tokens for no learner-visible
+    # benefit, so this stays false until Phase 2 (renderers) lands and the
+    # orchestrator is actually wired into step-content generation.
+    VISUAL_INTELLIGENCE_ENABLED: bool = False
+    VISUAL_NATIVE_RENDER_ENABLED: bool = False
+    VISUAL_RETRIEVAL_ENABLED: bool = False
+    VISUAL_IMAGE_GENERATION_ENABLED: bool = False
+    VISUAL_VIDEO_GENERATION_ENABLED: bool = False
+    VISUAL_TELEMETRY_ENABLED: bool = False
+
     @property
     def allowed_origins(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]

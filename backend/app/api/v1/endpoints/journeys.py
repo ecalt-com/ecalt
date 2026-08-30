@@ -7,6 +7,9 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query, R
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
 from app.models.schemas import Journey, JourneyStep, JourneysResponse, JourneyWithProgress, StepContentResponse, ExploreResponse
+from app.models.visual_schemas import StepVisualResponse, VisualEvent, VisualEventRequest
+from app.services.visual_registry_service import get_step_visual as get_step_visual_row
+from app.services.visual_telemetry_service import record_event as record_visual_event
 from app.core.auth import get_optional_user, get_required_user, get_optional_acting_uid, get_acting_uid
 from app.core.database import get_db
 from app.core.limiter import limiter
@@ -1022,6 +1025,61 @@ async def get_step_content(
     return StepContentResponse(
         journey_id=journey_id, step_id=step_id, content=content, cached=False,
     )
+
+
+@router.get(
+    "/{journey_id}/steps/{step_id}/visual",
+    response_model=StepVisualResponse,
+    summary="Get the planned visual for a step, if any",
+)
+async def get_step_visual(journey_id: str, step_id: str, ctx: tuple = Depends(get_acting_uid)):
+    """Read-only — never triggers planning. Planning happens as a side effect
+    of step content generation (ai_service.warm_journey_steps /
+    _generate_step_for_journey), gated by VISUAL_INTELLIGENCE_ENABLED.
+    "pending" means content generation hasn't reached this step yet;
+    "unavailable" means it was planned and no visual applies (NONE/TEXT_ONLY).
+    """
+    row = get_step_visual_row(journey_id, step_id)
+    if row is None:
+        return StepVisualResponse(journey_id=journey_id, step_id=step_id, status="pending")
+    if row["vlo_id"] is None:
+        return StepVisualResponse(
+            journey_id=journey_id, step_id=step_id, status="unavailable",
+            strategy=row["selected_strategy"],
+        )
+    return StepVisualResponse(
+        journey_id=journey_id, step_id=step_id, status="ready",
+        strategy=row["selected_strategy"], vlo_id=str(row["vlo_id"]), modality=row["modality"],
+        renderer_type=row["renderer_type"], recipe=row["recipe"] or None,
+        pedagogical_role=row["pedagogical_role"],
+        asset_url=row["asset_url"], asset_type=row["asset_type"],
+        attribution=row["asset_attribution"], license_type=row["asset_license_type"],
+    )
+
+
+@router.post(
+    "/{journey_id}/steps/{step_id}/visual/events",
+    status_code=202,
+    summary="Record a visual telemetry event",
+)
+async def post_step_visual_event(
+    journey_id: str, step_id: str, body: VisualEventRequest, ctx: tuple = Depends(get_acting_uid),
+):
+    """Best-effort — a telemetry write failure must never surface to the
+    learner (spec section 22 has no notion of a required event)."""
+    from app.core.config import settings
+    if not settings.VISUAL_TELEMETRY_ENABLED:
+        return {"status": "disabled"}
+    uid, _ = ctx
+    event = VisualEvent(
+        eventType=body.eventType, userId=uid, courseId=journey_id, lessonId=step_id,
+        vloId=body.vloId, sessionId=body.sessionId, eventData=body.eventData,
+    )
+    try:
+        record_visual_event(event)
+    except Exception:
+        logger.warning("visual telemetry write failed", extra={"journey_id": journey_id, "step_id": step_id})
+    return {"status": "recorded"}
 
 
 @router.post(
