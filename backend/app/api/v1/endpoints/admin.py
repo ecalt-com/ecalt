@@ -694,6 +694,29 @@ async def regenerate_hero_image(journey_id: str, _uid: str = Depends(get_admin_u
     return {"journey_id": journey_id, "hero_image_url": url}
 
 
+class TestImageGenerationRequest(BaseModel):
+    description: str = Field(..., min_length=1, max_length=500)
+
+
+@router.post("/visual/test-image-generation")
+async def test_visual_image_generation(body: TestImageGenerationRequest, _uid: str = Depends(get_admin_user)):
+    """Diagnostic tool: directly exercises the image generation pipeline
+    (OpenAI call -> upload -> Supabase Storage -> public URL), bypassing the
+    Visual Planner entirely. Use this to tell apart "the pipeline is broken"
+    from "the planner correctly never needed generation for this content" --
+    see backend/plans/visual-intelligence/README.md. Charged to no user
+    budget (uid=None), same pattern as hero-image/regenerate above.
+    """
+    from app.services.visual_image_service import generate_step_visual, images_enabled
+
+    if not images_enabled():
+        raise HTTPException(status_code=503, detail="Image storage not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)")
+    result = await generate_step_visual(body.description, uid=None)
+    if not result:
+        raise HTTPException(status_code=502, detail="Image generation failed — see server logs for the underlying exception")
+    return result
+
+
 @router.get("/marketplace-queue")
 def list_marketplace_queue(
     status: str = "pending_review",

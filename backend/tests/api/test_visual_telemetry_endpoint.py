@@ -24,13 +24,22 @@ def client():
 
 
 class TestPostVisualEvent:
-    def test_disabled_by_default_returns_disabled_status(self, client):
-        r = client.post(
-            "/api/v1/journeys/j1/steps/s1/visual/events",
-            json={"eventType": "visual_impression", "vloId": "vlo-1", "sessionId": "sess-1", "eventData": {}},
-        )
+    def test_disabled_returns_disabled_status_without_touching_db(self, client, monkeypatch):
+        # Explicit, not ambient: this asserts the *behavior* when the flag is
+        # off, not "whatever the local/deployed env's default happens to be"
+        # -- VISUAL_TELEMETRY_ENABLED may be true in some environments (it's
+        # a runtime setting, not a constant), and asserting on that ambient
+        # state previously let this test slip through to a real DB write.
+        from app.core.config import settings
+        monkeypatch.setattr(settings, "VISUAL_TELEMETRY_ENABLED", False)
+        with patch("app.api.v1.endpoints.journeys.record_visual_event") as mock_record:
+            r = client.post(
+                "/api/v1/journeys/j1/steps/s1/visual/events",
+                json={"eventType": "visual_impression", "vloId": "vlo-1", "sessionId": "sess-1", "eventData": {}},
+            )
         assert r.status_code == 202
         assert r.json() == {"status": "disabled"}
+        mock_record.assert_not_called()
 
     def test_enabled_records_event(self, client, monkeypatch):
         from app.core.config import settings

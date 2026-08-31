@@ -90,3 +90,33 @@ class TestGenerateRecipe:
                 visual_description="x",
             )
         assert recipe is None
+
+    @pytest.mark.asyncio
+    async def test_first_attempt_malformed_second_attempt_succeeds(self):
+        mock_complete = AsyncMock(side_effect=[
+            ("not json", 10, 5, 0),
+            (VALID_PROCESS_FLOW_JSON, 50, 80, 0),
+        ])
+        with patch("app.services.visual_recipe_service.complete_text", new=mock_complete):
+            recipe = await visual_recipe_service.generate_recipe(
+                pattern="process_flow",
+                step_title="Photosynthesis",
+                content="x",
+                visual_description="x",
+            )
+        assert recipe is not None
+        assert recipe["pattern"] == "process_flow"
+        assert mock_complete.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_both_attempts_fail_calls_provider_exactly_twice(self):
+        mock_complete = AsyncMock(return_value=("not json", 10, 5, 0))
+        with patch("app.services.visual_recipe_service.complete_text", new=mock_complete):
+            recipe = await visual_recipe_service.generate_recipe(
+                pattern="process_flow",
+                step_title="x",
+                content="x",
+                visual_description="x",
+            )
+        assert recipe is None
+        assert mock_complete.call_count == 2

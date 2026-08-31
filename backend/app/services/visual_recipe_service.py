@@ -60,11 +60,20 @@ async def generate_recipe(pattern: str, step_title: str, content: str, visual_de
         f"CONTENT:\n{content[:4000]}"
     )
 
-    try:
-        raw, _, _, _ = await complete_text("visual_recipe", system, user, max_tokens=700)
-        data = _loads_ai_json(raw)
-        validated = validate_recipe(pattern, data)
-        return validated.model_dump(by_alias=True)
-    except Exception:
-        logger.exception("visual recipe generation failed for pattern=%s step=%r", pattern, step_title)
-        return None
+    # One retry: LLM structured-output misses (a wrong-case enum value, an
+    # extra key, a truncated response) are common enough on a first attempt
+    # that giving up immediately downgrades a NATIVE_RENDER-worthy step to
+    # TEXT_ONLY more often than necessary -- same "try twice" pattern
+    # ai_service.warm_journey_steps() already uses for step content.
+    for attempt in (1, 2):
+        try:
+            raw, _, _, _ = await complete_text("visual_recipe", system, user, max_tokens=700)
+            data = _loads_ai_json(raw)
+            validated = validate_recipe(pattern, data)
+            return validated.model_dump(by_alias=True)
+        except Exception:
+            logger.warning(
+                "visual recipe generation failed for pattern=%s step=%r attempt=%d",
+                pattern, step_title, attempt, exc_info=True,
+            )
+    return None
