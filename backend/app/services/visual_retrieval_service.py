@@ -1,15 +1,21 @@
-"""Visual Intelligence Layer — Phase 5: retrieval abstraction (interface only).
+"""Visual Intelligence Layer — Phase 5: retrieval abstraction + Wikimedia Commons.
 
 Spec section 20 is explicit: "Do not add sources to production until their
 licensing and API/use terms are reviewed for ECALT's intended commercial
 use... Google Images must not be treated as a production free-media source."
 
-No concrete source adapter is registered here — this ships the interface and
-license-confidence check so a reviewed, approved source (Wikimedia Commons,
-Openverse, a licensed stock API, etc.) can be wired in later without
-touching the router or orchestrator again. SOURCE_ADAPTERS is empty by
-design, so retrieve_licensed_asset() always returns None today regardless of
-VISUAL_RETRIEVAL_ENABLED — there is nothing to retrieve from yet.
+Wikimedia Commons is the one source reviewed for this: every upload carries
+a machine-readable license in its metadata, the public API needs no key, and
+license_confidence_ok() below still gates every individual image before it
+can become a VLO -- an unrecognized or non-commercial license is excluded
+per-image, not just per-source. See wikimedia_retrieval_adapter.py for the
+license-string parsing.
+
+Not covered: content-safety moderation. Commons has no equivalent of
+SafeSearch, so visual_orchestrator_service._try_retrieval only calls this
+for grade_band == "adults" -- do not widen that gate without adding real
+content moderation first. A second source needs the same review before
+being added to SOURCE_ADAPTERS.
 """
 from dataclasses import dataclass
 from typing import Optional, Protocol
@@ -50,9 +56,15 @@ class VisualSourceAdapter(Protocol):
     def normalize(self, candidate: VisualCandidate) -> NormalizedVisualCandidate: ...
 
 
+# Imported here (not at module top) to avoid a circular import --
+# wikimedia_retrieval_adapter.py imports the dataclasses defined above.
+from app.services.wikimedia_retrieval_adapter import WikimediaCommonsAdapter  # noqa: E402
+
 # Populate only after a source's licensing + commercial-use terms have been
-# reviewed for ECALT (spec sections 20-21). Empty by design in v1.
-SOURCE_ADAPTERS: dict[str, VisualSourceAdapter] = {}
+# reviewed for ECALT (spec sections 20-21).
+SOURCE_ADAPTERS: dict[str, VisualSourceAdapter] = {
+    "wikimedia_commons": WikimediaCommonsAdapter(),
+}
 
 
 def license_confidence_ok(license: LicenseMetadata) -> bool:

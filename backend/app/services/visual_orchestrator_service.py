@@ -53,7 +53,14 @@ async def _try_native_render(plan: VisualPlan, step_title: str, content: str, gr
 
 
 async def _try_retrieval(plan: VisualPlan, grade_band: str, learning_objective: str) -> str | None:
-    if not (settings.VISUAL_RETRIEVAL_ENABLED and plan.conceptProperties.requiresRealWorldContext):
+    # Wikimedia Commons has no content-safety moderation (unlike e.g. Google
+    # SafeSearch) -- restrict to the adults grade band until real moderation
+    # exists. See visual_retrieval_service module docstring.
+    if not (
+        settings.VISUAL_RETRIEVAL_ENABLED
+        and plan.conceptProperties.requiresRealWorldContext
+        and grade_band == "adults"
+    ):
         return None
     query = plan.visualDescription or plan.concept.canonicalName
     candidate = await visual_retrieval_service.retrieve_licensed_asset(query, grade_band)

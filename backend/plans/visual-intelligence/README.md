@@ -50,9 +50,11 @@ At your direction this round covered the rest of the roadmap in one pass, **incl
 - `app/services/visual_telemetry_service.py` — `record_event()`, `vlo_effectiveness_snapshot()` (spec §23's provisional formula, minus `quiz_improvement` which needs a join against quiz results this pass didn't build), `refresh_effectiveness_score()`.
 - `POST /api/v1/journeys/{id}/steps/{id}/visual/events` — best-effort, returns `{"status": "disabled"}` while `VISUAL_TELEMETRY_ENABLED=False` (default) so the frontend can call it unconditionally without checking the flag itself.
 
-### Phase 5 — retrieval (interface only, no live source)
+### Phase 5 — retrieval (live: Wikimedia Commons, 2026-08-31)
 
-`app/services/visual_retrieval_service.py` ships `VisualSourceAdapter`, `LicenseMetadata`, and `license_confidence_ok()` per spec §20-21 — but `SOURCE_ADAPTERS` is intentionally empty. The spec is explicit that no source should go into production before its licensing/commercial-use terms are reviewed, and Google Images specifically must never be a source — so `retrieve_licensed_asset()` always returns `None` today, regardless of `VISUAL_RETRIEVAL_ENABLED`. `migrations/012_visual_assets.sql` (applied) creates the shared `visual_assets` table this and Phase 6 both attach to.
+`app/services/visual_retrieval_service.py` ships `VisualSourceAdapter`, `LicenseMetadata`, and `license_confidence_ok()` per spec §20-21. `SOURCE_ADAPTERS` now registers `wikimedia_commons` (`app/services/wikimedia_retrieval_adapter.py`) — the source reviewed against spec §20's "no source until licensing is reviewed" requirement: Commons requires every upload to carry machine-readable license metadata, the public search API needs no key, and `license_confidence_ok()` still gates every individual candidate image (an unrecognized or non-commercial license — e.g. any `CC BY-NC*` variant — is excluded per-image, not just per-source). `migrations/012_visual_assets.sql` (applied) is the shared `visual_assets` table this and Phase 6 both attach to.
+
+**Content-safety gate (not in the original spec, added here deliberately):** Wikimedia Commons has no equivalent of Google's SafeSearch — it's open, user-uploaded media. Since ECALT serves a `kids` age band, `visual_orchestrator_service._try_retrieval()` only calls retrieval when `grade_band == "adults"`; `kids`/`teens`/`all` steps fall through to native-render-or-text-only regardless of `VISUAL_RETRIEVAL_ENABLED`. **Do not widen this gate without adding real content moderation first** — this was a judgment call made on your behalf, flagged for your awareness, not something the spec dictated.
 
 ### Phase 6 — image generation gateway
 
@@ -81,13 +83,17 @@ Per spec §30, Phase 7 shouldn't be built until Phases 2-6 produce data showing 
 
 1. `VISUAL_INTELLIGENCE_ENABLED=true` + `VISUAL_NATIVE_RENDER_ENABLED=true` — the safe first step, native diagrams only, no external spend beyond the two cheap LLM calls (planner + recipe) per step.
 2. `VISUAL_IMAGE_GENERATION_ENABLED=true` — only after creating the `visual-assets` Storage bucket and adding an `<img>` renderer for `generated_image`/`retrieved_image` modality (see gap above).
-3. `VISUAL_RETRIEVAL_ENABLED=true` — no-op until a source adapter is actually registered in `visual_retrieval_service.SOURCE_ADAPTERS` after a license review.
+3. `VISUAL_RETRIEVAL_ENABLED=true` — functional now (Wikimedia Commons is registered), but only affects `adults`-grade-band steps by design (content-safety gate, see Phase 5 above). Verify the `visual-assets` Supabase Storage bucket is set **public**, not just created — `visual_image_service.upload_visual_image()`'s returned URLs assume public read access, same as the existing `journey-images` bucket.
 4. `VISUAL_TELEMETRY_ENABLED=true` — safe any time; frontend already calls the endpoint unconditionally.
 5. `VISUAL_VIDEO_GENERATION_ENABLED` — leave off; no provider exists (Phase 7).
 
 ### Full test count
 
-Backend: 495 passed, 1 pre-existing unrelated failure, 8 skipped (up from the original suite by 91 new tests across Phases 1-6). Frontend: `tsc --noEmit` and `vite build` both clean; no automated frontend test suite exists in this repo to extend.
+Backend: 519 passed, 1 pre-existing unrelated failure, 8 skipped. Frontend: `tsc --noEmit` and `vite build` both clean; no automated frontend test suite exists in this repo to extend.
+
+### Live in production (2026-08-31) — confirmed via direct DB query
+
+Verified against the real prod Supabase DB after your Railway flag flips: `visual_plans` has real `NATIVE_RENDER`/`NONE`/`TEXT_ONLY` rows from actual journey generation, `process_flow` and `part_to_whole` renderers have both fired. Found and fixed a real bug from this: `flex-wrap` on the native diagram node rows let an arrow strand itself at a line-wrap point, pointing at nothing (seen live on an "EC2 instance lifecycle" diagram) — switched to a non-wrapping horizontally-scrollable row. `visual_events` was confirmed empty (0 rows) — `VISUAL_TELEMETRY_ENABLED` was not yet on at that check.
 
 This doc maps the spec's generic architecture onto the actual ECALT repo, calls out where the spec's assumptions don't match reality, and lays out a phase-by-phase plan scoped to what this codebase actually needs. Per standing project convention, **frontend changes are documented here, not implemented** — a separate `frontend-changes.md` will be written once Phase 2 (renderers) is ready to review.
 
