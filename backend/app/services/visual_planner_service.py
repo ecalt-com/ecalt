@@ -20,7 +20,11 @@ logger = logging.getLogger(__name__)
 
 # Bump whenever the planner prompt/contract changes materially — mirrors
 # ai_service.CONTENT_PROMPT_VERSION's role for step content.
-PLANNER_PROMPT_VERSION = 1
+# v2: generationAllowed was silently always false in prod -- the JSON
+# schema's literal "generationAllowed": false example had no criteria
+# attached anywhere, so the model just copied it verbatim every time. Added
+# explicit decision criteria below instead of a biased example value.
+PLANNER_PROMPT_VERSION = 2
 
 _SYSTEM_PROMPT = """\
 You are ECALT Visual Intelligence Planner.
@@ -59,6 +63,12 @@ Preference order:
 
 Generated video is only appropriate when real motion, immersion, or visual reconstruction is essential and cannot be represented effectively using an interactive or animated diagram.
 
+generationAllowed decision rule — set it to true ONLY when ALL of these hold:
+- recommendedModality is "generated_image" or "generated_video" (i.e. every cheaper option in the preference order above genuinely fails the learning objective)
+- No pattern in the fixed visualPattern list could reasonably represent this concept
+- The concept is not better served by a real-world photo/video that licensed retrieval could supply instead (that's retrieved_image/retrieved_video, not generation)
+In every other case — including when recommendedModality is anything else — generationAllowed must be false. Most steps should have generationAllowed: false; only recommend generation when you are confident nothing cheaper works.
+
 Return ONLY a valid JSON object matching this exact structure — no markdown, no explanation:
 {
   "version": "1.0",
@@ -78,7 +88,7 @@ Return ONLY a valid JSON object matching this exact structure — no markdown, n
   "fallbackModalities": ["..."],
   "visualPattern": "process_flow | cycle | cause_effect | comparison | timeline | hierarchy | part_to_whole | before_after | quantity_comparison | progressive_sequence | null",
   "visualDescription": "concise description of what the visual should show",
-  "generationAllowed": false,
+  "generationAllowed": true or false, decided using the rule above — do not default this to false without applying the rule,
   "estimatedPedagogicalValue": 0.0
 }"""
 
@@ -104,7 +114,8 @@ Determine:
 5. What is the lowest-cost effective modality?
 6. If native rendering is possible, select a visual pattern from the fixed list.
 7. Provide a concise visual description.
-8. Provide fallbacks."""
+8. Provide fallbacks.
+9. Only if no native pattern or retrieval could work: is generation actually justified? Apply the generationAllowed rule."""
 
 
 def build_user_prompt(step_title: str, content: str, learning_objective: str, age_group: str, difficulty: str) -> str:
