@@ -2,14 +2,15 @@ import { ArrowRight } from 'lucide-react'
 import type { CauseEffectRecipe } from '../../../lib/types'
 import { VisualCard, VisualTitle, roleColor } from '../shared'
 
+// Deliberately does NOT wrap — see ProcessFlowRenderer for why.
 export default function CauseEffectRenderer({ recipe }: { recipe: CauseEffectRecipe }) {
   return (
     <VisualCard>
       <VisualTitle>{recipe.title}</VisualTitle>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-nowrap items-center gap-2 w-max">
         {recipe.nodes.map((node, i) => (
-          <div key={node.id} className="flex items-center gap-2">
-            <div className={`px-3 py-2 rounded-xl border text-xs font-medium ${roleColor(node.role)}`}>
+          <div key={node.id} className="flex items-center gap-2 shrink-0">
+            <div className={`px-3 py-2 rounded-xl border text-xs font-medium whitespace-nowrap ${roleColor(node.role)}`}>
               <div className="text-[10px] uppercase tracking-wider opacity-70 mb-0.5">{node.role}</div>
               {node.label}
             </div>

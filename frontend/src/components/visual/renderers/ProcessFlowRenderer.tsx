@@ -6,14 +6,20 @@ import { VisualCard, VisualTitle, roleColor } from '../shared'
 // v1 renders that order directly rather than laying out the full
 // nodes/connections graph, which would need a real graph-layout engine for
 // marginal benefit at this stage.
+//
+// Deliberately does NOT wrap: a flex-wrap row breaks the arrow that lands
+// right before the wrap point (it ends up pointing at nothing, connecting
+// to nothing below it) — a directional flow reads correctly left-to-right
+// or not at all. VisualCard already provides overflow-x-auto, so a long
+// chain scrolls horizontally instead.
 export default function ProcessFlowRenderer({ recipe }: { recipe: ProcessFlowRecipe }) {
   return (
     <VisualCard>
       <VisualTitle>{recipe.title}</VisualTitle>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-nowrap items-center gap-2 w-max">
         {recipe.nodes.map((node, i) => (
-          <div key={node.id} className="flex items-center gap-2">
-            <span className={`px-3 py-2 rounded-xl border text-xs font-medium ${roleColor(node.role)}`}>
+          <div key={node.id} className="flex items-center gap-2 shrink-0">
+            <span className={`px-3 py-2 rounded-xl border text-xs font-medium whitespace-nowrap ${roleColor(node.role)}`}>
               {node.label}
             </span>
             {i < recipe.nodes.length - 1 && (
