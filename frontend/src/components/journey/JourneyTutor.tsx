@@ -189,7 +189,7 @@ export default function JourneyTutor({
   }
 
   return (
-    <div className="flex flex-col h-full rounded-2xl overflow-hidden border border-violet-300/30 dark:border-violet-500/25 shadow-xl shadow-violet-500/5 bg-white dark:bg-slate-900/80 backdrop-blur-sm">
+    <div className="flex flex-col h-full rounded-2xl overflow-hidden border border-violet-300/30 dark:border-violet-500/25 shadow-xl shadow-violet-500/5 bg-white dark:bg-slate-900">
 
       {/* ── Header ── */}
       <div className="relative shrink-0 overflow-hidden">
