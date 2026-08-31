@@ -52,14 +52,21 @@ async def _try_native_render(plan: VisualPlan, step_title: str, content: str, gr
     )
 
 
+_RETRIEVAL_ALLOWED_GRADE_BANDS = ("adults", "all")
+
+
 async def _try_retrieval(plan: VisualPlan, grade_band: str, learning_objective: str) -> str | None:
     # Wikimedia Commons has no content-safety moderation (unlike e.g. Google
-    # SafeSearch) -- restrict to the adults grade band until real moderation
-    # exists. See visual_retrieval_service module docstring.
+    # SafeSearch). Originally gated to "adults" only, but that's almost never
+    # what a real journey is tagged as (age_group defaults to "all" and stays
+    # there unless a learner explicitly narrows it) -- which made retrieval
+    # unreachable in practice. Widened to "adults"/"all"; still excludes
+    # "kids"/"teens", the two bands that specifically signal a young
+    # audience. See visual_retrieval_service module docstring.
     if not (
         settings.VISUAL_RETRIEVAL_ENABLED
         and plan.conceptProperties.requiresRealWorldContext
-        and grade_band == "adults"
+        and grade_band in _RETRIEVAL_ALLOWED_GRADE_BANDS
     ):
         return None
     query = plan.visualDescription or plan.concept.canonicalName

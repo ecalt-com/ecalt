@@ -119,25 +119,47 @@ class TestEnabledOrchestration:
         assert mock_upsert.call_args.kwargs["execution_status"] == "skipped"
 
     @pytest.mark.asyncio
-    async def test_retrieval_only_runs_for_adults_grade_band(self, monkeypatch):
+    async def test_retrieval_excluded_for_kids_and_teens_grade_bands(self, monkeypatch):
         monkeypatch.setattr(settings, "VISUAL_INTELLIGENCE_ENABLED", True)
         monkeypatch.setattr(settings, "VISUAL_RETRIEVAL_ENABLED", True)
         plan = _plan(
             visualPattern=None,
             conceptProperties=ConceptProperties(requiresRealWorldContext=True),
         )
-        with (
-            patch("app.services.visual_orchestrator_service.visual_planner_service.plan_visual", new=AsyncMock(return_value=plan)),
-            patch("app.services.visual_orchestrator_service.visual_registry_service.find_reusable_vlo", return_value=None),
-            patch("app.services.visual_orchestrator_service.visual_retrieval_service.retrieve_licensed_asset", new=AsyncMock()) as mock_retrieve,
-            patch("app.services.visual_orchestrator_service.visual_registry_service.upsert_visual_plan", return_value="plan-1"),
-        ):
-            result = await orch.plan_visual_for_step(
-                journey_id="j1", step_id="s1", step_title="x", content="x",
-                learning_objective=plan.learningObjective, age_group="kids",
-            )
-        assert result["strategy"] == "TEXT_ONLY"
-        mock_retrieve.assert_not_called()
+        for grade_band in ("kids", "teens"):
+            with (
+                patch("app.services.visual_orchestrator_service.visual_planner_service.plan_visual", new=AsyncMock(return_value=plan)),
+                patch("app.services.visual_orchestrator_service.visual_registry_service.find_reusable_vlo", return_value=None),
+                patch("app.services.visual_orchestrator_service.visual_retrieval_service.retrieve_licensed_asset", new=AsyncMock()) as mock_retrieve,
+                patch("app.services.visual_orchestrator_service.visual_registry_service.upsert_visual_plan", return_value="plan-1"),
+            ):
+                result = await orch.plan_visual_for_step(
+                    journey_id="j1", step_id="s1", step_title="x", content="x",
+                    learning_objective=plan.learningObjective, age_group=grade_band,
+                )
+            assert result["strategy"] == "TEXT_ONLY"
+            mock_retrieve.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_retrieval_allowed_for_adults_and_all_grade_bands(self, monkeypatch):
+        monkeypatch.setattr(settings, "VISUAL_INTELLIGENCE_ENABLED", True)
+        monkeypatch.setattr(settings, "VISUAL_RETRIEVAL_ENABLED", True)
+        plan = _plan(
+            visualPattern=None,
+            conceptProperties=ConceptProperties(requiresRealWorldContext=True),
+        )
+        for grade_band in ("adults", "all"):
+            with (
+                patch("app.services.visual_orchestrator_service.visual_planner_service.plan_visual", new=AsyncMock(return_value=plan)),
+                patch("app.services.visual_orchestrator_service.visual_registry_service.find_reusable_vlo", return_value=None),
+                patch("app.services.visual_orchestrator_service.visual_retrieval_service.retrieve_licensed_asset", new=AsyncMock(return_value=None)) as mock_retrieve,
+                patch("app.services.visual_orchestrator_service.visual_registry_service.upsert_visual_plan", return_value="plan-1"),
+            ):
+                await orch.plan_visual_for_step(
+                    journey_id="j1", step_id="s1", step_title="x", content="x",
+                    learning_objective=plan.learningObjective, age_group=grade_band,
+                )
+            mock_retrieve.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_planner_exception_never_propagates(self, monkeypatch):

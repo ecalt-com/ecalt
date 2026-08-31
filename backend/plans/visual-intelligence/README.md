@@ -83,17 +83,32 @@ Per spec §30, Phase 7 shouldn't be built until Phases 2-6 produce data showing 
 
 1. `VISUAL_INTELLIGENCE_ENABLED=true` + `VISUAL_NATIVE_RENDER_ENABLED=true` — the safe first step, native diagrams only, no external spend beyond the two cheap LLM calls (planner + recipe) per step.
 2. `VISUAL_IMAGE_GENERATION_ENABLED=true` — only after creating the `visual-assets` Storage bucket and adding an `<img>` renderer for `generated_image`/`retrieved_image` modality (see gap above).
-3. `VISUAL_RETRIEVAL_ENABLED=true` — functional now (Wikimedia Commons is registered), but only affects `adults`-grade-band steps by design (content-safety gate, see Phase 5 above). Verify the `visual-assets` Supabase Storage bucket is set **public**, not just created — `visual_image_service.upload_visual_image()`'s returned URLs assume public read access, same as the existing `journey-images` bucket.
+3. `VISUAL_RETRIEVAL_ENABLED=true` — functional now (Wikimedia Commons is registered). Grade-band gate widened 2026-08-31 from `adults`-only to `adults`/`all` — `adults`-only turned out to exclude nearly all real traffic, since journeys default to (and almost always stay) `age_group="all"`; `kids`/`teens` still excluded. Verify the `visual-assets` Supabase Storage bucket is set **public**, not just created — `visual_image_service.upload_visual_image()`'s returned URLs assume public read access, same as the existing `journey-images` bucket. (Confirmed public and working end-to-end in prod as of 2026-08-31, via the admin diagnostic endpoint below.)
 4. `VISUAL_TELEMETRY_ENABLED=true` — safe any time; frontend already calls the endpoint unconditionally.
 5. `VISUAL_VIDEO_GENERATION_ENABLED` — leave off; no provider exists (Phase 7).
 
 ### Full test count
 
-Backend: 519 passed, 1 pre-existing unrelated failure, 8 skipped. Frontend: `tsc --noEmit` and `vite build` both clean; no automated frontend test suite exists in this repo to extend.
+Backend: 535 passed, 1 pre-existing unrelated failure, 8 skipped. Frontend: `tsc --noEmit` and `vite build` both clean; no automated frontend test suite exists in this repo to extend.
 
 ### Live in production (2026-08-31) — confirmed via direct DB query
 
-Verified against the real prod Supabase DB after your Railway flag flips: `visual_plans` has real `NATIVE_RENDER`/`NONE`/`TEXT_ONLY` rows from actual journey generation, `process_flow` and `part_to_whole` renderers have both fired. Found and fixed a real bug from this: `flex-wrap` on the native diagram node rows let an arrow strand itself at a line-wrap point, pointing at nothing (seen live on an "EC2 instance lifecycle" diagram) — switched to a non-wrapping horizontally-scrollable row. `visual_events` was confirmed empty (0 rows) — `VISUAL_TELEMETRY_ENABLED` was not yet on at that check.
+Verified against the real prod Supabase DB after your Railway flag flips: `visual_plans` has real `NATIVE_RENDER`/`NONE`/`TEXT_ONLY` rows from actual journey generation, `process_flow` and `part_to_whole` renderers have both fired. `visual_events` is populated (`VISUAL_TELEMETRY_ENABLED` is on and working).
+
+### Bugs found and fixed via real production traffic (2026-08-31)
+
+All of these were found by querying real `visual_plans`/`visual_events` rows and reading actual Railway error logs, not by inspection — the fastest debugging loop this feature has had.
+
+1. **Diagram wrapping bug** — `flex-wrap` on native diagram node rows let an arrow strand itself at a line-wrap point, pointing at nothing (seen live on an "EC2 instance lifecycle" diagram). Fixed: non-wrapping horizontally-scrollable row (`ProcessFlowRenderer`/`CycleRenderer`/`CauseEffectRenderer`).
+2. **`generationAllowed` silently always false** — the JSON schema shown to the planner had a literal `"generationAllowed": false` example with no criteria attached, so the model just copied it. 0/20 real plans ever had it true. Fixed: explicit decision rule in the prompt (`PLANNER_PROMPT_VERSION` 1→2).
+3. **`estimatedPedagogicalValue` returned as 1-10 instead of 0-1** — seen live (`8.0`), failed `VisualPlan`'s `le=1` constraint and dropped an otherwise-valid plan to text-only. Fixed: clarified prompt + `_normalize_plan_data()` defensively rescales/clamps before validation (`PLANNER_PROMPT_VERSION` 2→3).
+4. **Recipe generation had no retry** — a `cause_effect` recipe failed once in prod and silently downgraded a `NATIVE_RENDER`-worthy step to `TEXT_ONLY`. Fixed: one retry, matching the pattern `ai_service.warm_journey_steps()` already uses for step content.
+5. **Retrieval gate excluded nearly all real traffic** — gated to `grade_band == "adults"` only, but every real journey checked had `age_group="all"` (the default, and it almost never changes). Widened to `adults`/`all`; `kids`/`teens` still excluded (content-safety reasoning unchanged).
+6. **Appearance-only content wasn't triggering visuals** — a step literally titled "midnight over Tromsø: the sky unfolds in color" got `recommendedModality: none`. The model seems to have read "don't recommend decorative visuals" as "a photo is decorative unless it replaces a diagram." Fixed: added an explicit "appearance" category to the prompt, distinct from decorative (`PLANNER_PROMPT_VERSION` 3→4).
+7. **No way to test image generation independent of planner judgment** — added `POST /admin/visual/test-image-generation` (admin-only, bypasses the planner, `uid=None` so it's never charged to a user budget) specifically to tell apart "the pipeline is broken" from "the planner correctly never needed it." Used this to confirm the full OpenAI → Supabase Storage → public URL path works end-to-end in prod.
+8. **A test was writing to the real prod DB** — `test_visual_telemetry_endpoint.py`'s "disabled by default" test asserted on ambient `settings.VISUAL_TELEMETRY_ENABLED` state instead of explicitly setting it; in this environment that flag is actually `true`, so the test fell through to a real `INSERT` (caught by a UUID type constraint, no bad data landed). Fixed to explicitly `monkeypatch` the flag rather than rely on environment defaults.
+
+**Net effect:** none of Phases 1-6 had a broken execution pipeline — every piece (planner, router, native renderers, retrieval, image generation, telemetry) works. What was actually broken was prompt under-specification (findings 2, 3, 6) and one policy gate that didn't match real usage (finding 5) — the kind of issues that only surface once real traffic exercises the LLM's actual output distribution, not from code review or unit tests alone.
 
 This doc maps the spec's generic architecture onto the actual ECALT repo, calls out where the spec's assumptions don't match reality, and lays out a phase-by-phase plan scoped to what this codebase actually needs. Per standing project convention, **frontend changes are documented here, not implemented** — a separate `frontend-changes.md` will be written once Phase 2 (renderers) is ready to review.
 

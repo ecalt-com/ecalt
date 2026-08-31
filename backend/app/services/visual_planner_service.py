@@ -28,7 +28,13 @@ logger = logging.getLogger(__name__)
 # of the required 0-1 fraction, failing VisualPlan's le=1 constraint and
 # dropping the whole plan to text-only. Clarified the prompt AND added
 # _normalize_plan_data() as a defensive backstop -- see its docstring.
-PLANNER_PROMPT_VERSION = 3
+# v4: content whose entire point is appearance ("what does the aurora look
+# like") was getting recommendedModality=none, requiresRealWorldContext=false
+# -- "do not recommend decorative visuals" was apparently read as "a photo
+# is decorative unless it's a diagram-replaceable mechanism." Added an
+# explicit appearance category so this kind of content routes toward
+# retrieved_image instead of being skipped.
+PLANNER_PROMPT_VERSION = 4
 
 _SYSTEM_PROMPT = """\
 You are ECALT Visual Intelligence Planner.
@@ -49,8 +55,11 @@ Use a visual only when it reduces cognitive effort or helps demonstrate:
 - quantity
 - spatial arrangement
 - real-world context
+- appearance (what a real thing actually looks like: its color, form, texture, or visual character)
 
-Do not recommend decorative visuals.
+Appearance is its own category, not a weaker version of "decorative" — when the learning objective genuinely IS what something looks like (the colors of an aurora, the texture of Roman concrete, the form of a coral reef, the visual style of a painting), no amount of text substitutes for seeing it, and a photo is exactly as functional as a diagram is for a process. Do not default to "none" for this kind of content just because it reads as descriptive prose rather than a mechanism — set requiresRealWorldContext: true and recommendedModality: "retrieved_image" (or "generated_image" only if the generationAllowed rule below applies) rather than skipping the visual.
+
+Do not recommend visuals that are decorative in the sense of unrelated-to-the-content or purely ornamental (e.g. a generic stock photo next to a definition). A real photo whose subject IS the learning objective is never decorative.
 
 Choose the lowest-cost modality capable of achieving the learning objective.
 
@@ -114,7 +123,7 @@ Determine:
 1. Is a visual materially useful?
 2. What is its pedagogical role?
 3. What concept must the learner understand?
-4. Does understanding require motion, spatial understanding, real-world context, interaction, or quantitative manipulation?
+4. Does understanding require motion, spatial understanding, real-world context, interaction, or quantitative manipulation? Is the learning objective itself about what something looks like (appearance/color/visual character) — if so, treat that as real-world context requiring a visual, not as prose that needs no visual.
 5. What is the lowest-cost effective modality?
 6. If native rendering is possible, select a visual pattern from the fixed list.
 7. Provide a concise visual description.
