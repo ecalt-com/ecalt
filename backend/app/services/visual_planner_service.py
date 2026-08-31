@@ -24,7 +24,11 @@ logger = logging.getLogger(__name__)
 # schema's literal "generationAllowed": false example had no criteria
 # attached anywhere, so the model just copied it verbatim every time. Added
 # explicit decision criteria below instead of a biased example value.
-PLANNER_PROMPT_VERSION = 2
+# v3: estimatedPedagogicalValue came back as a 1-10 score (e.g. 8.0) instead
+# of the required 0-1 fraction, failing VisualPlan's le=1 constraint and
+# dropping the whole plan to text-only. Clarified the prompt AND added
+# _normalize_plan_data() as a defensive backstop -- see its docstring.
+PLANNER_PROMPT_VERSION = 3
 
 _SYSTEM_PROMPT = """\
 You are ECALT Visual Intelligence Planner.
@@ -89,7 +93,7 @@ Return ONLY a valid JSON object matching this exact structure — no markdown, n
   "visualPattern": "process_flow | cycle | cause_effect | comparison | timeline | hierarchy | part_to_whole | before_after | quantity_comparison | progressive_sequence | null",
   "visualDescription": "concise description of what the visual should show",
   "generationAllowed": true or false, decided using the rule above — do not default this to false without applying the rule,
-  "estimatedPedagogicalValue": 0.0
+  "estimatedPedagogicalValue": a fraction between 0.0 and 1.0 (e.g. 0.75) — NOT a 1-10 score, never greater than 1.0
 }"""
 
 _USER_PROMPT_TEMPLATE = """\
@@ -116,6 +120,21 @@ Determine:
 7. Provide a concise visual description.
 8. Provide fallbacks.
 9. Only if no native pattern or retrieval could work: is generation actually justified? Apply the generationAllowed rule."""
+
+
+def _normalize_plan_data(data: dict) -> dict:
+    """Repairs the one field models reliably get wrong despite explicit
+    instructions: estimatedPedagogicalValue coming back as a 1-10 score
+    instead of a 0-1 fraction (spotted in prod: 8.0, which failed
+    VisualPlan's le=1 constraint and took the whole plan down with it).
+    Rescale/clamp defensively rather than let one stray number fail
+    validation for an otherwise-good plan."""
+    value = data.get("estimatedPedagogicalValue")
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if value > 1:
+            value = value / 10 if value <= 10 else 1.0
+        data["estimatedPedagogicalValue"] = max(0.0, min(1.0, float(value)))
+    return data
 
 
 def build_user_prompt(step_title: str, content: str, learning_objective: str, age_group: str, difficulty: str) -> str:
@@ -147,7 +166,7 @@ async def plan_visual(
     try:
         user_prompt = build_user_prompt(step_title, content, learning_objective, age_group, difficulty)
         raw, _, _, _ = await complete_text("visual_planner", _SYSTEM_PROMPT, user_prompt, max_tokens=600)
-        data = _loads_ai_json(raw)
+        data = _normalize_plan_data(_loads_ai_json(raw))
         return VisualPlan(**data)
     except Exception:
         logger.exception("visual planner failed for step %r — falling back to text-only", step_title)

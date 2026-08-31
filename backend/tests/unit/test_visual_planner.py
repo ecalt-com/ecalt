@@ -98,3 +98,40 @@ class TestPlanVisual:
                 learning_objective="Understand light energy conversion",
             )
         assert plan.visualRequired is False
+
+    @pytest.mark.asyncio
+    async def test_out_of_range_pedagogical_value_is_rescued_not_dropped(self):
+        # Reproduces a real prod failure: the model returned 8.0 (a 1-10
+        # score) instead of a 0-1 fraction, which used to fail VisualPlan's
+        # le=1 constraint and drop the whole plan to text-only.
+        raw = VALID_PLAN_JSON.replace('"estimatedPedagogicalValue": 0.8', '"estimatedPedagogicalValue": 8.0')
+        with patch(
+            "app.services.visual_planner_service.complete_text",
+            new=AsyncMock(return_value=(raw, 100, 50, 0)),
+        ):
+            plan = await visual_planner_service.plan_visual(
+                step_title="Photosynthesis",
+                content="...",
+                learning_objective="Understand light energy conversion to chemical energy",
+            )
+        assert plan.visualRequired is True  # not dropped to the text-only fallback
+        assert plan.estimatedPedagogicalValue == 0.8
+
+
+class TestNormalizePlanData:
+    @pytest.mark.parametrize("raw_value,expected", [
+        (8.0, 0.8),
+        (0.8, 0.8),
+        (10.0, 1.0),
+        (15.0, 1.0),
+        (-3.0, 0.0),
+        (0.0, 0.0),
+        (1.0, 1.0),
+    ])
+    def test_rescales_and_clamps(self, raw_value, expected):
+        data = visual_planner_service._normalize_plan_data({"estimatedPedagogicalValue": raw_value})
+        assert data["estimatedPedagogicalValue"] == expected
+
+    def test_missing_field_left_untouched(self):
+        data = visual_planner_service._normalize_plan_data({"other": "field"})
+        assert "estimatedPedagogicalValue" not in data
