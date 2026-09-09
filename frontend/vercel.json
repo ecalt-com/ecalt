@@ -1,6 +1,8 @@
 {
   "rewrites": [
     { "source": "/sitemap.xml", "destination": "https://ecalt-production.up.railway.app/api/v1/sitemap" },
+    { "source": "/api/:path*", "has": [{ "type": "host", "value": "ecalt-dev.vercel.app" }], "destination": "https://ecalt-api-dev.up.railway.app/api/:path*" },
+    { "source": "/api/:path*", "has": [{ "type": "host", "value": "ecalt-git-feature-dev-biswambar-s-projects.vercel.app" }], "destination": "https://ecalt-api-dev.up.railway.app/api/:path*" },
     { "source": "/api/:path*", "destination": "https://ecalt-production.up.railway.app/api/:path*" },
     { "source": "/(.*)", "destination": "/" }
   ],
