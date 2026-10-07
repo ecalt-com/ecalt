@@ -1,6 +1,8 @@
 # ECALT Frontend — Developer Reference
 
-ECALT is a React + TypeScript SPA deployed on Vercel. The frontend is entirely client-side with no SSR. All data fetching goes through a FastAPI backend on Railway, proxied via Vercel rewrites.
+ECALT is a React + TypeScript SPA built with Vite and deployed on Vercel. It is entirely client-side (no SSR). All data goes through the FastAPI backend on Railway (`../backend`), reached via same-origin `/api/*` calls that Vercel rewrites (prod) or the Vite proxy forwards (dev).
+
+> **Stray Next.js files — ignore them.** `next.config.mjs`, `next-env.d.ts`, `.next/` and `src/app/**` (layout.tsx, page.tsx, globals.css, …) are leftovers from an abandoned Next.js experiment. They are **not** in `tsconfig.json`'s `include`, not imported anywhere and not built. The real app entry is `src/main.tsx` → `src/App.tsx`. Never add code under `src/app/`.
 
 ---
 
@@ -9,557 +11,282 @@ ECALT is a React + TypeScript SPA deployed on Vercel. The frontend is entirely c
 | Layer | Choice |
 |---|---|
 | Framework | React 18 (SPA, no SSR) |
-| Language | TypeScript 5 |
-| Build tool | Vite 5, port 3000 |
-| Routing | React Router v6 (client-side) |
-| Styling | Tailwind CSS v3 (class dark mode) + custom CSS vars in `index.css` |
-| Auth | Firebase v12 SDK — Google sign-in only |
-| Icons | lucide-react |
-| Conditional classes | clsx |
+| Language | TypeScript 5 (`strict`, `noUnusedLocals`, `noUnusedParameters`) |
+| Build tool | Vite 8, dev port 3000 |
+| Routing | React Router v6 (`v7_startTransition` + `v7_relativeSplatPath` future flags) |
+| Styling | Tailwind CSS v3 (`darkMode: 'class'`) + CSS vars in `index.css` |
+| Auth | Firebase v12 — Google popup sign-in **and** email/password (managed kids' accounts) |
+| Payments | Stripe (global, redirect checkout) + Razorpay (India, in-page checkout.js) |
+| Diagrams | mermaid v11 (step diagrams, `securityLevel: 'strict'`), D3 v7 (constellation map) |
+| Icons / classes | lucide-react, clsx |
 | SEO | react-helmet-async |
-| Visualisation | D3 v7 (constellation map) |
 | Observability | Sentry `@sentry/react`, Vercel Analytics + Speed Insights |
-| Deployment | Vercel (`vercel.json`) |
+| Deployment | Vercel (`vercel.json`) — static `dist/` + rewrites |
+
+---
+
+## Commands
+
+```bash
+cd frontend
+npm install
+cp .env.example .env        # fill in Firebase vars
+npm run dev                  # localhost:3000; /api/* proxied → VITE_API_URL || localhost:8000
+npm run build                # tsc type-check + vite build → dist/   (run this to verify changes)
+npm run preview              # serve dist/ at localhost:4173
+npm run lint                 # eslint src --ext ts,tsx
+```
+
+There is no frontend test suite — `npm run build` (which runs `tsc`) is the correctness gate. Unused locals/params fail the build.
+
+`@` alias: `import '@/components/Foo'` → `src/components/Foo` (most code uses relative imports).
 
 ---
 
 ## Directory Structure
 
 ```
-frontend/
-├── src/
-│   ├── main.tsx                    # Entry — Sentry init, scroll restoration, ReactDOM.createRoot
-│   ├── App.tsx                     # Provider tree, all lazy routes, OnboardingModal gate
-│   ├── index.css                   # CSS vars, .glass/.glass-card/.btn-primary/.shimmer etc.
-│   ├── lib/
-│   │   ├── api.ts                  # All typed fetch wrappers (most API calls live here)
-│   │   ├── types.ts                # Shared TS types: Journey, Mission, SparkRequest, etc.
-│   │   ├── AuthContext.tsx         # Firebase auth state + signIn/signOut/getToken
-│   │   ├── SubscriptionContext.tsx # Budget/plan state from /subscriptions/me
-│   │   ├── ThemeContext.tsx        # light/dark toggle, persisted to localStorage
-│   │   ├── ToastContext.tsx        # Toast system (3.2 s auto-dismiss)
-│   │   ├── firebase.ts             # Firebase app + auth + GoogleAuthProvider singletons
-│   │   └── usePageTitle.ts         # document.title hook
-│   ├── pages/
-│   │   ├── Home.tsx                # Landing + free-tier spark (phase state machine)
-│   │   ├── Learn.tsx               # 3-panel learning hub (auth required)
-│   │   ├── Explore.tsx             # Full AI journey generator (auth required)
-│   │   ├── Journeys.tsx            # Browse + filter all journeys
-│   │   ├── Journey.tsx             # Single journey with step nodes + related
-│   │   ├── Passport.tsx            # Capability passport (auth required)
-│   │   ├── Pricing.tsx             # Plan cards + coupon input
-│   │   ├── Admin.tsx               # Admin panel — stats / plans / AI config / users / coupons
-│   │   ├── MindSignature.tsx       # Constellation + narrative + hash verification
-│   │   ├── Verify.tsx              # Public signature lookup by hash
-│   │   └── ComingSoon.tsx          # Placeholder for /sign-in, /get-started, 404
-│   └── components/
-│       ├── Navigation.tsx          # Fixed top nav — desktop + mobile, auth state
-│       ├── GateModal.tsx           # Auth gate: shown when guest tries mission/upgrade
-│       ├── OnboardingModal.tsx     # Topic picker shown once on first sign-in
-│       ├── StepNode.tsx            # Journey step card with expand-to-load lesson content
-│       ├── JourneyCard.tsx         # Journey grid card (Journeys page)
-│       ├── MarkdownContent.tsx     # Lightweight custom markdown renderer
-│       ├── ErrorBoundary.tsx       # React error boundary wrapping each route
-│       ├── PageMeta.tsx            # react-helmet-async SEO tags + JSON-LD
-│       ├── ThemeToggle.tsx         # Light/dark toggle button
-│       ├── GoogleSignInButton.tsx  # Standardised Google sign-in button
-│       ├── UpgradePrompt.tsx       # In-chat upgrade nudge on budget exhaustion
-│       ├── CuriosityInput.tsx      # Explore page question input
-│       ├── SparkMeter.tsx          # Spark dot counter
-│       ├── SparkAnswer.tsx         # Spark result display component
-│       ├── MissionCard.tsx         # Mission display card
-│       ├── learn/
-│       │   ├── ConversationInterface.tsx  # SSE streaming chat panel
-│       │   ├── KnowledgeUniverse.tsx      # Right panel — concept node tags
-│       │   ├── TodaysSpark.tsx            # Left panel — daily personalized question
-│       │   └── WarmthIndicator.tsx        # Message count progress indicator
-│       └── constellation/
-│           └── ConstellationMap.tsx       # D3 force-layout constellation visualization
-├── .env                            # Local secrets (VITE_* prefix)
-├── .env.example                    # Template for required vars
-├── tailwind.config.ts              # Extends CSS vars as Tailwind colors, all keyframes
-├── vite.config.ts                  # Port 3000, /api proxy, @ alias → src/
-├── vercel.json                     # /api/* → Railway, SPA fallback, security headers
-├── tsconfig.json
-└── package.json
+frontend/src/
+├── main.tsx                     # Sentry init, history.scrollRestoration='manual', createRoot
+├── App.tsx                      # Provider tree, lazy routes, post-sign-in gates, global banners
+├── index.css                    # CSS vars + component classes (.glass, .glass-card, .btn-primary…)
+├── styles/cosmic.css            # Only used by pages/HomeCosmic.tsx
+├── lib/
+│   ├── api.ts                   # request<T>() + typed wrappers for most endpoints
+│   ├── familyApi.ts             # Family / parental-consent endpoint wrappers (uses request())
+│   ├── types.ts                 # Shared TS types (Journey, Quiz*, Visual*, …)
+│   ├── AuthContext.tsx          # Firebase auth + post-sign-in compliance phase machine + role
+│   ├── SubscriptionContext.tsx  # /subscriptions/me — plan, budget, message counts, isAdmin
+│   ├── GeoContext.tsx           # /geo/country → country code; isIndia() helper
+│   ├── PaymentConfig.tsx        # /subscriptions/config → Stripe publishable key, Razorpay key id
+│   ├── ImpersonationContext.tsx # Admin "view as user" sessions (start/stop, expiry timer)
+│   ├── impersonationStore.ts    # Module-level session id so api.ts can read it without React
+│   ├── razorpay.ts              # loadRazorpayScript() + order/subscription response types
+│   ├── ThemeContext.tsx         # light/dark, localStorage.ecalt_theme, exposes isDark
+│   ├── ToastContext.tsx         # addToast(message, type), 3.2 s auto-dismiss
+│   ├── firebase.ts              # Firebase app/auth/GoogleAuthProvider singletons
+│   ├── usePageTitle.ts, useReducedMotion.ts
+├── pages/                       # One file per route (see Routes)
+│   └── admin/                   # Admin page split: tabs/, components/, hooks/, types, utils, constants
+└── components/
+    ├── auth/                    # BirthYearGate, Under13Block, ParentalConsentForm (+ ConsentSentScreen)
+    ├── family/AddChildWizard.tsx
+    ├── journey/JourneyTutor.tsx # In-journey AI tutor chat
+    ├── learn/                   # ConversationInterface (SSE chat), KnowledgeUniverse, TodaysSpark,
+    │                            # WarmthIndicator, WhatsAppNudgeBanner
+    ├── visual/                  # Visual Learning Objects: VisualLearningObject (renderer registry),
+    │   ├── renderers/           #   one renderer per renderer_type (process_flow, cycle, timeline, image…)
+    │   ├── shared.tsx, telemetry.ts
+    ├── constellation/ConstellationMap.tsx   # D3 force layout (bypasses React DOM)
+    ├── StepNode.tsx             # Journey step card: lazy content, quiz, feedback, visuals
+    ├── QuizCard.tsx, StepFeedbackBar.tsx, StepUpgradePanel.tsx, StepDiagram.tsx
+    ├── MarkdownContent.tsx      # Custom markdown renderer (no library) + diagram extraction
+    ├── Navigation.tsx, GateModal.tsx, OnboardingModal.tsx, ReconsentBanner.tsx,
+    ├── ImpersonationBanner.tsx, AccountPausedScreen.tsx, MindSignatureDisclaimer.tsx,
+    └── JourneyCard.tsx, MarketplaceCard.tsx, MissionCard.tsx, Spark*.tsx, PageMeta.tsx, …
 ```
 
 ---
 
 ## Routes
 
-All pages are lazy-loaded with `React.lazy`. `PageSkeleton` (centered spinner) is the `Suspense` fallback. Each route is wrapped in `<ErrorBoundary>`.
+All pages are `React.lazy` + `Suspense` (`PageSkeleton` spinner) and wrapped in `<ErrorBoundary>`. The landing page can be swapped to `HomeCosmic` by toggling the commented import at the top of `App.tsx`.
 
-| Path | Page | Auth behaviour |
+| Path | Page | Notes |
 |---|---|---|
-| `/` | Home | Guest allowed; spark works without account |
-| `/learn` | Learn | Redirect to `/` if not authed |
-| `/explore` | Explore | Redirect to `/` if not authed |
-| `/journeys` | Journeys | Public |
-| `/journey/:id` | Journey | Public; progress tracking requires auth |
-| `/passport` | Passport | Shows lock screen if not authed (no redirect) |
-| `/pricing` | Pricing | Public |
-| `/admin` | Admin | No client guard; API returns 403 for non-admins |
-| `/mind-signature` | MindSignature | No client guard |
-| `/verify/:hash` | Verify | Public |
-| `/sign-in` | ComingSoon | — |
-| `/get-started` | ComingSoon | — |
-| `*` | ComingSoon (404) | — |
+| `/` | Home | Guest spark works without account |
+| `/learn` | Learn | 3-panel chat hub; redirects to `/` if not authed |
+| `/explore` | Explore | Journey generator (`?q=`), preview → confirm flow; auth required |
+| `/journeys` | Journeys | Browse/filter journeys |
+| `/marketplace` | Marketplace | Community journeys — like / fork |
+| `/journey/:id` | Journey | Steps, progress, quizzes, tutor; progress requires auth |
+| `/passport` | Passport | Lock screen if not authed (no redirect) |
+| `/profile` | Profile | Account, notifications, WhatsApp, privacy/data controls |
+| `/privacy` | → `/profile` | Redirect |
+| `/privacy-policy`, `/terms`, `/parents`, `/contact` | Static pages | Public |
+| `/pricing` | Pricing | Plans + coupon; Stripe or Razorpay depending on geo |
+| `/admin` | Admin | No client guard — API 403 bounces non-admins |
+| `/mind-signature` | MindSignature | Constellation + narrative + hash |
+| `/verify/:hash` | Verify | Public signature lookup |
+| `/welcome` | Welcome | Post-sign-up landing |
+| `/consent/confirm`, `/consent/report` | ConsentConfirm / ConsentReport | Parent-facing, token in query; child gates suppressed here |
+| `/family` | Family | Parent dashboard (children, link requests, add child) |
+| `/family/child/:uid` | FamilyChild | Per-child overview, activity, transcripts, settings, consent, export/delete |
+| `/kids-login` | KidsLogin | Email/password sign-in for parent-created child accounts |
+| `/sign-in`, `/get-started`, `*` | ComingSoon | Placeholder / 404 |
 
 ---
 
-## Context Provider Tree
-
-Providers wrap in this order (outer → inner):
+## Provider Tree
 
 ```
 HelmetProvider
-  ThemeProvider         ← light/dark, localStorage.ecalt_theme
-    AuthProvider        ← Firebase auth, exposes user/loading/needsOnboarding/signIn/signOut/getToken
-      SubscriptionProvider  ← /subscriptions/me, exposes plan/usedCents/budgetCents/isLimited/isAdmin
-        ToastProvider   ← addToast(message, type), 3.2 s dismiss
-          BrowserRouter ← React Router
-            AppShell    ← Routes + OnboardingModal (when needsOnboarding=true)
+  ThemeProvider
+    AuthProvider
+      ImpersonationProvider     ← needs getToken from AuthProvider
+        GeoProvider             ← GET /api/v1/geo/country (unauth)
+          PaymentConfigProvider ← GET /api/v1/subscriptions/config (unauth)
+            SubscriptionProvider
+              ToastProvider
+                BrowserRouter
+                  AppShell      ← Routes + compliance gates + OnboardingModal + ReconsentBanner + ImpersonationBanner
+    <Analytics/> <SpeedInsights/>   (inside ThemeProvider, outside AuthProvider)
 ```
-
-`Analytics` and `SpeedInsights` are rendered outside `ThemeProvider` at the App root level (they are side-effect only and need no context).
 
 ---
 
-## Authentication
+## Authentication & Compliance Gates
 
-### Firebase setup (`lib/firebase.ts`)
+### Sign-in methods
+- `signIn()` — Google popup (`signInWithPopup`). A `signingIn` ref prevents double-invocation.
+- `signInWithEmail(email, password)` — used by `/kids-login` for managed child accounts created by a parent.
+- `getToken()` — stable (`useCallback` + `userRef`), safe as a `useEffect` dep; Firebase refreshes silently.
+- `role: 'learner' | 'parent' | null` comes from the backend profile.
 
-Three env vars are required: `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID`. Only Google OAuth is wired up (`GoogleAuthProvider`).
+### Post-sign-in phase machine (`postSignInPhase`)
+After sign-in (and on page reload with a restored session) AuthContext calls `POST /api/v1/users` and drives:
 
-### AuthContext flow
+| Phase | Trigger | UI rendered by `AppShell` |
+|---|---|---|
+| `birth_year` | `needs_birth_year` | `BirthYearGate` → `completeBirthYear()` |
+| `under_13` | hard-blocked age | `Under13Block` |
+| `consent_pending` | `account_status === 'parental_consent_pending'` | `ParentalConsentForm` (parent email) |
+| `consent_sent` | parent email submitted | `ConsentSentScreen` |
+| `none` + `onboarding_done === false` | — | `OnboardingModal` |
 
-1. `user` state is **initialized synchronously** from `firebaseAuth.currentUser` (avoids 1 s flash on reload).
-2. `onAuthStateChanged` fires async, finalises `user` and sets `loading = false`.
-3. `signIn` calls `signInWithPopup`. A `signingIn` ref prevents double-invocations.
-4. After a successful sign-in, `POST /api/v1/users` is called to upsert the user record.
-5. If the response has `onboarding_done === false`, `needsOnboarding` is set → `OnboardingModal` is rendered globally from `AppShell`.
-6. `getToken()` calls `user.getIdToken()` — Firebase silently refreshes if expired. It is **stable** (via `useCallback` + `useRef`) so it can be a `useEffect` dependency without loops.
-7. `signOut` calls Firebase sign-out and resets `needsOnboarding`.
+- The reload re-check exists so users can't bypass the birth-year gate by refreshing. Don't remove it.
+- Consent-pending teens re-POST `/users` with their birth year recovered from the profile (`enterConsentPending`).
+- On `/consent/*` routes the child's consent overlays are suppressed (parents often open the link on the child's device); the birth-year gate still shows.
 
-### Token pattern
+### Account status errors
+Backend returns 403 with `detail.error` = `consent_pending` or `account_paused` for blocked accounts. Use `apiErrorCode(err)` from `api.ts` to read it; `AccountPausedScreen` handles the paused case.
 
-Every authenticated call follows:
+### Auth-gating pattern
 ```tsx
-const token = await getToken()
-if (!token) return  // user signed out mid-request
-// call API with Authorization: Bearer ${token}
+if (!authLoading && !user) { navigate('/', { replace: true }); return null }
+if (authLoading) return <Spinner />
 ```
+Never redirect before `loading === false` — a hard refresh would kick the user out.
 
 ---
 
-## API Layer (`lib/api.ts`)
+## API Layer
 
-All typed wrappers call the internal `request<T>()` helper:
-- Adds `Content-Type: application/json`
-- Adds `Authorization: Bearer <token>` when token provided
-- On non-OK: reads JSON body, attaches `.status` (number) and `.detail` (unknown) to the thrown `Error`
+### `request<T>(path, init?, token?)` in `lib/api.ts`
+- Sets `Content-Type: application/json`, `Authorization: Bearer <token>` when given.
+- Adds `X-Impersonate-Session: <id>` automatically when an admin impersonation session is active (read from `impersonationStore`).
+- Non-OK → throws `ApiError` with `.status` and `.detail`. Message is `detail` (string) or `detail.message`. Structured errors look like `{ error, message }` → `apiErrorCode(err)`.
+- 204 → `undefined`.
+- Base URL: `VITE_API_URL || ''` (empty = same origin).
 
-**Base URL:** `VITE_API_URL || ''`
-- Empty string in production = same-origin → Vercel rewrites handle routing to Railway.
-- In dev = Vite proxy forwards `/api/*` → `localhost:8000`.
+**Rule: new endpoint calls go in `api.ts` (or `familyApi.ts` for family/consent) using `request()`.** Direct `fetch()` bypasses the impersonation header — only use it for SSE streams or pre-auth bootstrapping.
 
-### Typed API functions
+### Wrapper groups (`api.ts`)
+- Spark / session: `askSpark`, `getSessionStatus`
+- Journeys: `exploreQuestion`, `previewJourney`, `confirmJourney`, `getJourneys`, `getJourney`, `getJourneySuggestions`
+- Marketplace: `getMarketplace`, `toggleJourneyLike`, `forkJourney`, `submitToMarketplace`
+- Progress / passport: `getProgress`, `markStepComplete`, `markStepIncomplete`, `getPassport`
+- Step content: `getStepContent`, `regenerateStepContent`, `getStepVisual`, `postVisualEvent`, `submitStepFeedback`
+- Quiz: `generateQuiz`, `generateQuizSet`, `getQuizHint`, `skipStepQuiz`, `submitQuizAnswer`
+- Users / notifications: `getUserProfile`, `completeOnboarding`, `saveProfession`, `get/saveNotificationPrefs`, `optInWhatsApp`, `confirmWhatsApp`, `optOutWhatsApp`
+- Chat / knowledge: `getConversations`, `getConversation`, `deleteConversation`, `getKnowledgeNodes`, `getDailySpark`
 
-| Function | Method + Path | Notes |
-|---|---|---|
-| `askSpark(body, token?)` | POST /api/v1/spark | Token optional (guest allowed) |
-| `getSessionStatus(sessionId)` | GET /api/v1/session/{id} | No auth |
-| `exploreQuestion(body, token)` | POST /api/v1/explore | Required auth |
-| `getJourneys(token?)` | GET /api/v1/journeys | Optional auth (guest gets curated only) |
-| `getJourney(id, token?)` | GET /api/v1/journeys/{id} | Optional auth |
-| `getProgress(journeyId, token)` | GET /api/v1/progress/{id} | Required auth |
-| `markStepComplete(jId, sId, token)` | POST /api/v1/progress/{j}/{s} | Required auth |
-| `markStepIncomplete(jId, sId, token)` | DELETE /api/v1/progress/{j}/{s} | Required auth |
-| `getPassport(token)` | GET /api/v1/passport | Required auth |
-| `getStepContent(jId, sId, token?)` | GET /api/v1/journeys/{j}/steps/{s}/content | Optional auth |
-| `getUserProfile(token)` | GET /api/v1/users/me | Required auth |
-| `completeOnboarding(token)` | PATCH /api/v1/users/me/onboarding | Required auth |
-| `getConversations(token)` | GET /api/v1/chat/conversations | Required auth |
-| `getConversation(id, token)` | GET /api/v1/chat/conversations/{id} | Required auth |
-| `deleteConversation(id, token)` | DELETE /api/v1/chat/conversations/{id} | Required auth |
-| `getKnowledgeNodes(token)` | GET /api/v1/knowledge/nodes | Required auth |
-| `getDailySpark(token)` | GET /api/v1/knowledge/spark | Required auth |
+### `familyApi.ts`
+Children CRUD, link-request approve/decline, card verification (start/confirm), child overview/activity/transcript, `getMyFamily`, consent record, `patchChildSettings`, revoke/cancel-revoke/reconsent, `exportChildData`, self consent (`getMyConsent`, `reconsentSelf`), and token-based parent consent (`getConsentStatus`, `decideConsent`, `resendConsentEmail`, `reportConsent`).
 
-### Direct `fetch()` calls outside `api.ts`
-
-Some components call the API directly without going through the typed wrappers:
-
-| Component | Endpoint(s) |
-|---|---|
-| `AuthContext` | POST /api/v1/users (on sign-in) |
-| `OnboardingModal` | PATCH /api/v1/users/me/interests |
-| `ConversationInterface` | POST /api/v1/chat/stream (SSE — cannot use `request()`) |
-| `SubscriptionContext` | GET /api/v1/subscriptions/me |
-| `Pricing` | GET /api/v1/subscriptions/plans, POST /api/v1/subscriptions/checkout |
-| `Pricing (CouponApply)` | POST /api/v1/coupons/apply |
-| `Admin` | All `/admin/*` and `/coupons/admin/*` endpoints |
-| `MindSignature` | GET/POST /api/v1/mind-signature/me, /generate, /generate/force |
-| `KnowledgeUniverse` | GET /api/v1/knowledge/nodes, GET /api/v1/mind-signature/me |
-| `TodaysSpark` | GET /api/v1/knowledge/spark |
+### Remaining direct `fetch()` users
+`AuthContext` (POST `/users`), `GeoContext`, `PaymentConfig`, `SubscriptionContext`, `ConversationInterface` + `JourneyTutor` (SSE), and older code (`Pricing`, `Profile`, `Welcome`, `Verify`, `MindSignature`, `Admin` + `admin/hooks` + several admin tabs, `KnowledgeUniverse`, `TodaysSpark`, `OnboardingModal`). `pages/Privacy.tsx` is unrouted (`/privacy` redirects to `/profile`). When touching these, prefer migrating to `request()`; if you keep `fetch`, add the impersonation header manually (see `SubscriptionContext`).
 
 ---
 
-## Pages
+## Key Features
 
-### Home (`/`)
+### Payments (`Pricing.tsx`)
+- Country from `GeoContext`. `isIndia(country) && plan.base_price_inr_paise` → Razorpay; otherwise Stripe.
+- **Stripe:** `POST /subscriptions/checkout` → redirect to `checkout_url`.
+- **Razorpay:** `loadRazorpayScript()`, backend returns `checkout_type: 'subscription' | 'order'`; open checkout.js with `razorpayKeyId` from `PaymentConfig`, then post the handler response back to the backend for verification.
+- Plan copy/icons (`PLAN_DETAILS`) are hardcoded in the frontend; prices/budgets come from the API.
+- `CouponApply` uppercases codes, then calls `refresh()` on `SubscriptionContext`.
 
-Phase state machine:
-```
-hero → loading → sparked
-               ↓ (429 = rate limit)
-             GateModal(reason='limit')
-                        ↓ (on "Start Mission" or "Save My Path")
-                      GateModal(reason='mission')
-hero → loading → error
-```
+### Journey page & steps
+- `StepNode` lazy-loads content on first expand and caches it. Content can include quizzes (`QuizCard`), feedback (`StepFeedbackBar`), budget upsell (`StepUpgradePanel`), and a Visual Learning Object.
+- Progress is sequential and toggled optimistically by the parent page; revert + toast on error.
+- `JourneyTutor` is an SSE tutor chat scoped to the journey.
 
-- `ecalt_sid` in localStorage is the anonymous session ID for spark rate tracking.
-- `getSessionStatus(sessionId)` is called on mount to restore the spark counter after page reload.
-- When a signed-in user visits, `getPassport` + `getUserProfile` are called in parallel to show a "Continue" card and streak badge.
-- `GateModal` auto-closes and navigates to `/explore?q={question}` when `user` changes to non-null while the modal is open.
-- Keyboard shortcut: `/` focuses the ask input (guarded to not fire inside `input`/`textarea`).
-- The email capture form (`waitlistDone` state) is purely UI — it does not call any API.
+### Visual Learning Objects (`components/visual/`)
+`VisualLearningObject` maps backend `renderer_type` → renderer via a plain registry object. Unknown types render nothing (forward-compat). To add a pattern: create `renderers/XRenderer.tsx` and register one line. Interaction/completion events go through `telemetry.ts` → `postVisualEvent`. All visual features are gated by backend `VISUAL_*` flags — a disabled flag means the API returns no visual.
 
-### Learn (`/learn`)
+### MarkdownContent + diagrams
+Custom renderer (no markdown lib). First peels out one ` ```mermaid ` fence or one inline `<svg>` (server-sanitized) so the block splitter can't break it; `StepDiagram.MermaidDiagram` renders mermaid with `securityLevel: 'strict'`, theme-aware via `isDark`. Then handles `##` headings, `- ` lists, `**bold**`, and "Try This" callouts; anything else is a paragraph. Diagram failures degrade to nothing.
 
-Fixed-height `h-screen` layout. Redirects to `/` if not authenticated.
+### Chat SSE (`ConversationInterface`, `JourneyTutor`)
+`fetch` + `ReadableStream` (not `EventSource` — needs POST body). Parse `data: ` lines across chunk boundaries; events `start` (conversation_id), `token`, `done`. A 402 before streaming removes the speculative messages and shows `UpgradePrompt`.
 
-3-panel layout (flex row):
-- **Left** (hidden below `lg`): `TodaysSpark` — loads from `/api/v1/knowledge/spark`, click pre-fills the chat input via `sparkInput` prop.
-- **Center**: `ConversationInterface` — SSE streaming chat.
-- **Right** (hidden below `lg`): `KnowledgeUniverse` — concept tags from `/api/v1/knowledge/nodes`. `refreshTrigger` counter causes refetch after each message completes.
+### Budget exhaustion (402)
+Backend returns 402 with `detail = { error, upgrade_url: '/pricing' }`. Chat → `UpgradePrompt`; step content → `StepUpgradePanel`; Explore → error block.
 
-`isAdmin` from `SubscriptionContext` adds an "Admin" link to the top bar.
+### Admin (`pages/Admin.tsx` + `pages/admin/`)
+Tabs: Overview, Plans, AI Providers, Prompts, Notification Templates, Users (with `UserDetailPanel` + impersonation), Coupons, Revenue, Retention, Funnel, Content, Marketplace Queue, Impersonation Log. Data loading lives in `admin/hooks/useAdminData.ts`. Edits are local until "Save". Add a new tab as `admin/tabs/XTab.tsx` and register it in `Admin.tsx`.
 
-### Explore (`/explore`)
+**AI prompts edited in the Prompts tab live in the DB (`ai_provider_config`) — they override code defaults in the backend.**
 
-Auth guard redirects to `/` for guests. The question comes from `?q=` search param.
+### Impersonation
+Admin starts a session from the Users tab → `ImpersonationContext` stores it, `impersonationStore` exposes the id to `request()`, `ImpersonationBanner` shows while active, auto-stops at expiry. All requests then act as the target user; the backend audits them.
 
-`fetchJourney` calls `exploreQuestion`, then sets `journey` and `steps` state. Steps start with `completed: false` (no progress is loaded on this page — that's `Journey.tsx`'s job).
-
-Optimistic step toggle: `setSteps` immediately then reconciles on API error.
-
-### Journey (`/journey/:id`)
-
-Loads journey + progress in parallel. Related journeys are fetched best-effort after main load (scored by shared tag count, top 3).
-
-`CompletionOverlay` is shown when all steps become completed (checked inside the `setSteps` callback to avoid stale closure).
-
-`navigator.share` is tried first for the share button; falls back to `navigator.clipboard.writeText`.
-
-### Passport (`/passport`)
-
-Shows a lock screen (no redirect) for guests. Loads `getPassport` + `getUserProfile` in parallel.
-
-`fullyCompleted` = journeys where `fully_completed === true`. `inProgress` = the rest.
-
-### Pricing (`/pricing`)
-
-Loads plan list from `GET /api/v1/subscriptions/plans` (public, no auth). Plan details (icons, feature bullets, CTA text) are **hardcoded** in `PLAN_DETAILS` — they are not returned by the API.
-
-Checkout: `POST /api/v1/subscriptions/checkout` → redirects `window.location.href` to Stripe's `checkout_url`.
-
-`CouponApply` sub-component (at page bottom): calls `POST /api/v1/coupons/apply`. On success, calls `refresh()` from `SubscriptionContext` to update the budget display.
-
-The highlighted plan defaults to `?plan=individual` unless overridden via search param.
-
-### Admin (`/admin`)
-
-All data is loaded in a single `Promise.all` of 6 API calls on mount. If the plans response returns 403, navigates to `/`.
-
-Five tabs:
-1. **Overview** — stat cards + active plan summary
-2. **Pricing Plans** — visual preview + editable form per plan (price cents, token budget, Stripe price ID, max seats)
-3. **AI Providers** — usage table by model, daily bar chart (14 days), per-interaction-type provider/model dropdowns
-4. **Users** — filterable list with admin grant/revoke toggle
-5. **Coupons** — create form + list with activate/deactivate toggle
-
-All edits are local state (`edits` / `aiEdits` dicts keyed by ID) and only sent on explicit "Save" click.
-
-### MindSignature (`/mind-signature`)
-
-`fetchSignature` → GET `/api/v1/mind-signature/me`. If `data.signature` is null, shows a generate CTA.
-
-`handleGenerate(force)` → POST to `/generate` (eligibility-checked) or `/generate/force` (unconditional).
-
-`ConstellationMap` receives `signature.constellation_data` (nodes + links already computed server-side).
-
-Verification hash can be copied to clipboard or opened at `/verify/{hash}`.
+### Family / parental accounts
+- Parents: `/family` dashboard, `AddChildWizard` (managed child with email/password; card verification where required), `/family/child/:uid` for controls.
+- Children: consent flow via the phase machine above; `ReconsentBanner` prompts re-acceptance after a policy-version bump.
+- Parents approve consent via emailed `/consent/confirm?token=…` links.
 
 ---
 
-## Components
+## Styling
 
-### Navigation
-
-Fixed top nav (`z-50`). Reads `pathname` to highlight active link.
-
-Link sets:
-- **Public** (always shown): Explore, Journeys, Pricing
-- **Auth** (only when signed in): Learn, Passport, Mind Signature
-- **Admin** (only when `isAdmin`): Admin
-
-Mobile: hamburger opens an overlay dropdown. Backdrop click closes it.
-
-`UserAvatar` falls back to initials in a violet circle when no `photoURL`.
-
-### GateModal
-
-Shown when an anonymous user tries to start/save a mission, or when sparks run out.
-
-`reason` prop controls messaging:
-- `'mission'` → "Your mission is ready" + shows mission preview
-- `'limit'` → "Free sparks used up"
-
-After `GoogleSignInButton` triggers sign-in, the `useEffect` watching `user` auto-closes the modal and navigates to `/explore?q={question}`.
-
-"Continue as guest" navigates to `/explore` (losing the spark context).
-
-### OnboardingModal
-
-Shown globally from `AppShell` when `needsOnboarding === true`. Cannot be dismissed without at least clicking "Skip" (which still completes onboarding server-side).
-
-On submit: `PATCH /api/v1/users/me/onboarding` + `PATCH /api/v1/users/me/interests` are called in parallel via `Promise.allSettled` (non-fatal). Then `dismissOnboarding()` and `navigate('/learn')`.
-
-### StepNode
-
-Self-contained expand/collapse. Content is loaded lazily on first expand and cached in local state forever (no re-fetch on re-collapse).
-
-States: `loadingContent`, `contentError`, `budgetExceeded` (from 402 response).
-
-The circle button (step number / checkmark) calls `onToggle(step.id)` — the toggle + API call happen in the parent page.
-
-### MarkdownContent
-
-No external library. Splits on double-newlines into blocks, then:
-- `## text` → purple `<h4>` with accent bar
-- All lines start with `- ` → `<ul>` with ✦ bullets
-- Block contains "Try This" → amber callout `<div>`
-- `**bold**` inline → `<strong>`
-- Otherwise → `<p>`
-
-### ConversationInterface
-
-Direct `fetch('/api/v1/chat/stream', ...)` returning `text/event-stream`. Uses the native `ReadableStream` reader (no EventSource — needed for POST body support).
-
-SSE parsing:
-- Lines must start with `data: ` prefix
-- `type: "start"` → captures `conversation_id`
-- `type: "token"` → appends to last assistant message
-- `type: "done"` → clears `streaming: true` flag
-
-Buffer accumulates partial lines across chunk boundaries before splitting on `\n`.
-
-402 response before streaming begins → removes the speculative user+assistant messages from state, shows `UpgradePrompt`.
-
-`onMessageComplete` callback triggers `KnowledgeUniverse` refresh (increments `refreshTrigger` counter in Learn).
-
-### KnowledgeUniverse
-
-Fetches knowledge nodes and mind-signature status on mount and whenever `refreshTrigger` increments.
-
-Node text size scales with `strength`: ≥0.8 → `text-sm`, ≥0.55 → `text-xs`, else → `text-[11px]`.
-
-Domain colour map covers all 14 backend domains. Unknown domains fall back to slate.
-
-### TodaysSpark
-
-Calls `GET /api/v1/knowledge/spark` on mount. Fail silently. "Start exploring" button pushes the spark text into `ConversationInterface` via the `onSelect` → `sparkInput` prop chain.
+- CSS vars in `index.css` `:root` / `.dark`: `--bg`, `--surface`, `--card-bg`, `--card-border`, `--t1/2/3`, `--nav-bg`, `--nav-border`, `--scroll-thumb*`, shimmer vars. Dark mode = `dark` class on `<html>` (ThemeContext).
+- Component classes in `@layer components`: `.glass`, `.glass-card`, `.light-card`, `.gradient-text`, `.btn-primary`, `.btn-ghost`, `.step-connector`, `.hero-dot-grid`.
+- Most components use Tailwind `dark:` variants directly rather than the `theme-*` color mappings.
+- Keyframes `slide-up`, `gradient-x`, `shimmer` exist in both `index.css` and `tailwind.config.ts` on purpose (`animate-in` is a plain class Tailwind JIT can't see).
+- Respect `useReducedMotion()` for new animations.
+- Mobile responsiveness matters — Learn hides side panels below `lg`; test at ~375px.
 
 ---
 
-## CSS Architecture & Design System
-
-### CSS Custom Properties (`index.css` `:root` / `.dark`)
-
-| Variable | Light | Dark |
-|---|---|---|
-| `--bg` | `#ffffff` | `#080b14` |
-| `--surface` | `#f8fafc` | `#0f1629` |
-| `--card-bg` | `#ffffff` | `rgba(15,22,41,0.7)` |
-| `--card-border` | `#e2e8f0` | `rgba(30,45,74,0.6)` |
-| `--t1` | `#0f172a` | `#f1f5f9` |
-| `--t2` | `#475569` | `#94a3b8` |
-| `--t3` | `#94a3b8` | `#475569` |
-| `--shimmer1/2` | light grays | dark navies |
-
-Dark mode is toggled by adding/removing `dark` class on `document.documentElement`.
-
-### Component Classes (defined in `@layer components`)
-
-| Class | Use |
-|---|---|
-| `.glass` | Nav pill, input wrappers — translucent white/dark with backdrop-filter |
-| `.glass-card` | Cards, panels — solid white (light) / translucent dark with violet hover glow |
-| `.light-card` | Home page cards — always white/light-dark, no backdrop filter |
-| `.gradient-text` | ECALT logo — animated violet→cyan→amber gradient |
-| `.btn-primary` | Violet filled button with focus ring |
-| `.btn-ghost` | Transparent text button with hover |
-| `.step-connector` | 2px gradient line between step circles |
-| `.hero-dot-grid` | Dot pattern SVG background for hero |
-
-### Animations (defined in `tailwind.config.ts`)
-
-| Name | Usage |
-|---|---|
-| `glow-pulse` | Ambient blur circles on page backgrounds |
-| `float` | Floating elements |
-| `slide-up` / `animate-in` | Page content entrance |
-| `shimmer` / `shimmer-light` / `shimmer-bg` | Loading skeletons |
-| `gradient-x` | gradient-text animation |
-| `toast-in` | Toast entry |
-| `celebration` | CompletionOverlay + OnboardingModal entry |
-
-**Important:** `@keyframes slide-up`, `gradient-x`, and `shimmer` are defined in both `index.css` and `tailwind.config.ts`. The `index.css` versions ensure the keyframes are always emitted even when the Tailwind JIT doesn't see the class names in JSX (e.g., for `animate-in` which is applied as a plain CSS class, not a `animate-slide-up` Tailwind class).
-
-### Tailwind colour extensions
-
-`tailwind.config.ts` maps CSS vars to `theme-{bg,surface,card,border,t1,t2,t3}` colours. These are rarely used in JSX (most components use inline `dark:` variants directly), but the mapping exists.
-
----
-
-## SEO
-
-`PageMeta` (`components/PageMeta.tsx`) uses `react-helmet-async` Helmet to inject:
-- `<title>` — format `{title} | ECALT`, or bare `ECALT` on home
-- `<meta name="description">`
-- `<link rel="canonical">` (built as `https://ecalt.vercel.app{canonicalPath}`)
-- `<script type="application/ld+json">` JSON-LD
-
-JSON-LD schemas used:
-- Home: `WebSite` with `SearchAction`
-- Journey: `Course` with `CourseInstance`, `educationalLevel`, `teaches`
-
-`vercel.json` security headers applied to all routes:
-- `X-Frame-Options: DENY`
-- `X-Content-Type-Options: nosniff`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy: camera=(), microphone=(), geolocation=()`
-- CSP: allows `'self'`, Google APIs/Firebase, Vercel analytics, and WebSocket for Vercel preview. Blocks everything else.
-
----
-
-## Environment Variables
-
-All must be prefixed `VITE_` to be exposed to the browser bundle.
+## Environment Variables (`VITE_` prefix required)
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `VITE_FIREBASE_API_KEY` | Yes | Firebase project API key |
-| `VITE_FIREBASE_AUTH_DOMAIN` | Yes | Firebase auth domain (e.g. `proj.firebaseapp.com`) |
-| `VITE_FIREBASE_PROJECT_ID` | Yes | Firebase project ID |
-| `VITE_API_URL` | No | Override API base URL. Empty = same-origin (default for prod). Set to `http://localhost:8000` to bypass the Vite proxy. |
-| `VITE_SENTRY_DSN` | No | Sentry DSN — Sentry not initialised if absent |
+| `VITE_FIREBASE_API_KEY` | Yes | Firebase API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Yes | Firebase auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | Yes | Firebase project ID (must match backend `FIREBASE_PROJECT_ID`) |
+| `VITE_API_URL` | No | API base / Vite proxy target. Empty in prod (same-origin) |
+| `VITE_SENTRY_DSN` | No | Sentry not initialised if absent |
 
----
-
-## Dev Workflow
-
-```bash
-cd frontend
-npm install
-cp .env.example .env        # fill in Firebase vars
-npm run dev                  # localhost:3000; /api/* proxied → localhost:8000
-```
-
-The backend must be running on port 8000 for API calls to work in dev. The Vite proxy config (`vite.config.ts`) sets the target from `VITE_API_URL` or falls back to `http://localhost:8000`.
-
-```bash
-npm run build                # tsc type-check + vite build → dist/
-npm run preview              # serve dist/ locally at localhost:4173
-npm run lint                 # eslint src --ext ts,tsx
-```
-
-**`@` alias:** `import '@/components/Foo'` resolves to `src/components/Foo`.
+Stripe/Razorpay public keys are **not** env vars — they come from `/api/v1/subscriptions/config` at runtime.
 
 ---
 
 ## Deployment (Vercel)
 
-`vercel.json` rewrites:
+`vercel.json` (build `npm run build`, output `dist/`):
 
-1. `/sitemap.xml` → `https://ecalt-production.up.railway.app/api/v1/sitemap`
-2. `/api/:path*` → `https://ecalt-production.up.railway.app/api/:path*` (all API traffic forwarded to Railway)
-3. `/(.*)`  → `/index.html` (SPA fallback for client-side routing)
+1. `/sitemap.xml` → prod Railway `/api/v1/sitemap`
+2. `/api/*` on host `ecalt-dev.vercel.app` or `ecalt-git-feature-dev-…vercel.app` → **dev** backend `ecalt-api-dev.up.railway.app`
+3. `/api/*` (everything else) → **prod** backend `ecalt-production.up.railway.app`
+4. `/(.*)` → `/` (SPA fallback)
 
-Build: `npm run build`, output: `dist/`.
+Branches: `feature/dev` → dev preview + dev backend; `master` → production.
 
-No server-side rendering. No Edge Functions. Pure static SPA + proxied API.
-
----
-
-## Key Design Patterns
-
-### Optimistic updates
-`Explore.tsx` and `Journey.tsx` both toggle step completion optimistically:
-1. `setSteps(prev => prev.map(...toggle...))` immediately
-2. Call API
-3. On API error: `setSteps(prev => prev.map(...revert...))`
-4. On API error in `Journey.tsx`: also shows error toast
-
-### Auth-gating pattern
-Pages that require auth follow:
-```tsx
-if (!authLoading && !user) {
-  navigate('/', { replace: true })  // or show a lock screen
-  return null
-}
-if (authLoading) return <Spinner />
-```
-Never redirect before `loading = false` — otherwise the user will be kicked out on a hard refresh.
-
-### Non-blocking parallel loads
-`Journey.tsx` fires related-journeys fetch as a non-blocking `.catch(() => {})` after the main journey loads. `Home.tsx` fires `getPassport` + `getUserProfile` in `Promise.all` that is never awaited by the render path.
-
-### Admin access (no client guard)
-`/admin` has no `isAdmin` route guard. Instead, the `useEffect` on mount checks if the plans API returns 403 and navigates away if so. This avoids flickering on admin users.
-
-### Session ID for anonymous sparks
-`getSessionId()` in `Home.tsx`:
-```ts
-let id = localStorage.getItem('ecalt_sid') || ''
-if (!id) { id = crypto.randomUUID(); localStorage.setItem('ecalt_sid', id) }
-```
-Sent as `session_id` in spark requests to enable server-side rate-gating without auth.
-
-### SSE streaming (not EventSource)
-`ConversationInterface` uses the native `fetch` + `ReadableStream` reader instead of `EventSource`. This is required because `EventSource` only supports GET; the chat stream needs POST with a JSON body.
-
-### getToken stability
-`getToken` in `AuthContext` is wrapped in `useCallback` with an empty dependency array and reads from a `userRef` (updated by `onAuthStateChanged`). This means:
-- The function reference never changes → safe to use as `useEffect` dependency
-- Always reads the latest Firebase user → no stale closure on auth state changes
-
-### Budget exhaustion handling
-- **Chat (ConversationInterface)**: 402 before streaming → removes speculative messages, shows `UpgradePrompt` inline inside the chat panel.
-- **Step content (StepNode)**: 402 on expand → shows "budget exceeded" message with link to `/pricing`.
-- **Explore**: 402 error sets `error` state → shown in error block with retry.
-
-### Toast pattern
-```tsx
-const { addToast } = useToast()
-addToast('Step complete ✓')           // success (default)
-addToast("Couldn't save", 'error')    // error — rose background
-addToast('Info message', 'info')      // info — violet background
-```
-Auto-dismissed after 3200 ms. Toasts stack vertically from the bottom center.
-
-### Theme toggle
-`ThemeContext.toggle()` flips `light` ↔ `dark`, updates `localStorage.ecalt_theme`, and adds/removes `dark` on `document.documentElement`. Tailwind's `darkMode: 'class'` picks it up from there.
+Security headers on all routes: `X-Frame-Options: DENY`, `nosniff`, strict referrer, Permissions-Policy, and a strict **CSP**. **Any new third-party script, API host, iframe or backend domain must be added to the CSP in `vercel.json`** (`script-src`, `connect-src`, `frame-src`) or it will silently fail in prod. It currently allows Google/Firebase, Stripe, Razorpay, Vercel analytics/live, and both Railway backends.
 
 ---
 
-## Known Quirks
+## Conventions & Gotchas
 
-- **No markdown library.** `MarkdownContent` is a custom renderer that handles only `##`, `-` lists, `**bold**`, and "Try This" callouts. Anything outside that subset renders as plain text.
-- **D3 constellation.** `ConstellationMap` renders using D3 directly, bypassing React's virtual DOM. Mutations happen in a `useEffect` on `data` prop change.
-- **Email capture is fake.** The waitlist form on `Home.tsx` sets `waitlistDone = true` locally but never calls any API.
-- **Admin panel plan feature lists are hardcoded.** `PLAN_FEATURES` and `PLAN_DETAILS` in both `Pricing.tsx` and `Admin.tsx` are static objects in the frontend, not returned by the API. Updating plan copy requires a frontend deploy.
-- **Coupon codes are uppercased on input.** Both `Pricing.tsx` (CouponApply) and `Admin.tsx` (coupon form) call `.toUpperCase()` on the user's input before sending — matching the backend's storage convention.
-- **`Learn` page redirects synchronously.** Because `firebaseAuth.currentUser` initialises synchronously, `loading` may be false immediately on hard reload. The redirect `if (!loading && !user)` fires before the async `onAuthStateChanged` can confirm the session, which could cause a brief incorrect redirect. The `loading: true` initial state in `AuthContext` prevents this — wait for `loading = false`.
+- **Optimistic updates** for step completion: update state → call API → revert + error toast on failure.
+- **Toasts:** `addToast(msg)` success, `addToast(msg, 'error')`, `addToast(msg, 'info')`.
+- **Anonymous sparks** use `localStorage.ecalt_sid` (UUID) as `session_id`.
+- **Coupon codes** are uppercased client-side before sending.
+- **D3 constellation** mutates the DOM directly in a `useEffect`; don't mix React children into it.
+- **Home waitlist form is UI-only** — no API call.
+- **Plan copy is hardcoded** in `Pricing.tsx` / admin constants — changing copy needs a frontend deploy.
+- When a backend feature needs frontend work, the project convention is to document the frontend changes in an md plan (see `../backend/plans/`) before implementing.
