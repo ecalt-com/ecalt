@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import (
     get_active_account_holder,
+    get_active_signed_in_account,
     get_parent_session,
     get_required_user,
     get_signed_in_uid,
@@ -350,7 +351,7 @@ def set_parent_pin(body: SetPinRequest, request: Request,
 @router.post("/pin/verify", summary="Check the parent PIN and get a short-lived unlock token")
 @limiter.limit("30/hour")
 def verify_parent_pin(body: VerifyPinRequest, request: Request,
-                      uid: str = Depends(get_active_account_holder)):
+                      uid: str = Depends(get_active_signed_in_account)):
     from app.services.profile_service import UNLOCK_TTL_SECONDS, make_unlock_token, verify_pin
     result, info = verify_pin(uid, body.pin)
     if result != "ok":
@@ -364,7 +365,7 @@ _PIN_RESET_MAX_AUTH_AGE = 5 * 60
 @router.post("/pin/reset", summary="Forgot PIN: set a new one after a fresh Google sign-in")
 @limiter.limit("5/hour")
 def reset_parent_pin(body: VerifyPinRequest, request: Request,
-                     uid: str = Depends(get_active_account_holder)):
+                     uid: str = Depends(get_active_signed_in_account)):
     """The fresh sign-in (token auth_time within 5 minutes) stands in for the
     forgotten PIN — a child can't produce one without the parent's password."""
     import time as _time

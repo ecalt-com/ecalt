@@ -284,7 +284,12 @@ def client():
     app.dependency_overrides[get_active_account_holder] = lambda: PARENT
     app.dependency_overrides[get_parent_session] = lambda: PARENT
     app.dependency_overrides[get_signed_in_uid] = lambda: PARENT
-    with TestClient(app, raise_server_exceptions=False) as c:
+    # get_active_signed_in_account (PIN verify/reset) runs for real on top of
+    # the overridden sign-in, with the status check stubbed.
+    with (
+        patch("app.core.auth.assert_account_active"),
+        TestClient(app, raise_server_exceptions=False) as c,
+    ):
         yield c
     app.dependency_overrides.clear()
 
@@ -295,6 +300,38 @@ def test_pin_verify_endpoint_returns_unlock_token(client):
         resp = client.post("/api/v1/family/pin/verify", json={"pin": "1234"})
     assert resp.status_code == 200
     assert verify_unlock_token(resp.json()["unlock_token"], PARENT)
+
+
+def _real_account_guards():
+    # Drop the fixture's shortcut so the real get_account_holder (which rejects
+    # X-Profile-Id) would run if an endpoint still depended on it.
+    from app.main import app
+    from app.core.auth import get_active_account_holder
+    app.dependency_overrides.pop(get_active_account_holder, None)
+
+
+def test_pin_verify_works_from_inside_a_child_profile(client):
+    # Entering the PIN is how a parent leaves a child's profile, so the request
+    # still carries X-Profile-Id — it must not be rejected as parent_profile_required.
+    _real_account_guards()
+    with patch("app.services.profile_service.verify_pin", return_value=("ok", None)):
+        resp = client.post("/api/v1/family/pin/verify", json={"pin": "1234"},
+                           headers={"X-Profile-Id": PROFILE})
+    assert resp.status_code == 200
+    assert resp.json()["unlock_token"]
+
+
+def test_pin_reset_works_from_inside_a_child_profile(client):
+    import time
+    _real_account_guards()
+    with (
+        patch("app.core.auth.token_auth_time", return_value=int(time.time()) - 30),
+        patch("app.services.profile_service.set_pin") as mock_set,
+    ):
+        resp = client.post("/api/v1/family/pin/reset", json={"pin": "2468"},
+                           headers={"Authorization": "Bearer x", "X-Profile-Id": PROFILE})
+    assert resp.status_code == 200
+    mock_set.assert_called_once_with(PARENT, "2468")
 
 
 def test_pin_verify_endpoint_wrong_pin(client):
