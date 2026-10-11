@@ -25,13 +25,23 @@ Yes, for under-13s, though a card is not the only option.
 
 Removing verification for under-13s while AI chat is enabled is not recommended.
 
-## Proposed change
+## Paid subscription as verification (implemented)
 
-Accept an active paid subscription as verification. A parent who already pays for ECALT has made a monetary transaction with a card, which fits the COPPA wording better than the current $0 check.
+A parent who already pays for ECALT has made a monetary transaction with a card or payment account, which fits the COPPA wording better than the $0 card check.
 
-- Parent has an active paid subscription: mark the profile `verified` (record the method as `subscription`) and activate it without the card step.
-- Parent on the free trial or without a plan: keep the card verification step.
-- Record the consent method in `child_settings` so it can be shown in an audit.
+A subscription counts when it has `status = 'active'`, a plan other than `free_trial`, and a gateway reference (`stripe_subscription_id`, `razorpay_subscription_id` or `razorpay_last_payment_id`). Trials (`trialing`), coupon grants and admin-assigned plans don't count, because no payment was made.
+
+Where it applies (`app/api/v1/endpoints/family.py`):
+
+- **Creating a profile** (`POST /family/children`): a card-tier child of a paying parent is created `active` and `verified`. The response has `verification_required: false` and `verification_method: "paid_subscription"`.
+- **Approving a teen's link request** (`POST /family/link-requests/{token}/approve`): a card-tier teen (India) is activated straight away.
+- **Starting card verification** (`POST /family/children/{child_uid}/verify/card`) for a profile that is already pending: verifies without Stripe and returns `{"status": "verified", "checkout_url": "<FRONTEND_URL>/family"}`. The existing frontend redirects to that URL, so the dashboard reloads with the child active. No frontend change is needed.
+
+Each verification writes a `consent_events` row with action `verified`, method `paid_subscription`, and the plan, gateway and subscription reference in `details`.
+
+Parents on the free trial or without a plan still go through card verification.
+
+Optional frontend follow-up: when `verify/card` returns `status: "verified"`, show a "Verified with your subscription" toast instead of redirecting.
 
 ## Open issue: `stripe_error` in production
 
@@ -56,6 +66,6 @@ Dev (`ecalt-api`) uses a test key and showed no such error in its logs.
 
 ## Remaining before full rollout
 
-- Fix the production Stripe error, or ship the subscription-as-verification path.
+- Fix the production Stripe error (still affects parents without a paid subscription).
 - Test verification end to end in production with a real card (production uses live Stripe).
 - Legal review of the updated consent copy, then bump `CONSENT_POLICY_VERSION`.
