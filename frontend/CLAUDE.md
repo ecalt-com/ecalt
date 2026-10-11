@@ -61,6 +61,9 @@ frontend/src/
 │   ├── PaymentConfig.tsx        # /subscriptions/config → Stripe publishable key, Razorpay key id
 │   ├── ImpersonationContext.tsx # Admin "view as user" sessions (start/stop, expiry timer)
 │   ├── impersonationStore.ts    # Module-level session id so api.ts can read it without React
+│   ├── ProfileContext.tsx       # Family profiles: picker state, switchTo(), PIN prompt (useProfiles())
+│   ├── profileStore.ts          # Module-level active profile + parent unlock token for api.ts
+│   ├── avatars.ts               # Avatar choices for child profiles
 │   ├── razorpay.ts              # loadRazorpayScript() + order/subscription response types
 │   ├── ThemeContext.tsx         # light/dark, localStorage.ecalt_theme, exposes isDark
 │   ├── ToastContext.tsx         # addToast(message, type), 3.2 s auto-dismiss
@@ -70,7 +73,8 @@ frontend/src/
 │   └── admin/                   # Admin page split: tabs/, components/, hooks/, types, utils, constants
 └── components/
     ├── auth/                    # BirthYearGate, Under13Block, ParentalConsentForm (+ ConsentSentScreen)
-    ├── family/AddChildWizard.tsx
+    ├── family/                  # AddChildWizard, PinPad, PinPrompt, ProfileAvatar,
+    │                            # ProfileRouting (picker redirect, KidModeGuard, KidModeNotice)
     ├── journey/JourneyTutor.tsx # In-journey AI tutor chat
     ├── learn/                   # ConversationInterface (SSE chat), KnowledgeUniverse, TodaysSpark,
     │                            # WarmthIndicator, WhatsAppNudgeBanner
@@ -237,7 +241,8 @@ Tabs: Overview, Plans, AI Providers, Prompts, Notification Templates, Users (wit
 Admin starts a session from the Users tab → `ImpersonationContext` stores it, `impersonationStore` exposes the id to `request()`, `ImpersonationBanner` shows while active, auto-stops at expiry. All requests then act as the target user; the backend audits them.
 
 ### Family / parental accounts
-- Parents: `/family` dashboard, `AddChildWizard` (card verification where required), `/family/child/:uid` for controls.
+- Parents: `/family` dashboard, `AddChildWizard` (verification where required), `/family/child/:uid` for controls.
+- **Verification** (backend `plans/family-profiles/parental-consent-verification.md`): under-13s everywhere and all minors in India need the parent verified. A parent with a **paid subscription** is verified automatically — `createChild` returns `verification_required: false` and the profile is active. Otherwise "Verify with card" calls `startCardVerification` and redirects to Stripe. For a paying parent with an already-pending profile, `startCardVerification` returns `status: 'verified'` and a `checkout_url` pointing at `/family`, so the existing redirect just reloads the dashboard. Don't assume `checkout_url` is always a Stripe URL.
 - Teens: consent flow via the phase machine above; `ReconsentBanner` prompts re-acceptance after a policy-version bump.
 - Parents approve consent via emailed `/consent/confirm?token=…` links.
 
@@ -249,6 +254,9 @@ Children use ECALT as **profiles on the parent's Google login** — no child ema
 - In kid mode: Family/Admin nav hidden, `/family`, `/pricing`, `/profile`, `/admin`, `/welcome` guarded, onboarding skips WhatsApp, `ReconsentBanner` hidden.
 - `AddChildWizard`: set PIN (if none) → name + avatar + birth → consent → create profile → card verification when required. `FamilyChild` settings has "Give them their own login" (claim code, 13+).
 - 403 codes: `parent_unlock_required` (PIN), `parent_profile_required` (switch to parent), `profile_not_allowed` (stale profile → picker).
+- **Leaving a child profile:** the PIN calls (`/family/pin/verify`, `/family/pin/reset`) go out while `X-Profile-Id` is still set, and the backend accepts them on purpose. Every other parent-only call made from kid mode gets `parent_profile_required` — switch to the parent with `switchTo(account.uid)` first.
+- **Stuck in a child profile on your own device** (e.g. testing): delete `localStorage` key `ecalt.activeProfile.<account uid>` and reload to get the picker.
+- **Under-13s never get a login or password** — only a profile on the parent's login. `/claim` is 13+ only.
 - Profile users have no email — don't assume `user.email` (the Firebase user is always the parent).
 
 ---
