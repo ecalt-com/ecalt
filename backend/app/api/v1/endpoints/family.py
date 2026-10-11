@@ -72,6 +72,60 @@ def _require_adult_parent(uid: str) -> dict:
     return d
 
 
+# ── Subscription as verification ────────────────────────────────────────────
+# A parent who pays for ECALT has already used a card or payment account in a
+# monetary transaction — a stronger adult signal than the €0 card check
+# (plans/family-profiles/parental-consent-verification.md). Trials, coupon
+# grants and admin-assigned plans carry no payment, so they don't count.
+
+def _paid_subscription(parent_uid: str, cur) -> Optional[dict]:
+    cur.execute(
+        """
+        SELECT plan_id, payment_gateway, stripe_subscription_id,
+               razorpay_subscription_id, razorpay_last_payment_id
+          FROM subscriptions
+         WHERE uid = %s AND status = 'active' AND plan_id <> 'free_trial'
+           AND (stripe_subscription_id IS NOT NULL
+                OR razorpay_subscription_id IS NOT NULL
+                OR razorpay_last_payment_id IS NOT NULL)
+         LIMIT 1
+        """,
+        (parent_uid,),
+    )
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def _verify_via_subscription(child_uid: str, parent: dict, sub: dict,
+                             jurisdiction: Optional[str], ip: Optional[str], cur) -> None:
+    """Mark a card-tier child verified and active on the strength of the
+    parent's paid subscription. Runs inside the caller's transaction."""
+    cur.execute(
+        "UPDATE child_settings SET verification_status = 'verified', verified_at = now() "
+        "WHERE child_uid = %s",
+        (child_uid,),
+    )
+    cur.execute(
+        "UPDATE users SET account_status = 'active', "
+        "consent_given_at = COALESCE(consent_given_at, now()), consent_version = %s "
+        "WHERE uid = %s",
+        (CONSENT_POLICY_VERSION, child_uid),
+    )
+    record_consent_event(
+        child_uid, "verified",
+        parent_uid=parent["uid"], parent_email=parent.get("email"),
+        method="paid_subscription", jurisdiction=jurisdiction, ip_hash=ip,
+        details={
+            "plan_id": sub["plan_id"],
+            "payment_gateway": sub["payment_gateway"],
+            "subscription_ref": sub.get("stripe_subscription_id")
+                or sub.get("razorpay_subscription_id")
+                or sub.get("razorpay_last_payment_id"),
+        },
+        cur=cur,
+    )
+
+
 # ── Path A: parent-created child profile ────────────────────────────────────
 # A profile is a users row with no login of its own (plans/family-profiles):
 # the child uses ECALT through the parent's session, picked from the
@@ -135,7 +189,9 @@ async def create_child(body: CreateChildRequest, request: Request,
     tier = required_verification_tier(jurisdiction, age)
     # 'card' tier: consent is recorded now, but the profile activates only after
     # the parent completes card verification from the dashboard.
+    # A paid subscription verifies on the spot (see _paid_subscription).
     account_status = "active" if tier == "email_plus" else "parental_consent_pending"
+    verified = False
 
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -166,6 +222,12 @@ async def create_child(body: CreateChildRequest, request: Request,
                 method="parent_created_profile", jurisdiction=jurisdiction,
                 ip_hash=ip, details={"age_at_creation": age}, cur=cur,
             )
+            if tier == "card":
+                sub = _paid_subscription(uid, cur)
+                if sub:
+                    _verify_via_subscription(child_uid, parent, sub, jurisdiction, ip, cur)
+                    account_status = "active"
+                    verified = True
             if tier == "email_plus":
                 schedule_email_plus_followup(
                     child_uid, uid, parent["email"], body.display_name, cur=cur,
@@ -186,7 +248,8 @@ async def create_child(body: CreateChildRequest, request: Request,
         "managed": True,
         "profile_type": "profile",
         "verification_tier": tier,
-        "verification_required": tier != "email_plus",
+        "verification_required": tier != "email_plus" and not verified,
+        "verification_method": "paid_subscription" if verified else None,
         "account_status": account_status,
     }
 
@@ -481,7 +544,12 @@ async def _decide_link_request(token: str, approved: bool, request: Request, uid
                     details={"consent_request_email": row.get("parent_email")},
                     cur=cur,
                 )
-                if activate:
+                if not activate:
+                    sub = _paid_subscription(uid, cur)
+                    if sub:
+                        _verify_via_subscription(child_uid, parent, sub, jurisdiction, ip, cur)
+                        activate = True
+                elif tier == "email_plus":
                     schedule_email_plus_followup(
                         child_uid, uid, parent["email"], row.get("display_name"), cur=cur,
                     )
@@ -541,8 +609,29 @@ async def decline_link_request(token: str, request: Request, uid: str = Depends(
 # payment method is retained (no Stripe customer is attached to the session).
 
 @router.post("/children/{child_uid}/verify/card", summary="Start card verification for a child")
-def start_card_verification(child_uid: str, uid: str = Depends(get_parent_session)):
+def start_card_verification(child_uid: str, request: Request,
+                            uid: str = Depends(get_parent_session)):
     verify_parent_of(uid, child_uid)
+
+    # Paying parents skip the card check. The URL sends the browser back to the
+    # dashboard, which reloads the now-active child — no frontend change needed.
+    parent = _require_adult_parent(uid)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            sub = _paid_subscription(uid, cur)
+            if sub:
+                cur.execute("SELECT jurisdiction FROM users WHERE uid = %s", (child_uid,))
+                jrow = cur.fetchone()
+                _verify_via_subscription(
+                    child_uid, parent, sub,
+                    jrow.get("jurisdiction") if jrow else None,
+                    hash_ip(request.client.host if request.client else None), cur,
+                )
+    if sub:
+        invalidate_status_cache(child_uid)
+        return {"status": "verified", "verification_method": "paid_subscription",
+                "checkout_url": f"{settings.FRONTEND_URL}/family"}
+
     if not settings.STRIPE_SECRET_KEY:
         raise HTTPException(status_code=503, detail={
             "error": "not_configured", "message": "Card verification is temporarily unavailable.",

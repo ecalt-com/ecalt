@@ -113,6 +113,7 @@ def test_create_child_success(client):
 def test_create_child_under_13_blocked_by_default(client):
     with (
         patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
+        patch("app.api.v1.endpoints.family.settings.ENABLE_MANAGED_CHILDREN", False),
         patch("app.services.profile_service.has_pin", return_value=True),
     ):
         _mock_db(mock_get_db, [_parent_row()])
@@ -133,7 +134,8 @@ def test_create_child_under_13_allowed_with_flag_and_chat_off(client):
         patch("app.services.profile_service.new_profile_uid", return_value=CHILD_UID),
         patch("app.api.v1.endpoints.family.asyncio.ensure_future"),
     ):
-        mock_cur = _mock_db(mock_get_db, [_parent_row(), {"n": 0}])
+        # parent, seat count, paid-subscription lookup (none)
+        mock_cur = _mock_db(mock_get_db, [_parent_row(), {"n": 0}, None])
         resp = client.post(
             "/api/v1/family/children",
             json=_create_child_body(birth_year=CURRENT_YEAR - 10),
@@ -143,6 +145,8 @@ def test_create_child_under_13_allowed_with_flag_and_chat_off(client):
     body = resp.json()
     assert body["age_group"] == "child"
     assert body["chat_enabled"] is False  # AI chat off by default under 13
+    assert body["verification_required"] is True
+    assert body["account_status"] == "parental_consent_pending"
 
     settings_calls = [
         c for c in mock_cur.execute.call_args_list
@@ -150,6 +154,84 @@ def test_create_child_under_13_allowed_with_flag_and_chat_off(client):
     ]
     # chat off + card verification tier for under-13s
     assert settings_calls and settings_calls[0][0][1] == (CHILD_UID, False, "card")
+
+
+def _paid_sub(**overrides):
+    row = {
+        "plan_id": "family",
+        "payment_gateway": "stripe",
+        "stripe_subscription_id": "sub_123",
+        "razorpay_subscription_id": None,
+        "razorpay_last_payment_id": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_create_child_under_13_verified_by_paid_subscription(client):
+    with (
+        patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
+        patch("app.api.v1.endpoints.family.settings.ENABLE_MANAGED_CHILDREN", True),
+        patch("app.services.profile_service.has_pin", return_value=True),
+        patch("app.services.profile_service.new_profile_uid", return_value=CHILD_UID),
+        patch("app.api.v1.endpoints.family.asyncio.ensure_future"),
+    ):
+        mock_cur = _mock_db(mock_get_db, [_parent_row(), {"n": 0}, _paid_sub()])
+        resp = client.post(
+            "/api/v1/family/children",
+            json=_create_child_body(birth_year=CURRENT_YEAR - 10),
+        )
+
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["verification_required"] is False
+    assert body["verification_method"] == "paid_subscription"
+    assert body["account_status"] == "active"
+
+    executed = [str(c[0][0]) for c in mock_cur.execute.call_args_list]
+    assert any("verification_status = 'verified'" in q for q in executed)
+    assert any("account_status = 'active'" in q for q in executed)
+    sub_query = next(q for q in executed if "FROM subscriptions" in q)
+    # Trials and plans without a gateway payment don't count.
+    assert "status = 'active'" in sub_query and "free_trial" in sub_query
+    assert "stripe_subscription_id IS NOT NULL" in sub_query
+
+
+def test_start_card_verification_skipped_for_paid_subscription(client):
+    with (
+        patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
+        patch("app.api.v1.endpoints.family.verify_parent_of"),
+        patch("app.api.v1.endpoints.family.invalidate_status_cache") as mock_inval,
+        patch("stripe.checkout.Session.create") as mock_stripe,
+    ):
+        mock_cur = _mock_db(mock_get_db, [_parent_row(), _paid_sub(), {"jurisdiction": "US"}])
+        resp = client.post(f"/api/v1/family/children/{CHILD_UID}/verify/card")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["status"] == "verified"
+    assert body["checkout_url"].endswith("/family")
+    mock_stripe.assert_not_called()
+    mock_inval.assert_called_once_with(CHILD_UID)
+    executed = [str(c[0][0]) for c in mock_cur.execute.call_args_list]
+    assert any("verification_status = 'verified'" in q for q in executed)
+    assert any("INSERT INTO consent_events" in q for q in executed)
+
+
+def test_start_card_verification_without_subscription_uses_stripe(client):
+    session = MagicMock(url="https://checkout.stripe.com/c/pay/cs_test")
+    with (
+        patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
+        patch("app.api.v1.endpoints.family.verify_parent_of"),
+        patch("app.api.v1.endpoints.family.settings.STRIPE_SECRET_KEY", "sk_test_x"),
+        patch("stripe.checkout.Session.create", return_value=session) as mock_stripe,
+    ):
+        _mock_db(mock_get_db, [_parent_row(), None])
+        resp = client.post(f"/api/v1/family/children/{CHILD_UID}/verify/card")
+
+    assert resp.status_code == 200
+    assert resp.json()["checkout_url"] == session.url
+    mock_stripe.assert_called_once()
 
 
 def test_create_child_rejects_adults(client):
