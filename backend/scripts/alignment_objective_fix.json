@@ -1,0 +1,263 @@
+[
+  {
+    "step_id": "f2a1a795-5c2d-4ea6-a857-30afdc192879",
+    "journey_id": "a35332c8-4afa-4c02-b456-cf7cff7b4815",
+    "step_type": "challenge",
+    "journey_difficulty": "beginner",
+    "age_group": "all",
+    "question_1": {
+      "question": "What happens to the state of an entangled particle when its partner particle's state is changed?",
+      "correct_answer": "The other particle's state changes immediately to match.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_2": {
+      "question": "How does entanglement challenge our understanding of distance in quantum mechanics?",
+      "correct_answer": "Entanglement can occur over millions of kilometers without losing connection.",
+      "difficulty": "deep",
+      "answerable_score": 0.7,
+      "gap": "The content mentions that entangled particles can influence each other's states over vast distances but does not directly explain how this challenges traditional notions of distance."
+    },
+    "question_3": {
+      "question": "What potential applications do scientists see for quantum entanglement in technology?",
+      "correct_answer": "Quantum computing and secure communication processes.",
+      "difficulty": "research",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "avg_score": 0.9
+  },
+  {
+    "step_id": "a7a85a5e-c902-44a2-b457-de7cc14ae7e3",
+    "journey_id": "145880fc-9806-4342-8eb3-21f92939f693",
+    "step_type": "challenge",
+    "journey_difficulty": "beginner",
+    "age_group": "all",
+    "question_1": {
+      "question": "Imagine you're preparing to share your AI melody with a group unfamiliar with your style. How would you tailor your presentation to ensure they connect with your music?",
+      "correct_answer": "By providing context about the creative process and using relatable terms, I can guide the audience's understanding and emotional connection to the melody.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_2": {
+      "question": "During a feedback session after presenting your AI melody, a few participants give vague or unclear feedback. How can you facilitate deeper insights from them?",
+      "correct_answer": "I would ask open-ended questions that encourage them to share specific feelings or memorable moments related to the piece, which can clarify their thoughts.",
+      "difficulty": "deep",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_3": {
+      "question": "How might hosting a listening party alter the nature of feedback compared to traditional feedback methods, and what implications does this have for your creative process?",
+      "correct_answer": "A listening party fosters a more relaxed atmosphere for feedback, encouraging informal conversations and deeper emotional connections, which can lead to richer insights compared to structured feedback sessions.",
+      "difficulty": "research",
+      "answerable_score": 0.5,
+      "gap": "Content mentions hosting a listening party and encourages open discussions but does not specifically explain how this alters the nature of feedback compared to traditional methods or the implications for the creative process."
+    },
+    "avg_score": 0.8333333333333334
+  },
+  {
+    "step_id": "f05b461b-cca8-45e9-b97e-0c449cf7538b",
+    "journey_id": "55979795-846c-491c-b45c-3824598f4c93",
+    "step_type": "explore",
+    "journey_difficulty": "intermediate",
+    "age_group": "all",
+    "question_1": {
+      "question": "What is unique about quantum bits (qubits) in comparison to traditional bits?",
+      "correct_answer": "Qubits can represent multiple states simultaneously.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_2": {
+      "question": "How do AWS tools like SageMaker contribute to the development of AI models?",
+      "correct_answer": "They help developers build models that learn from data.",
+      "difficulty": "deep",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_3": {
+      "question": "In what way does edge computing with AWS Lambda@Edge enhance application performance?",
+      "correct_answer": "By processing data closer to users, reducing latency.",
+      "difficulty": "research",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "avg_score": 1.0
+  },
+  {
+    "step_id": "7da4aacd-8e4c-4f7b-8aa1-9a6bad57d37e",
+    "journey_id": "0ffe6d74-c15a-4787-a552-a83e6059d56c",
+    "step_type": "concept",
+    "journey_difficulty": "intermediate",
+    "age_group": "all",
+    "question_1": {
+      "question": "How does the presence of three carboxamide groups in BTA influence its interactions with solvents?",
+      "correct_answer": "It enhances BTA's solubility in a variety of solvents.",
+      "difficulty": "surface",
+      "answerable_score": 0.7,
+      "gap": "Content mentions that BTA has carboxamide groups that contribute to its solubility but does not explicitly link this to the enhanced interactions with a variety of solvents."
+    },
+    "question_2": {
+      "question": "In a situation where BTA is subjected to extreme heat, what characteristic allows it to remain stable while other materials might fail?",
+      "correct_answer": "Its thermal stability due to the robust chemical structure.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_3": {
+      "question": "Given the unique structure of BTA with its benzene ring and three carboxamide groups, how might these features influence its performance in a high-temperature environment?",
+      "correct_answer": "The stability of its structure allows BTA to maintain its integrity even under high temperatures, making it suitable for demanding applications.",
+      "difficulty": "deep",
+      "answerable_score": 0.7,
+      "gap": "The content states that BTA exhibits thermal stability, but it does not explicitly explain how the structure contributes to this stability or its influence on performance in high-temperature environments."
+    },
+    "avg_score": 0.7999999999999999
+  },
+  {
+    "step_id": "3d35460b-6bde-4c1b-a030-eef7bf8c076d",
+    "journey_id": "c4467dd1-2587-4b86-acf5-4c772c8b17c5",
+    "step_type": "explore",
+    "journey_difficulty": "intermediate",
+    "age_group": "all",
+    "question_1": {
+      "question": "How do Newton's laws of motion apply to the operation of supramolecular helicopters?",
+      "correct_answer": "They indicate that an action causes an equal and opposite reaction, allowing rotor blades to create lift.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_2": {
+      "question": "In what way does thermal motion impact the performance of supramolecular helicopters?",
+      "correct_answer": "Increased thermal motion allows for better spinning and takeoff of these helicopters.",
+      "difficulty": "deep",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_3": {
+      "question": "What environmental conditions can affect the stability of supramolecular helicopters, as noted in the content?",
+      "correct_answer": "Temperature and pressure changes can impact their stability.",
+      "difficulty": "research",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "avg_score": 1.0
+  },
+  {
+    "step_id": "3c8f7004-3f39-4803-b53a-c194eaac8943",
+    "journey_id": "de552070-c7a9-4ace-8b08-31d2d725f962",
+    "step_type": "concept",
+    "journey_difficulty": "intermediate",
+    "age_group": "all",
+    "question_1": {
+      "question": "How do sensors contribute to a robot's ability to function autonomously?",
+      "correct_answer": "They help robots detect their surroundings, similar to how human senses work.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_2": {
+      "question": "What role does the controller play in the operation of a robot?",
+      "correct_answer": "The controller processes information and decides what actions the robot should take.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_3": {
+      "question": "What role do sensors play in a robot's operation?",
+      "correct_answer": "Sensors help robots detect their surroundings.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "avg_score": 1.0
+  },
+  {
+    "step_id": "5e094fa2-1dff-4646-ab5e-1cbfba940f8c",
+    "journey_id": "2429b6b8-7e68-4b04-9e33-607ccf1980a0",
+    "step_type": "explore",
+    "journey_difficulty": "beginner",
+    "age_group": "all",
+    "question_1": {
+      "question": "Imagine you have a limited budget for your birthday party. If you decide to invest more in a fancy cake, what might you choose to give up to stay within your budget, and why?",
+      "correct_answer": "You might choose to have fewer decorations or cheaper party favors to afford the fancy cake.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_2": {
+      "question": "If you prioritize spending on the party games over the cake, what potential regrets might arise from this choice as the party unfolds?",
+      "correct_answer": "You might regret not having a more impressive cake when your guests arrive, as they may notice the lack of a centerpiece treat.",
+      "difficulty": "deep",
+      "answerable_score": 0.7,
+      "gap": "The content discusses trade-offs in party planning but does not explicitly state examples of regret one might feel regarding choices made."
+    },
+    "question_3": {
+      "question": "Imagine you're planning two birthday parties: one with a lavish cake but fewer games, and another with more games but a simpler cake. How would understanding trade-offs help you choose between these two scenarios, and what potential regrets might arise from different decisions?",
+      "correct_answer": "Understanding trade-offs allows you to evaluate what aspects of the parties matter most and anticipate regrets based on your prioritization of cake versus games.",
+      "difficulty": "research",
+      "answerable_score": 0.7,
+      "gap": "The content discusses trade-offs and prioritizing between cake and games but does not explicitly mention how to anticipate regrets or provide examples of potential regrets related to specific choices."
+    },
+    "avg_score": 0.7999999999999999
+  },
+  {
+    "step_id": "168384e6-662b-42c4-a70d-12c1dfce24be",
+    "journey_id": "8daf2df6-0990-4819-ab33-219e25a0252c",
+    "step_type": "explore",
+    "journey_difficulty": "intermediate",
+    "age_group": "all",
+    "question_1": {
+      "question": "How does the observer effect imply a connection between consciousness and the behavior of particles?",
+      "correct_answer": "Observing something can change its behavior, suggesting that consciousness may influence physical reality.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_2": {
+      "question": "What implications does the concept of parallel universes have for the relationship between consciousness and reality?",
+      "correct_answer": "If there are countless realities alongside ours, consciousness might have the potential to explore or interact with these other realms.",
+      "difficulty": "deep",
+      "answerable_score": 0.7,
+      "gap": "The content discusses the concept of parallel universes and mentions consciousness could explore these realms, but it does not explicitly state the implications of this relationship for consciousness and reality."
+    },
+    "question_3": {
+      "question": "What are some mind-bending ideas in quantum mechanics that suggest a link between consciousness and reality, as mentioned in the content?",
+      "correct_answer": "Ideas such as duality, the observer effect, and entanglement suggest a link between consciousness and reality.",
+      "difficulty": "research",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "avg_score": 0.9
+  },
+  {
+    "step_id": "6e0c396a-1eb0-4c62-a991-b4dc688612b0",
+    "journey_id": "9407aa87-013c-41c3-8451-f642e4d1184a",
+    "step_type": "challenge",
+    "journey_difficulty": "intermediate",
+    "age_group": "all",
+    "question_1": {
+      "question": "In your own words, how does latency affect online gaming experiences?",
+      "correct_answer": "Latency affects online gaming by causing delays in response time, which can result in lag during gameplay.",
+      "difficulty": "exploratory",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_2": {
+      "question": "What ideal latency do gamers strive for, and what happens if latency exceeds this threshold?",
+      "correct_answer": "Gamers strive for a latency of 20ms, and anything above 50ms can lead to noticeable lag.",
+      "difficulty": "deep",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "question_3": {
+      "question": "How do Content Delivery Networks (CDNs) contribute to latency reduction in streaming content?",
+      "correct_answer": "CDNs contribute to latency reduction by caching content closer to users, which shortens the distance data must travel.",
+      "difficulty": "research",
+      "answerable_score": 1.0,
+      "gap": ""
+    },
+    "avg_score": 1.0
+  }
+]

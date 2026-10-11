@@ -1,9 +1,14 @@
 import { useState } from 'react'
-import { X, Loader2, ArrowRight, ArrowLeft, CheckCircle, CreditCard, KeyRound } from 'lucide-react'
+import { X, Loader2, ArrowRight, ArrowLeft, CheckCircle, CreditCard, Lock } from 'lucide-react'
+import clsx from 'clsx'
 import { useAuth } from '../../lib/AuthContext'
 import { useGeo } from '../../lib/GeoContext'
+import { useProfiles } from '../../lib/ProfileContext'
 import { apiErrorCode, type ApiError } from '../../lib/api'
-import { createChild, startCardVerification, type CreateChildResponse } from '../../lib/familyApi'
+import { AVATARS, AVATAR_KEYS } from '../../lib/avatars'
+import { createChild, setParentPin, startCardVerification, verifyParentPin, type CreateChildResponse } from '../../lib/familyApi'
+import { setParentUnlock } from '../../lib/profileStore'
+import PinPad from './PinPad'
 
 interface Props {
   onClose: () => void
@@ -15,34 +20,62 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ]
 
-// Step order follows the Google Family Link pattern: identity → consent → credentials → done.
-type Step = 'details' | 'consent' | 'credentials' | 'done'
+// Adds a child *profile* on the parent's account — no child email or
+// password. A parent PIN must exist first: it's what keeps the child inside
+// their own profile on a shared device.
+type Step = 'pin' | 'details' | 'consent' | 'done'
 
 export default function AddChildWizard({ onClose, onCreated }: Props) {
   const { getToken } = useAuth()
   const { country } = useGeo()
+  const { pinSet, markPinSet, refresh: refreshProfiles } = useProfiles()
   const currentYear = new Date().getFullYear()
   // Managed accounts are for minors (3–17); the backend rejects the rest.
   const years = Array.from({ length: 16 }, (_, i) => currentYear - 2 - i)
 
-  const [step, setStep] = useState<Step>('details')
+  const [startedWithPin] = useState(pinSet)
+  const [step, setStep] = useState<Step>(pinSet ? 'details' : 'pin')
+  const steps: Step[] = startedWithPin ? ['details', 'consent'] : ['pin', 'details', 'consent']
+  const [pin, setPin] = useState('')
+  const [pinConfirm, setPinConfirm] = useState('')
+  const [savingPin, setSavingPin] = useState(false)
   const [name, setName] = useState('')
+  const [avatar, setAvatar] = useState<string>(AVATAR_KEYS[0])
   const [year, setYear] = useState('')
   const [month, setMonth] = useState('')
   const [consented, setConsented] = useState(false)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirm, setConfirm] = useState('')
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [created, setCreated] = useState<CreateChildResponse | null>(null)
   const [startingVerify, setStartingVerify] = useState(false)
 
   const detailsValid = name.trim().length > 0 && year !== '' && month !== ''
-  const credentialsValid = email.includes('@') && password.length >= 8 && password === confirm
+  const pinValid = pin.length >= 4 && pin === pinConfirm
+
+  const handleSavePin = async () => {
+    if (!pinValid || savingPin) return
+    setSavingPin(true)
+    setError(null)
+    try {
+      const token = await getToken()
+      if (!token) throw new Error('Session expired — please sign in again.')
+      await setParentPin(pin, null, token)
+      // Unlock right away so creating the profile doesn't ask for the PIN again.
+      const { unlock_token, expires_in } = await verifyParentPin(pin, token)
+      setParentUnlock(unlock_token, expires_in)
+      markPinSet()
+      setStep('details')
+    } catch (err) {
+      setError(apiErrorCode(err) === 'current_pin_required'
+        ? 'A PIN is already set — use “Change PIN” on the Family dashboard.'
+        : (err as ApiError)?.message || 'Could not save the PIN.')
+    } finally {
+      setSavingPin(false)
+    }
+  }
 
   const handleCreate = async () => {
-    if (!credentialsValid || creating) return
+    if (!consented || creating) return
     setCreating(true)
     setError(null)
     try {
@@ -52,30 +85,30 @@ export default function AddChildWizard({ onClose, onCreated }: Props) {
         display_name: name.trim(),
         birth_year: parseInt(year, 10),
         birth_month: parseInt(month, 10),
-        email: email.trim(),
-        password,
+        avatar,
         ...(country ? { country: country.toUpperCase() } : {}),
       }, token)
       setCreated(res)
       setStep('done')
       onCreated()
+      refreshProfiles()
     } catch (err: unknown) {
       const code = apiErrorCode(err)
       const messages: Record<string, string> = {
-        under_13_not_available: "Accounts for under-13s are coming soon — they need our verified-consent flow. You can add learners aged 13–17 today.",
+        under_13_not_available: "Profiles for under-13s are coming soon — they need our verified-consent flow. You can add learners aged 13–17 today.",
         adult_account_required: 'Only active adult accounts can add children.',
         no_account: 'Only active adult accounts can add children.',
-        not_a_minor: 'Managed accounts are for children under 18 — adults sign up themselves.',
+        not_a_minor: 'Child profiles are for under-18s — adults sign up themselves.',
         invalid_birth_year: 'Please check the birth year.',
         family_full: 'A family supports up to 5 children.',
-        email_exists: 'An account with this email already exists — try a different one.',
-        invalid_email: 'Enter a valid email address for the child.',
-        not_configured: 'Child account creation is temporarily unavailable. Please try again later.',
+        pin_required: 'Set a parent PIN first.',
       }
       setError((code && messages[code]) || (err as ApiError)?.message || 'Something went wrong. Please try again.')
       // Age-related errors belong on the details step.
       if (code === 'under_13_not_available' || code === 'not_a_minor' || code === 'invalid_birth_year') {
         setStep('details')
+      } else if (code === 'pin_required') {
+        setStep('pin')
       }
     } finally {
       setCreating(false)
@@ -105,7 +138,7 @@ export default function AddChildWizard({ onClose, onCreated }: Props) {
       <div className="glass-card rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-start justify-between mb-4">
           <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-            {step === 'done' ? 'Account created' : 'Add a child'}
+            {step === 'done' ? 'Profile added' : step === 'pin' ? 'Set your parent PIN' : 'Add a child'}
           </h2>
           <button onClick={onClose} aria-label="Close" className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors">
             <X size={16} />
@@ -114,11 +147,11 @@ export default function AddChildWizard({ onClose, onCreated }: Props) {
 
         {step !== 'done' && (
           <div className="flex items-center gap-1.5 mb-5">
-            {(['details', 'consent', 'credentials'] as Step[]).map((s, i) => (
+            {steps.map((s, i) => (
               <div
                 key={s}
                 className={`h-1 flex-1 rounded-full ${
-                  ['details', 'consent', 'credentials'].indexOf(step) >= i
+                  steps.indexOf(step) >= i
                     ? 'bg-violet-500'
                     : 'bg-slate-200 dark:bg-slate-700'
                 }`}
@@ -128,6 +161,32 @@ export default function AddChildWizard({ onClose, onCreated }: Props) {
         )}
 
         {error && <p className="mb-4 text-xs text-rose-600 dark:text-rose-400" role="alert">{error}</p>}
+
+        {step === 'pin' && (
+          <>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mb-4 flex gap-2">
+              <Lock size={16} className="text-violet-500 shrink-0 mt-0.5" />
+              <span>
+                Your children use ECALT through your sign-in, each in their own profile. Your PIN keeps them
+                there — it's needed to switch back to your profile or change family settings.
+              </span>
+            </p>
+            <PinPad value={pin} onChange={setPin} label="Choose a 4–6 digit PIN" id="new-parent-pin" />
+            <div className="mt-3 mb-5">
+              <PinPad value={pinConfirm} onChange={setPinConfirm} onSubmit={handleSavePin} autoFocus={false} label="Confirm PIN" id="confirm-parent-pin" />
+              {pinConfirm.length >= 4 && pin !== pinConfirm && (
+                <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-400">PINs don't match.</p>
+              )}
+            </div>
+            <button
+              onClick={handleSavePin}
+              disabled={!pinValid || savingPin}
+              className="w-full btn-primary flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {savingPin ? <Loader2 size={14} className="animate-spin" /> : null} Save PIN & continue
+            </button>
+          </>
+        )}
 
         {step === 'details' && (
           <>
@@ -142,6 +201,27 @@ export default function AddChildWizard({ onClose, onCreated }: Props) {
                 className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 text-sm placeholder:text-slate-400 focus:outline-none focus:border-violet-400 dark:focus:border-violet-500"
               />
             </div>
+            <fieldset className="mb-4">
+              <legend className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Profile picture</legend>
+              <div className="grid grid-cols-8 gap-1.5">
+                {AVATAR_KEYS.map(key => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setAvatar(key)}
+                    aria-label={key}
+                    aria-pressed={avatar === key}
+                    className={clsx(
+                      'aspect-square rounded-xl text-xl flex items-center justify-center transition-all',
+                      AVATARS[key].bg,
+                      avatar === key ? 'ring-2 ring-violet-500 scale-105' : 'opacity-70 hover:opacity-100',
+                    )}
+                  >
+                    {AVATARS[key].emoji}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
             <div className="mb-6 grid grid-cols-2 gap-3">
               <div>
                 <label htmlFor="child-birth-month" className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Birth month</label>
@@ -183,8 +263,8 @@ export default function AddChildWizard({ onClose, onCreated }: Props) {
             <div className="rounded-2xl border border-slate-200 dark:border-slate-700/60 p-4 mb-4 text-left">
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">ECALT will collect from {name.trim() || 'your child'}:</p>
               <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1 mb-3">
-                <li>• Their name and login email</li>
-                <li>• The learning questions they ask and the journeys they create</li>
+                <li>• Their name, birth month/year and country</li>
+                <li>• The learning questions they ask, the journeys they create and their chats with the AI tutor</li>
                 <li>• AI-generated knowledge topics (their learning map)</li>
               </ul>
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 mb-2">ECALT never:</p>
@@ -197,7 +277,8 @@ export default function AddChildWizard({ onClose, onCreated }: Props) {
               <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1 mb-3">
                 <li>• View their learning activity from your Family dashboard</li>
                 <li>• Export all of their data</li>
-                <li>• Delete their account</li>
+                <li>• Open their profile and see everything in it</li>
+                <li>• Delete their profile</li>
                 <li>• Withdraw consent at any time</li>
               </ul>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -226,69 +307,11 @@ export default function AddChildWizard({ onClose, onCreated }: Props) {
                 <ArrowLeft size={14} /> Back
               </button>
               <button
-                onClick={() => { setError(null); setStep('credentials') }}
-                disabled={!consented}
-                className="flex-1 btn-primary flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                Continue <ArrowRight size={14} />
-              </button>
-            </div>
-          </>
-        )}
-
-        {step === 'credentials' && (
-          <>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-              Create the login {name.trim() || 'your child'} will use. Share these with them — the email
-              can be an alias you manage.
-            </p>
-            <div className="mb-3">
-              <label htmlFor="child-email" className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Child's login email</label>
-              <input
-                id="child-email"
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="kid@example.com"
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 text-sm placeholder:text-slate-400 focus:outline-none focus:border-violet-400 dark:focus:border-violet-500"
-              />
-            </div>
-            <div className="mb-3">
-              <label htmlFor="child-password" className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Password (min 8 characters)</label>
-              <input
-                id="child-password"
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-violet-400 dark:focus:border-violet-500"
-              />
-            </div>
-            <div className="mb-5">
-              <label htmlFor="child-password-confirm" className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5">Confirm password</label>
-              <input
-                id="child-password-confirm"
-                type="password"
-                value={confirm}
-                onChange={e => setConfirm(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 text-slate-800 dark:text-slate-100 text-sm focus:outline-none focus:border-violet-400 dark:focus:border-violet-500"
-              />
-              {confirm && password !== confirm && (
-                <p className="mt-1.5 text-xs text-rose-600 dark:text-rose-400">Passwords don't match.</p>
-              )}
-            </div>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setStep('consent')}
-                className="flex-1 px-4 py-2.5 rounded-xl text-sm font-medium border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-all flex items-center justify-center gap-2"
-              >
-                <ArrowLeft size={14} /> Back
-              </button>
-              <button
                 onClick={handleCreate}
-                disabled={!credentialsValid || creating}
+                disabled={!consented || creating}
                 className="flex-1 btn-primary flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                {creating ? <><Loader2 size={14} className="animate-spin" /> Creating…</> : 'Create account'}
+                {creating ? <><Loader2 size={14} className="animate-spin" /> Adding…</> : 'Add profile'}
               </button>
             </div>
           </>
@@ -300,7 +323,7 @@ export default function AddChildWizard({ onClose, onCreated }: Props) {
               <CheckCircle size={24} className="text-emerald-600 dark:text-emerald-400" />
             </div>
             <p className="text-sm text-slate-700 dark:text-slate-300 mb-2">
-              <span className="font-semibold">{created.display_name}</span>'s account is set up.
+              <span className="font-semibold">{created.display_name}</span>'s profile is set up.
             </p>
             {created.verification_required ? (
               <>
@@ -322,9 +345,9 @@ export default function AddChildWizard({ onClose, onCreated }: Props) {
               </>
             ) : (
               <>
-                <p className="text-sm text-slate-600 dark:text-slate-400 mb-5 flex items-center justify-center gap-1.5">
-                  <KeyRound size={14} className="text-violet-500" />
-                  They can now sign in at <a href="/kids-login" className="underline text-violet-600 dark:text-violet-400">ecalt.com/kids-login</a>
+                <p className="text-sm text-slate-600 dark:text-slate-400 mb-5">
+                  When it's their turn, open <span className="font-medium">Who's learning?</span> from the menu
+                  and pick their profile. They'll need your PIN to leave it.
                 </p>
                 <button onClick={onClose} className="w-full btn-primary">Done</button>
               </>

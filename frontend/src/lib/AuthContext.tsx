@@ -2,12 +2,16 @@ import { createContext, useContext, useEffect, useRef, useState, useCallback } f
 import {
   onAuthStateChanged,
   signInWithPopup,
-  signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   getAdditionalUserInfo,
   type User,
 } from 'firebase/auth'
 import { firebaseAuth, googleProvider } from './firebase'
+import { clearParentUnlock, setAccount as setProfileAccount } from './profileStore'
+
+// /claim is where a teen attaches their own Google login to an existing family
+// profile — the new-account sign-up gates (birth year etc.) must not run there.
+const onClaimPage = () => window.location.pathname.startsWith('/claim')
 
 export type PostSignInPhase = 'none' | 'birth_year' | 'under_13' | 'consent_pending' | 'consent_sent'
 export type UserRole = 'learner' | 'parent'
@@ -20,11 +24,11 @@ interface AuthContextValue {
   parentEmail: string | null
   role: UserRole | null
   signIn: () => Promise<void>
-  signInWithEmail: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
   getToken: () => Promise<string | null>
   refreshRole: () => Promise<void>
   dismissOnboarding: () => void
+  requireOnboarding: () => void
   completeBirthYear: (birthYear: number, birthMonth?: number, country?: string) => Promise<void>
   submitParentalConsent: (parentEmail: string) => Promise<void>
   markConsentSent: (email: string) => void
@@ -39,11 +43,11 @@ const AuthContext = createContext<AuthContextValue>({
   parentEmail: null,
   role: null,
   signIn: async () => {},
-  signInWithEmail: async () => {},
   signOut: async () => {},
   getToken: async () => null,
   refreshRole: async () => {},
   dismissOnboarding: () => {},
+  requireOnboarding: () => {},
   completeBirthYear: async () => {},
   submitParentalConsent: async () => {},
   markConsentSent: () => {},
@@ -79,6 +83,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(firebaseAuth, async u => {
+      // Before any state update, so the first requests children fire already
+      // carry this device's chosen family profile.
+      setProfileAccount(u?.uid ?? null)
       userRef.current = u
       setUser(u)
       setLoading(false)
@@ -92,7 +99,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // On page load / refresh: a session was restored from IndexedDB but
       // postSignInPhase reset to 'none'. Re-check the backend so users who
       // never submitted their birth year can't bypass the gate with a refresh.
-      if (!initialAuthCheckDone.current && !signingIn.current) {
+      if (!initialAuthCheckDone.current && !signingIn.current && onClaimPage()) {
+        initialAuthCheckDone.current = true
+      } else if (!initialAuthCheckDone.current && !signingIn.current) {
         initialAuthCheckDone.current = true
         try {
           const token = await u.getIdToken()
@@ -134,6 +143,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const isNewUser = getAdditionalUserInfo(result)?.isNewUser ?? false
 
+    // The claim page links this login to an existing profile itself.
+    if (onClaimPage()) return
+
     if (isNewUser) {
       // Intercept to collect birth year before creating the backend user record.
       pendingUserRef.current = result.user
@@ -161,36 +173,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setPostSignInPhase('birth_year')
           return
         }
-        if (profile.account_status === 'parental_consent_pending') {
-          enterConsentPending(profile)
-          return
-        }
-        if (profile.onboarding_done === false) {
-          setNeedsOnboarding(true)
-        }
-      }
-    } catch { /* non-critical */ }
-  }
-
-  // Kids login: managed children sign in with the email+password their parent
-  // created. Same post-sign-in upsert flow as Google; managed children already
-  // have birth_year set, so no gate appears.
-  const signInWithEmail = async (email: string, password: string) => {
-    const result = await signInWithEmailAndPassword(firebaseAuth, email, password)
-    try {
-      const token = await result.user.getIdToken()
-      const res = await fetch('/api/v1/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          email: result.user.email,
-          display_name: result.user.displayName,
-          photo_url: result.user.photoURL,
-        }),
-      })
-      if (res.ok) {
-        const profile = await res.json()
-        if (profile.role) setRole(profile.role)
         if (profile.account_status === 'parental_consent_pending') {
           enterConsentPending(profile)
           return
@@ -304,6 +286,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
+    clearParentUnlock()
     await firebaseSignOut(firebaseAuth)
     setNeedsOnboarding(false)
     setPostSignInPhase('none')
@@ -342,12 +325,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const dismissOnboarding = () => setNeedsOnboarding(false)
+  const requireOnboarding = useCallback(() => setNeedsOnboarding(true), [])
 
   return (
     <AuthContext.Provider value={{
       user, loading, needsOnboarding, postSignInPhase, parentEmail, role,
-      signIn, signInWithEmail, signOut, getToken, refreshRole,
-      dismissOnboarding, completeBirthYear, submitParentalConsent, markConsentSent, dismissPostSignIn,
+      signIn, signOut, getToken, refreshRole,
+      dismissOnboarding, requireOnboarding, completeBirthYear, submitParentalConsent, markConsentSent, dismissPostSignIn,
     }}>
       {children}
     </AuthContext.Provider>

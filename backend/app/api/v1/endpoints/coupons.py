@@ -4,7 +4,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from app.core.auth import get_required_user, get_admin_user
+from app.core.auth import get_account_holder, get_admin_user
 from app.services.coupon_service import (
     apply_coupon,
     create_coupon,
@@ -25,7 +25,7 @@ class ApplyRequest(BaseModel):
 
 
 @router.post("/apply")
-def apply(body: ApplyRequest, uid: str = Depends(get_required_user)):
+def apply(body: ApplyRequest, uid: str = Depends(get_account_holder)):
     try:
         result = apply_coupon(uid, body.code)
     except ValueError as e:

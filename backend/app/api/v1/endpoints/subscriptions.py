@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from app.core.limiter import limiter
 
-from app.core.auth import get_required_user, get_acting_uid
+from app.core.auth import get_account_holder, get_acting_uid, get_unlocked_account_holder
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -129,7 +129,7 @@ class SyncRequest(BaseModel):
 
 @router.post("/sync")
 def sync_subscription(
-    uid: str = Depends(get_required_user),
+    uid: str = Depends(get_account_holder),
     body: SyncRequest = Body(default=SyncRequest()),
 ):
     """
@@ -200,7 +200,7 @@ def _detect_country(request: Request) -> str:
 
 @router.post("/checkout")
 @limiter.limit("5/minute")
-def create_checkout(request: Request, body: CheckoutRequest, uid: str = Depends(get_required_user)):
+def create_checkout(request: Request, body: CheckoutRequest, uid: str = Depends(get_unlocked_account_holder)):
     # Use server-side geo — client-supplied country is ignored to prevent price manipulation.
     country = _detect_country(request)
 
@@ -298,7 +298,7 @@ class RazorpayVerifyRequest(BaseModel):
 @router.post("/razorpay/verify")
 def verify_razorpay_payment(
     body: RazorpayVerifyRequest,
-    uid: str = Depends(get_required_user),
+    uid: str = Depends(get_account_holder),
 ):
     ref_id = body.razorpay_subscription_id or body.razorpay_order_id
     if not ref_id:

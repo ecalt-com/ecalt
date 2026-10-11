@@ -121,6 +121,15 @@ async def _queue_processor() -> None:
                     user = cur.fetchone()
             if not user:
                 continue
+            if not user["email"] and row["channel"] == "email":
+                # Child profiles have no email; drop rather than retry forever.
+                with get_db() as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            "UPDATE notification_queue SET status = 'failed' WHERE id = %s",
+                            (str(row["id"]),),
+                        )
+                continue
 
             payload = row["payload"] or {}
             payload.setdefault("name", user["display_name"] or "")
@@ -177,6 +186,7 @@ async def _daily_spark_dispatch() -> None:
                     JOIN user_interests ui ON ui.uid = u.uid
                     LEFT JOIN notification_preferences np ON np.uid = u.uid
                     WHERE u.last_active_date IS NOT NULL
+                      AND u.profile_type = 'account'  -- child profiles have no email
                       AND array_length(ui.topics, 1) >= 1
                       AND EXTRACT(HOUR FROM (now() AT TIME ZONE COALESCE(np.timezone, 'UTC'))) BETWEEN 7 AND 9
                       AND {not_sent}
@@ -255,6 +265,7 @@ async def _re_engagement_ladder() -> None:
                         LEFT JOIN notification_preferences np ON np.uid = u.uid
                         LEFT JOIN domain_mastery dm ON dm.uid = u.uid
                         WHERE u.last_active_date IS NOT NULL
+                          AND u.profile_type = 'account'  -- child profiles have no email
                           AND u.last_active_date <= CURRENT_DATE - {min_days}
                           {max_clause}
                           AND {_not_sent_recently(notif_type, suppress_days)}
@@ -305,6 +316,7 @@ async def _streak_risk_check() -> None:
                     FROM users u
                     LEFT JOIN notification_preferences np ON np.uid = u.uid
                     WHERE u.streak_days >= 3
+                      AND u.profile_type = 'account'  -- child profiles have no email
                       AND u.last_active_date = CURRENT_DATE - 1
                       AND {_not_sent_recently("streak_at_risk", 1)}
                       AND {_not_queued("streak_at_risk")}
@@ -340,6 +352,7 @@ async def _streak_lost_check() -> None:
                     FROM users u
                     LEFT JOIN notification_preferences np ON np.uid = u.uid
                     WHERE u.streak_days >= 2
+                      AND u.profile_type = 'account'  -- child profiles have no email
                       AND u.last_active_date = CURRENT_DATE - 2
                       AND {_not_sent_recently("streak_lost", 2)}
                       AND {_not_queued("streak_lost")}
@@ -375,6 +388,7 @@ async def _streak_milestone_check() -> None:
                     FROM users u
                     LEFT JOIN notification_preferences np ON np.uid = u.uid
                     WHERE u.streak_days IN (3, 7, 14, 30)
+                      AND u.profile_type = 'account'  -- child profiles have no email
                       AND u.last_active_date = CURRENT_DATE
                       AND {_not_sent_recently("streak_milestone", 1)}
                       AND {_not_queued("streak_milestone")}
@@ -415,6 +429,7 @@ async def _journey_completion_nudge() -> None:
                     LEFT JOIN user_progress up ON up.uid = u.uid AND up.journey_id = j.id
                     LEFT JOIN notification_preferences np ON np.uid = u.uid
                     WHERE j.steps IS NOT NULL
+                      AND u.profile_type = 'account'  -- child profiles have no email
                       AND {_not_sent_recently("journey_almost_done", 3)}
                       AND {_not_queued("journey_almost_done")}
                     GROUP BY u.uid, u.email, u.display_name, j.id, j.title,
@@ -462,6 +477,7 @@ async def _mind_signature_nudge() -> None:
                     JOIN domain_mastery dm ON dm.uid = u.uid
                     LEFT JOIN notification_preferences np ON np.uid = u.uid
                     WHERE dm.mastery_level BETWEEN 0.30 AND 0.49
+                      AND u.profile_type = 'account'  -- child profiles have no email
                       AND dm.concept_count >= 2
                       AND {_not_sent_recently("mind_signature_nudge", 7)}
                       AND {_not_queued("mind_signature_nudge")}
@@ -513,6 +529,7 @@ async def _weekly_digest_dispatch() -> None:
                     LEFT JOIN user_progress up ON up.uid = u.uid
                     LEFT JOIN notification_preferences np ON np.uid = u.uid
                     WHERE u.last_active_date >= CURRENT_DATE - 6
+                      AND u.profile_type = 'account'  -- child profiles have no email
                       AND {_not_sent_recently("weekly_digest", 6)}
                     GROUP BY u.uid, u.email, u.display_name, np.preferred_channel,
                              np.email_enabled, np.whatsapp_opted_in, np.whatsapp_enabled
@@ -681,7 +698,7 @@ async def _scheduled_deletion_dispatch() -> None:
     """Hard-delete accounts whose revocation grace window (14 days) has passed."""
     from app.core.database import get_db
     from app.services.account_service import delete_user_account
-    from app.services.firebase_admin import delete_firebase_user
+    from app.services.firebase_admin import purge_login
 
     try:
         with get_db() as conn:
@@ -698,7 +715,7 @@ async def _scheduled_deletion_dispatch() -> None:
     for r in rows:
         try:
             delete_user_account(r["uid"])
-            await delete_firebase_user(r["uid"])
+            await purge_login(r["uid"])
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
@@ -715,6 +732,7 @@ async def _scheduled_deletion_dispatch() -> None:
 async def _family_lifecycle_dispatch() -> None:
     """Daily lifecycle sweep. Sections are isolated — one failing doesn't stop the rest."""
     await _lifecycle_age_up()
+    await _lifecycle_turn_13()
     await _lifecycle_pending_expiry()
     await _lifecycle_reconsent()
     await _lifecycle_retention()
@@ -735,7 +753,8 @@ async def _lifecycle_age_up() -> None:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT uid, email, display_name, birth_year, birth_month, jurisdiction
+                    SELECT uid, email, display_name, birth_year, birth_month, jurisdiction,
+                           profile_type
                       FROM users
                      WHERE age_group_flag IN ('teen', 'child')
                        AND birth_year IS NOT NULL
@@ -750,6 +769,9 @@ async def _lifecycle_age_up() -> None:
 
     for u in candidates:
         if age_from_birth(u["birth_year"], u.get("birth_month")) < ADULT_AGE:
+            continue
+        if u.get("profile_type") == "profile":
+            await _age_up_unclaimed_profile(u)
             continue
         try:
             with get_db() as conn:
@@ -803,13 +825,127 @@ async def _lifecycle_age_up() -> None:
             logger.error("lifecycle.age_up: uid=%s failed: %s", u["uid"], e)
 
 
+async def _age_up_unclaimed_profile(u: dict) -> None:
+    """An 18-year-old family profile has no login of its own, so graduating the
+    link would orphan it. Lift the child controls, keep the parent link, and
+    ask the parent to hand over a claim code (Family dashboard) so the new
+    adult can sign in with their own Google account."""
+    from app.core.auth import invalidate_status_cache
+    from app.core.config import settings
+    from app.core.database import get_db
+    from app.services.consent_service import record_consent_event
+    from html import escape
+    from app.services.email_service import send_family_notice_email
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE users SET age_group_flag = 'adult', paused = false WHERE uid = %s",
+                    (u["uid"],),
+                )
+                cur.execute(
+                    "UPDATE child_settings SET chat_enabled = true, content_age_band = NULL, "
+                    "updated_at = now() WHERE child_uid = %s",
+                    (u["uid"],),
+                )
+                cur.execute(
+                    "SELECT fl.parent_uid, p.email FROM family_links fl "
+                    "JOIN users p ON p.uid = fl.parent_uid "
+                    "WHERE fl.child_uid = %s AND fl.status = 'active'",
+                    (u["uid"],),
+                )
+                link = cur.fetchone()
+                record_consent_event(
+                    u["uid"], "age_up", method="lifecycle_profile",
+                    parent_uid=link["parent_uid"] if link else None,
+                    jurisdiction=u.get("jurisdiction"),
+                    details={"awaiting_claim": True}, cur=cur,
+                )
+        invalidate_status_cache(u["uid"])
+        if link and link.get("email"):
+            name = escape(u.get("display_name") or "Your child")
+            await send_family_notice_email(
+                link["email"], link["parent_uid"],
+                f"{name} is now an adult — give them their own ECALT login",
+                [f"<strong>{name}</strong> has turned 18. Their profile still lives on your "
+                 "account, so their parental controls have been lifted but they can only "
+                 "use ECALT through your sign-in.",
+                 "Open their profile in your Family dashboard and choose “Give them their own "
+                 "login”. They sign in with their own Google account and keep all their "
+                 "journeys and progress."],
+                cta_url=f"{settings.FRONTEND_URL}/family/child/{u['uid']}",
+                cta_label="Open Family dashboard",
+            )
+        logger.info("lifecycle.age_up: profile uid=%s awaiting claim", u["uid"])
+    except Exception as e:
+        logger.error("lifecycle.age_up: profile uid=%s failed: %s", u["uid"], e)
+
+
+async def _lifecycle_turn_13() -> None:
+    """Under-13 children who turned 13 move to the teen age band. Parents of
+    profiles are told the child can now have their own login if they want."""
+    from app.core.config import settings
+    from app.core.database import get_db
+    from html import escape
+    from app.core.jurisdiction import HARD_FLOOR_AGE, age_from_birth
+    from app.services.email_service import send_family_notice_email
+
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT u.uid, u.display_name, u.birth_year, u.birth_month, u.profile_type,
+                           fl.parent_uid, p.email AS parent_email
+                      FROM users u
+                 LEFT JOIN family_links fl ON fl.child_uid = u.uid AND fl.status = 'active'
+                 LEFT JOIN users p ON p.uid = fl.parent_uid
+                     WHERE u.age_group_flag = 'child'
+                       AND u.birth_year IS NOT NULL
+                       AND u.birth_year <= EXTRACT(year FROM now())::int - %s + 1
+                    """,
+                    (HARD_FLOOR_AGE,),
+                )
+                candidates = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        logger.error("lifecycle.turn_13: query failed: %s", e)
+        return
+
+    for u in candidates:
+        if age_from_birth(u["birth_year"], u.get("birth_month")) < HARD_FLOOR_AGE:
+            continue
+        try:
+            with get_db() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE users SET age_group_flag = 'teen' WHERE uid = %s AND age_group_flag = 'child'",
+                        (u["uid"],),
+                    )
+            if u.get("profile_type") == "profile" and u.get("parent_email"):
+                name = escape(u.get("display_name") or "Your child")
+                await send_family_notice_email(
+                    u["parent_email"], u["parent_uid"],
+                    f"{name} just turned 13",
+                    [f"<strong>{name}</strong> is now 13. Their profile keeps working exactly "
+                     "as before, and you can still see everything in it.",
+                     "If you'd like, you can now give them their own login: open their profile "
+                     "in the Family dashboard and choose “Give them their own login”. Teens with "
+                     "their own login get more privacy — you see summaries rather than full chats."],
+                    cta_url=f"{settings.FRONTEND_URL}/family/child/{u['uid']}",
+                    cta_label="Open Family dashboard",
+                )
+            logger.info("lifecycle.turn_13: uid=%s", u["uid"])
+        except Exception as e:
+            logger.error("lifecycle.turn_13: uid=%s failed: %s", u["uid"], e)
+
+
 async def _lifecycle_pending_expiry() -> None:
     """COPPA data minimization: consent never arrived → hard-delete after 30 days.
     (Card-tier children awaiting verification have consent_given_at set → excluded.)"""
     from app.core.database import get_db
     from app.services.account_service import delete_user_account
     from app.services.consent_service import record_consent_event
-    from app.services.firebase_admin import delete_firebase_user
+    from app.services.firebase_admin import purge_login
 
     try:
         with get_db() as conn:
@@ -835,7 +971,7 @@ async def _lifecycle_pending_expiry() -> None:
                 details={"trigger": "consent_never_confirmed"},
             )
             delete_user_account(r["uid"])
-            await delete_firebase_user(r["uid"])
+            await purge_login(r["uid"])
             logger.info("lifecycle.pending_expiry: deleted uid=%s", r["uid"])
         except Exception as e:
             logger.error("lifecycle.pending_expiry: uid=%s failed: %s", r["uid"], e)

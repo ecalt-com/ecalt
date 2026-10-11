@@ -59,44 +59,6 @@ async def _get_access_token() -> Optional[str]:
     return _token_cache["token"]
 
 
-async def create_firebase_user(email: str, password: str, display_name: str) -> tuple[Optional[str], Optional[str]]:
-    """Create an email/password Firebase Auth user (managed child credential).
-
-    Returns (uid, None) on success, (None, error_code) on failure — error_code is
-    "not_configured", a Firebase error like "EMAIL_EXISTS", or an HTTP/exception tag.
-    The password is passed straight through to Firebase and never stored.
-    """
-    try:
-        token = await _get_access_token()
-        if not token:
-            logger.warning("FIREBASE_SERVICE_ACCOUNT_JSON not set — cannot create Firebase user")
-            return None, "not_configured"
-        body = {"email": email, "password": password, "displayName": display_name, "emailVerified": False}
-        if settings.FIREBASE_PROJECT_ID:
-            body["targetProjectId"] = settings.FIREBASE_PROJECT_ID
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            r = await client.post(
-                "https://identitytoolkit.googleapis.com/v1/accounts:signUp",
-                headers={"Authorization": f"Bearer {token}"},
-                json=body,
-            )
-        if r.status_code == 200:
-            uid = r.json().get("localId")
-            if uid:
-                logger.info("created Firebase auth user %s (managed child)", uid)
-                return uid, None
-            return None, "no_local_id"
-        try:
-            code = r.json().get("error", {}).get("message") or f"http_{r.status_code}"
-        except Exception:
-            code = f"http_{r.status_code}"
-        logger.warning("Firebase user create failed status=%s code=%s", r.status_code, code)
-        return None, code
-    except Exception as e:
-        logger.warning("Firebase user create errored: %s", e)
-        return None, type(e).__name__
-
-
 async def delete_firebase_user(uid: str) -> bool:
     """Delete a Firebase Auth user. Returns True on success, False otherwise."""
     try:
@@ -127,3 +89,26 @@ async def delete_firebase_user(uid: str) -> bool:
     except Exception as e:
         logger.warning("Firebase user delete errored uid=%s: %s", uid, e)
         return False
+
+
+async def purge_login(uid: str) -> bool:
+    """Delete the Firebase login behind a users.uid, if it has one.
+
+    Ordinary accounts: the users.uid is the Firebase uid. Family profiles
+    ('prof_…') have no login unless the child claimed theirs, in which case
+    auth_identities maps their Firebase uid to the profile. The mapping row is
+    always removed so a later sign-in with that Google account starts fresh.
+    """
+    if not uid.startswith("prof_"):
+        return await delete_firebase_user(uid)
+
+    from app.core.auth import invalidate_identity_cache
+    from app.core.database import get_db
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM auth_identities WHERE uid = %s RETURNING firebase_uid", (uid,))
+            row = cur.fetchone()
+    if not row:
+        return True  # unclaimed profile — there is no login to purge
+    invalidate_identity_cache(row["firebase_uid"])
+    return await delete_firebase_user(row["firebase_uid"])

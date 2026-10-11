@@ -1,6 +1,7 @@
 import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus, QuizQuestion, QuizSet, QuizHint, QuizResult, StepVisualResponse, VisualEventType } from './types'
 export type { LearnerPurpose, TopicExpertise, QuizVerdict } from './types'
 import { getImpersonationSessionId } from './impersonationStore'
+import { getParentUnlock, getProfileHeaderValue, requestParentUnlock } from './profileStore'
 
 // In production, Vercel rewrites /api/* → Railway (no env var needed, no mixed-content).
 // In local dev, the Vite proxy forwards /api/* → localhost:8000.
@@ -21,23 +22,48 @@ export function apiErrorCode(err: unknown): string | null {
   return null
 }
 
-export async function request<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+// Headers every authenticated call needs: the Firebase token, plus the admin
+// impersonation session, the active family profile (X-Profile-Id) and a
+// parent PIN unlock when present. Use this for raw fetch() calls too —
+// a call without X-Profile-Id silently acts as the parent.
+export function authHeaders(token?: string | null): Record<string, string> {
+  const headers: Record<string, string> = {}
   if (token) headers['Authorization'] = `Bearer ${token}`
   const impersonationId = getImpersonationSessionId()
   if (impersonationId) headers['X-Impersonate-Session'] = impersonationId
+  const profileId = getProfileHeaderValue()
+  if (profileId) headers['X-Profile-Id'] = profileId
+  const unlock = getParentUnlock()
+  if (unlock) headers['X-Parent-Unlock'] = unlock
+  return headers
+}
 
-  const res = await fetch(`${BASE}${path}`, {
-    headers,
+async function toApiError(res: Response): Promise<ApiError> {
+  const body = await res.json().catch(() => ({ detail: 'Unknown error' }))
+  const err = new Error(
+    typeof body.detail === 'string' ? body.detail : (body.detail?.message ?? `Request failed: ${res.status}`)
+  ) as ApiError
+  err.status = res.status
+  err.detail = body.detail
+  return err
+}
+
+export async function request<T>(path: string, init?: RequestInit, token?: string): Promise<T> {
+  const send = () => fetch(`${BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
     ...init,
   })
+
+  let res = await send()
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: 'Unknown error' }))
-    const err = new Error(
-      typeof body.detail === 'string' ? body.detail : (body.detail?.message ?? `Request failed: ${res.status}`)
-    ) as ApiError
-    err.status = res.status
-    err.detail = body.detail
+    let err = await toApiError(res)
+    // Parent-only action from an account with child profiles: ask for the
+    // PIN once, then retry with the fresh unlock header.
+    if (res.status === 403 && apiErrorCode(err) === 'parent_unlock_required' && await requestParentUnlock()) {
+      res = await send()
+      if (res.ok) return res.status === 204 ? (undefined as T) : res.json()
+      err = await toApiError(res)
+    }
     throw err
   }
   if (res.status === 204) return undefined as T
@@ -198,6 +224,12 @@ export interface UserProfile {
   consent_status?: string | null
   birth_year?: number | null
   birth_month?: number | null
+  // Family profiles: 'profile' = a child profile used through the parent's login.
+  profile_type?: 'account' | 'profile'
+  avatar?: string | null
+  age_group_flag?: 'adult' | 'teen' | 'child' | null
+  managed?: boolean
+  paused?: boolean
 }
 
 // ── Notification preferences ──────────────────────────────────────────────────

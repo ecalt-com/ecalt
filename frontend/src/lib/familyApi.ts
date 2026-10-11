@@ -1,6 +1,6 @@
 // Typed wrappers for the parental-accounts endpoints (/family/* and the
 // consent surfaces under /users). Contracts: backend/plans/parental-accounts/.
-import { request } from './api'
+import { authHeaders, request } from './api'
 
 export type VerificationTier = 'email_plus' | 'card' | 'id'
 export type VerificationStatus = 'unverified' | 'pending' | 'verified'
@@ -9,10 +9,14 @@ export type TranscriptVisibility = 'summaries' | 'full'
 
 // ── Children list / create / delete ──────────────────────────────────────────
 
+export type ProfileType = 'account' | 'profile'
+
 export interface FamilyChild {
   child_uid: string
   display_name: string | null
-  email: string | null
+  email: string | null  // null for child profiles (no login of their own)
+  profile_type: ProfileType
+  avatar: string | null
   account_status: string
   age_group_flag: 'teen' | 'child' | null
   birth_year: number | null
@@ -33,19 +37,21 @@ export interface FamilyChild {
 export const getChildren = (token: string): Promise<{ children: FamilyChild[] }> =>
   request('/api/v1/family/children', undefined, token)
 
+// Adds a child *profile*: the child uses ECALT through the parent's sign-in,
+// so no child email or password is collected.
 export interface CreateChildBody {
   display_name: string
   birth_year: number
   birth_month?: number
-  email: string
-  password: string
   country?: string
+  avatar?: string
 }
 
 export interface CreateChildResponse {
   child_uid: string
   display_name: string
-  email: string
+  avatar: string | null
+  profile_type: ProfileType
   age_group: 'teen' | 'child'
   chat_enabled: boolean
   managed: boolean
@@ -219,7 +225,7 @@ export const reconsentChild = (childUid: string, token: string): Promise<{ statu
 // Child data export is a file download (Content-Disposition: attachment).
 export const exportChildData = async (childUid: string, token: string): Promise<Blob> => {
   const res = await fetch(`/api/v1/family/children/${childUid}/export`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: authHeaders(token),
   })
   if (!res.ok) throw new Error(`Export failed: ${res.status}`)
   return res.blob()
@@ -273,3 +279,60 @@ export const reportConsent = (childUid: string, reportToken: string): Promise<{ 
     method: 'POST',
     body: JSON.stringify({ child_uid: childUid, token: reportToken }),
   })
+
+// ── Family profiles: picker, parent PIN, claim ───────────────────────────────
+// Contract: backend/plans/family-profiles/README.md.
+
+export interface PickerAccount {
+  uid: string
+  display_name: string | null
+  photo_url: string | null
+  avatar: string | null
+  profile_type: ProfileType
+}
+
+export interface PickerProfile {
+  uid: string
+  display_name: string | null
+  avatar: string | null
+  age_group: 'teen' | 'child' | 'adult' | null
+  account_status: string
+  paused: boolean
+  onboarding_done: boolean
+  chat_enabled: boolean
+  verification_required: boolean | null
+}
+
+export interface ProfilesResponse {
+  account: PickerAccount
+  profiles: PickerProfile[]
+  pin_set: boolean
+}
+
+export const getProfiles = (token: string): Promise<ProfilesResponse> =>
+  request('/api/v1/family/profiles', undefined, token)
+
+export const setParentPin = (pin: string, currentPin: string | null, token: string): Promise<{ pin_set: boolean }> =>
+  request('/api/v1/family/pin', {
+    method: 'POST',
+    body: JSON.stringify(currentPin ? { pin, current_pin: currentPin } : { pin }),
+  }, token)
+
+export const verifyParentPin = (pin: string, token: string): Promise<{ unlock_token: string; expires_in: number }> =>
+  request('/api/v1/family/pin/verify', { method: 'POST', body: JSON.stringify({ pin }) }, token)
+
+// Needs a token from a sign-in within the last 5 minutes (re-auth with Google first).
+export const resetParentPin = (pin: string, token: string): Promise<{ pin_set: boolean }> =>
+  request('/api/v1/family/pin/reset', { method: 'POST', body: JSON.stringify({ pin }) }, token)
+
+export interface ClaimInvite {
+  code: string
+  claim_url: string
+  expires_at: string
+}
+
+export const createClaimInvite = (childUid: string, token: string): Promise<ClaimInvite> =>
+  request(`/api/v1/family/children/${childUid}/claim-invite`, { method: 'POST' }, token)
+
+export const claimProfile = (code: string, token: string): Promise<{ status: string; uid: string }> =>
+  request('/api/v1/users/claim', { method: 'POST', body: JSON.stringify({ code }) }, token)

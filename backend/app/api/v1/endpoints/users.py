@@ -8,7 +8,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from app.core.auth import get_required_user, get_acting_uid, invalidate_status_cache
+from app.core.auth import (
+    get_account_holder,
+    get_acting_uid,
+    get_required_user,
+    get_unlocked_account_holder,
+    invalidate_identity_cache,
+    invalidate_profile_cache,
+    invalidate_status_cache,
+)
 from app.core.database import get_db
 from app.core.limiter import limiter
 from app.core.jurisdiction import (
@@ -48,6 +56,15 @@ class UserProfile(BaseModel):
     birth_month: Optional[int] = None
     profession: Optional[str] = None
     role: str = "learner"  # 'parent' once they manage a family
+    # Parental-control state, so the client can show the right screen at
+    # sign-in: a managed child awaiting the parent's card check must not be
+    # shown the self-signup "enter your parent's email" form.
+    managed: bool = False
+    paused: bool = False
+    # Family profiles: 'profile' = a child profile used through the parent's login.
+    profile_type: str = "account"
+    avatar: Optional[str] = None
+    age_group_flag: Optional[str] = None
 
 
 class UserUpsertRequest(BaseModel):
@@ -61,9 +78,110 @@ class UserUpsertRequest(BaseModel):
                                    description="ISO 3166-1 alpha-2, from geo detection or user declaration")
 
 
+def _load_existing_user(uid: str) -> Optional[dict]:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT u.birth_year, u.account_status, u.consent_given_at, u.jurisdiction,
+                       COALESCE(cs.managed, false) AS managed
+                  FROM users u
+             LEFT JOIN child_settings cs ON cs.child_uid = u.uid
+                 WHERE u.uid = %s
+                """,
+                (uid,),
+            )
+            row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def _is_managed(uid: str) -> bool:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT managed FROM child_settings WHERE child_uid = %s", (uid,))
+            row = cur.fetchone()
+    return bool(row and row.get("managed"))
+
+
+def _issue_consent_request(uid: str, parent_email: str, jurisdiction: Optional[str],
+                           ip: Optional[str]) -> str:
+    """Create a fresh consent token. Earlier tokens are marked superseded,
+    never deleted — the request trail is part of the consent record."""
+    token = str(uuid.uuid4())
+    expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE parental_consent SET status = 'superseded' "
+                "WHERE uid = %s AND status = 'pending'",
+                (uid,),
+            )
+            cur.execute(
+                """
+                INSERT INTO parental_consent (token, uid, parent_email, expires_at)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (token, uid, parent_email, expires_at),
+            )
+            record_consent_event(
+                uid, "requested",
+                parent_email=parent_email, method="email_link",
+                jurisdiction=jurisdiction, ip_hash=ip, cur=cur,
+            )
+    return token
+
+
+def _update_profile_only(uid: str, body: UserUpsertRequest) -> UserProfile:
+    """Refresh display fields only — never age, status or consent."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO users (uid, email, display_name, photo_url)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (uid) DO UPDATE
+                    SET email        = EXCLUDED.email,
+                        display_name = EXCLUDED.display_name,
+                        photo_url    = EXCLUDED.photo_url
+                RETURNING *
+                """,
+                (uid, body.email, body.display_name, body.photo_url),
+            )
+            row = dict(cur.fetchone())
+    return UserProfile(**{
+        **row,
+        "needs_birth_year": row.get("birth_year") is None,
+        "managed": _is_managed(uid),
+    })
+
+
 @router.post("", response_model=UserProfile, summary="Upsert user on sign-in")
-async def upsert_user(body: UserUpsertRequest, request: Request, uid: str = Depends(get_required_user)):
+async def upsert_user(body: UserUpsertRequest, request: Request, uid: str = Depends(get_account_holder)):
     """Called once after Google sign-in. Enforces the COPPA/GDPR/DPDP age gate when birth_year is provided."""
+    if body.birth_year is not None:
+        existing = _load_existing_user(uid)
+        if existing and existing.get("birth_year") is not None:
+            # Birth data is immutable once recorded. Re-submitting a different
+            # birth year must never re-run the age gate: an adult year would
+            # lift a pending teen or managed child straight to 'active', and an
+            # under-13 year would purge a managed child's parent-made login.
+            # The one legitimate re-submit is a self-signup teen still waiting
+            # on consent, re-sending the request (judged on the STORED age).
+            if (body.parent_email
+                    and existing.get("account_status") == "parental_consent_pending"
+                    and existing.get("consent_given_at") is None
+                    and not existing.get("managed")):
+                profile = _update_profile_only(uid, body)
+                jurisdiction = existing.get("jurisdiction")
+                token = _issue_consent_request(
+                    uid, body.parent_email, jurisdiction,
+                    hash_ip(request.client.host if request.client else None),
+                )
+                from app.services.email_service import send_parental_consent_email
+                asyncio.ensure_future(send_parental_consent_email(body.parent_email, uid, token))
+                return profile
+            return _update_profile_only(uid, body)
+
     if body.birth_year is not None:
         age = age_from_birth(body.birth_year, body.birth_month)
         jurisdiction = body.country.strip().upper() if body.country else None
@@ -123,29 +241,7 @@ async def upsert_user(body: UserUpsertRequest, request: Request, uid: str = Depe
                     )
                     row = cur.fetchone()
 
-            # Create a fresh consent token. Earlier tokens are marked superseded,
-            # never deleted — the request trail is part of the consent record.
-            token = str(uuid.uuid4())
-            expires_at = datetime.now(timezone.utc) + timedelta(days=7)
-            with get_db() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE parental_consent SET status = 'superseded' "
-                        "WHERE uid = %s AND status = 'pending'",
-                        (uid,),
-                    )
-                    cur.execute(
-                        """
-                        INSERT INTO parental_consent (token, uid, parent_email, expires_at)
-                        VALUES (%s, %s, %s, %s)
-                        """,
-                        (token, uid, body.parent_email, expires_at),
-                    )
-                    record_consent_event(
-                        uid, "requested",
-                        parent_email=body.parent_email, method="email_link",
-                        jurisdiction=jurisdiction, ip_hash=ip, cur=cur,
-                    )
+            token = _issue_consent_request(uid, body.parent_email, jurisdiction, ip)
 
             # Fire-and-forget consent email
             from app.services.email_service import send_parental_consent_email
@@ -191,23 +287,7 @@ async def upsert_user(body: UserUpsertRequest, request: Request, uid: str = Depe
         return UserProfile(**dict(row))
 
     # No birth_year (re-login or legacy client): update profile only
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                INSERT INTO users (uid, email, display_name, photo_url)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (uid) DO UPDATE
-                    SET email        = EXCLUDED.email,
-                        display_name = EXCLUDED.display_name,
-                        photo_url    = EXCLUDED.photo_url
-                RETURNING *
-                """,
-                (uid, body.email, body.display_name, body.photo_url),
-            )
-            row = cur.fetchone()
-    needs = dict(row).get('birth_year') is None
-    return UserProfile(**{**dict(row), 'needs_birth_year': needs})
+    return _update_profile_only(uid, body)
 
 
 @router.get("/me", response_model=UserProfile, summary="Get current user profile")
@@ -219,9 +299,11 @@ def get_me(ctx: tuple = Depends(get_acting_uid)):
                 """
                 SELECT u.*,
                        COALESCE(np.whatsapp_opted_in, FALSE) AS whatsapp_opted_in,
-                       (np.uid IS NOT NULL)                  AS has_notification_prefs
+                       (np.uid IS NOT NULL)                  AS has_notification_prefs,
+                       COALESCE(cs.managed, FALSE)           AS managed
                   FROM users u
              LEFT JOIN notification_preferences np ON np.uid = u.uid
+             LEFT JOIN child_settings cs ON cs.child_uid = u.uid
                  WHERE u.uid = %s
                 """,
                 (uid,),
@@ -287,6 +369,101 @@ def save_profession(body: ProfessionRequest, uid: str = Depends(get_required_use
                 (body.profession.strip(), uid),
             )
     return {"saved": True}
+
+
+# ── Claim a family profile with your own Google login ──────────────────────
+
+class ClaimRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=16)
+
+
+@router.post("/claim", summary="Attach the caller's Google login to a family profile")
+@limiter.limit("10/hour")
+def claim_profile(body: ClaimRequest, request: Request):
+    """The child signs in with their own Google account and redeems the code
+    their parent created. The profile keeps its uid and all learner data;
+    auth_identities maps the new Firebase login onto it."""
+    from app.core.auth import token_claims
+    claims = token_claims(request.headers.get("authorization"))
+    firebase_uid = claims and (claims.get("uid") or claims.get("sub"))
+    if not firebase_uid:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if firebase_uid.startswith("prof_"):
+        raise HTTPException(status_code=400, detail={"error": "invalid_login"})
+    code = body.code.strip().upper()
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT pc.uid, pc.parent_uid, pc.expires_at, pc.claimed_at,
+                       u.profile_type, u.jurisdiction
+                  FROM profile_claims pc
+                  JOIN users u ON u.uid = pc.uid
+                  JOIN family_links fl ON fl.child_uid = pc.uid
+                                      AND fl.parent_uid = pc.parent_uid
+                                      AND fl.status = 'active'
+                 WHERE pc.code = %s
+                 FOR UPDATE OF pc
+                """,
+                (code,),
+            )
+            invite = cur.fetchone()
+            expires_at = invite and invite["expires_at"]
+            if expires_at is not None and expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if (not invite or invite["claimed_at"] is not None
+                    or invite["profile_type"] != "profile"
+                    or expires_at <= datetime.now(timezone.utc)):
+                raise HTTPException(status_code=400, detail={
+                    "error": "invalid_claim_code",
+                    "message": "This code is invalid or has expired. Ask your parent for a new one.",
+                })
+
+            cur.execute("SELECT 1 FROM auth_identities WHERE firebase_uid = %s", (firebase_uid,))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail={
+                    "error": "account_exists",
+                    "message": "This Google account is already linked to an ECALT profile.",
+                })
+            # A row with no birth year is the sign-in stub created before any
+            # age gate — it holds only name/email, so it's safe to replace.
+            # Anything more is a real account we must not silently abandon.
+            cur.execute("SELECT birth_year FROM users WHERE uid = %s", (firebase_uid,))
+            existing = cur.fetchone()
+            if existing and existing.get("birth_year") is not None:
+                raise HTTPException(status_code=409, detail={
+                    "error": "account_exists",
+                    "message": "This Google account already has its own ECALT account. "
+                               "Sign in with a different Google account to claim this profile.",
+                })
+            if existing:
+                cur.execute("DELETE FROM notification_preferences WHERE uid = %s", (firebase_uid,))
+                cur.execute("DELETE FROM users WHERE uid = %s", (firebase_uid,))
+
+            profile_uid = invite["uid"]
+            cur.execute(
+                "INSERT INTO auth_identities (firebase_uid, uid) VALUES (%s, %s)",
+                (firebase_uid, profile_uid),
+            )
+            cur.execute(
+                "UPDATE users SET profile_type = 'account', email = %s, "
+                "photo_url = COALESCE(%s, photo_url) WHERE uid = %s",
+                (claims.get("email"), claims.get("picture"), profile_uid),
+            )
+            cur.execute("UPDATE profile_claims SET claimed_at = now() WHERE code = %s", (code,))
+            record_consent_event(
+                profile_uid, "granted",
+                parent_uid=invite["parent_uid"], method="claim",
+                jurisdiction=invite.get("jurisdiction"),
+                ip_hash=hash_ip(request.client.host if request.client else None),
+                details={"trigger": "child_claimed_own_login"}, cur=cur,
+            )
+
+    invalidate_identity_cache(firebase_uid)
+    invalidate_profile_cache(parent_uid=invite["parent_uid"], profile_uid=profile_uid)
+    invalidate_status_cache(profile_uid)
+    return {"status": "claimed", "uid": profile_uid}
 
 
 # ── COPPA parental consent confirmation (no auth) ─────────────────────────────
@@ -422,7 +599,7 @@ def consent_decide(body: ConsentDecisionRequest, request: Request):
 
 @router.post("/consent/resend", summary="Resend the parental consent email")
 @limiter.limit("3/hour")
-async def consent_resend(request: Request, uid: str = Depends(get_required_user)):
+async def consent_resend(request: Request, uid: str = Depends(get_account_holder)):
     # async so ensure_future below has a running event loop (a sync endpoint
     # runs in a worker thread, where it raises "no current event loop").
     with get_db() as conn:
@@ -540,7 +717,7 @@ def get_consent(uid: str = Depends(get_required_user)):
 
 
 @router.post("/me/reconsent", summary="Accept the current privacy policy version")
-def reconsent(request: Request, uid: str = Depends(get_required_user)):
+def reconsent(request: Request, uid: str = Depends(get_account_holder)):
     """Called after a policy-version bump (frontend shows the re-consent banner)."""
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -568,7 +745,7 @@ def reconsent(request: Request, uid: str = Depends(get_required_user)):
 # ── GDPR: data portability ────────────────────────────────────────────────────
 
 @router.get("/me/export", summary="Export all personal data (GDPR Art. 20)")
-def export_account(uid: str = Depends(get_required_user)):
+def export_account(uid: str = Depends(get_unlocked_account_holder)):
     from app.services.account_service import build_user_export
     return JSONResponse(
         content=build_user_export(uid),
@@ -579,15 +756,16 @@ def export_account(uid: str = Depends(get_required_user)):
 # ── GDPR: right to erasure ────────────────────────────────────────────────────
 
 @router.delete("/me", status_code=204, summary="Delete account and all personal data (GDPR Art. 17)")
-async def delete_account(uid: str = Depends(get_required_user)):
-    # Managed under-13 children can't exist without a consent holder — those
-    # must be deleted first. Teens (13+) are unlinked and notified instead.
+async def delete_account(uid: str = Depends(get_unlocked_account_holder)):
+    # Child profiles (no login of their own) and managed under-13s can't exist
+    # without a consent holder — those must be deleted first. Teens with their
+    # own login are unlinked and notified instead.
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT fl.child_uid, u.email, u.display_name, u.age_group_flag,
-                       COALESCE(cs.managed, false) AS managed
+                       u.profile_type, COALESCE(cs.managed, false) AS managed
                   FROM family_links fl
                   JOIN users u ON u.uid = fl.child_uid
              LEFT JOIN child_settings cs ON cs.child_uid = fl.child_uid
@@ -597,13 +775,15 @@ async def delete_account(uid: str = Depends(get_required_user)):
             )
             links = [dict(r) for r in cur.fetchall()]
 
-    blockers = [l for l in links if l["managed"] and l["age_group_flag"] == "child"]
+    blockers = [l for l in links
+                if l.get("profile_type") == "profile"
+                or (l["managed"] and l["age_group_flag"] == "child")]
     if blockers:
         raise HTTPException(
             status_code=409,
             detail={
                 "error": "managed_children_exist",
-                "message": "Delete your under-13 children's accounts from the Family dashboard before deleting your own.",
+                "message": "Delete your children's profiles from the Family dashboard before deleting your own.",
             },
         )
 
@@ -626,5 +806,5 @@ async def delete_account(uid: str = Depends(get_required_user)):
                 logger.warning("unlink notice failed for child=%s", link["child_uid"])
 
     # Erasure includes the auth record itself (no-op until service account is configured).
-    from app.services.firebase_admin import delete_firebase_user
-    await delete_firebase_user(uid)
+    from app.services.firebase_admin import purge_login
+    await purge_login(uid)

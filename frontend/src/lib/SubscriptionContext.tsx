@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import { useAuth } from './AuthContext'
-import { getImpersonationSessionId } from './impersonationStore'
+import { authHeaders } from './api'
 
 export interface PlanConfig {
   plan_id: string
@@ -76,9 +76,7 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
     try {
       const token = await getToken()
       if (!token) return
-      const meHeaders: Record<string, string> = { Authorization: `Bearer ${token}` }
-      const impersonationId = getImpersonationSessionId()
-      if (impersonationId) meHeaders['X-Impersonate-Session'] = impersonationId
+      const meHeaders = authHeaders(token)
       const [meRes, plansRes] = await Promise.all([
         window.fetch('/api/v1/subscriptions/me', { headers: meHeaders }),
         window.fetch('/api/v1/subscriptions/plans'),

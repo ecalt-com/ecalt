@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.core.auth import get_required_user
+from app.core.auth import get_active_user, get_required_user
 from app.services.mastery_service import should_generate_signature, update_domain_mastery
 from app.services.mind_signature_service import (
     generate_mind_signature,
@@ -22,7 +22,7 @@ async def get_my_signature(uid: str = Depends(get_required_user)):
 
 
 @router.post("/generate")
-async def trigger_generate(uid: str = Depends(get_required_user)):
+async def trigger_generate(uid: str = Depends(get_active_user)):
     allowed, reason = check_budget(uid, context="ai")
     if not allowed:
         raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
@@ -40,7 +40,7 @@ async def trigger_generate(uid: str = Depends(get_required_user)):
 
 
 @router.post("/generate/force")
-async def force_generate(uid: str = Depends(get_required_user)):
+async def force_generate(uid: str = Depends(get_active_user)):
     """Generate unconditionally — useful for manual refresh or testing."""
     allowed, reason = check_budget(uid, context="ai")
     if not allowed:

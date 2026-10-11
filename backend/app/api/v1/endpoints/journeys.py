@@ -10,7 +10,7 @@ from app.models.schemas import Journey, JourneyStep, JourneysResponse, JourneyWi
 from app.models.visual_schemas import StepVisualResponse, VisualEvent, VisualEventRequest
 from app.services.visual_registry_service import get_step_visual as get_step_visual_row
 from app.services.visual_telemetry_service import record_event as record_visual_event
-from app.core.auth import get_optional_user, get_required_user, get_optional_acting_uid, get_acting_uid
+from app.core.auth import get_optional_user, get_required_user, get_optional_acting_uid, get_acting_uid, get_active_acting_uid
 from app.core.database import get_db
 from app.core.limiter import limiter
 from app.services.ai_service import (
@@ -303,7 +303,7 @@ def _reason_for(j: Journey, profile) -> tuple[str, str]:
 
 
 @router.get("/recommendations", response_model=RecommendationsResponse, summary="Personalised journey recommendations")
-async def journey_recommendations(background_tasks: BackgroundTasks, ctx: tuple = Depends(get_acting_uid)):
+async def journey_recommendations(background_tasks: BackgroundTasks, ctx: tuple = Depends(get_active_acting_uid)):
     uid, _ = ctx
     """
     Returns up to 6 journey recommendations ranked by the user's interest profile.
@@ -562,7 +562,7 @@ class LikeResponse(BaseModel):
     response_model=LikeResponse,
     summary="Toggle a like on a journey (feeds the marketplace popularity score)",
 )
-async def toggle_journey_like(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
+async def toggle_journey_like(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
     uid, _ = ctx
     try:
         with get_db() as conn:
@@ -608,7 +608,7 @@ async def toggle_journey_like(journey_id: str, ctx: tuple = Depends(get_acting_u
     response_model=ExploreResponse,
     summary="Fork a published marketplace journey into your own journeys",
 )
-async def fork_journey(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
+async def fork_journey(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
     """Mirrors POST /explore/confirm: persists an independent copy owned by the
     forking user. The fork starts private again — it earns its own place in the
     marketplace rather than inheriting the source's popularity/approval."""
@@ -682,7 +682,7 @@ class SubmitToMarketplaceResponse(BaseModel):
     response_model=SubmitToMarketplaceResponse,
     summary="Creator opt-in: ask for this journey to be reviewed for the marketplace",
 )
-async def submit_to_marketplace(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
+async def submit_to_marketplace(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
     """Puts the caller's own journey into the admin review queue immediately,
     without waiting for the popularity job. Still requires admin approval
     before it's publicly listed — this only requests review, it never
@@ -741,7 +741,7 @@ class SuggestionsResponse(BaseModel):
     response_model=SuggestionsResponse,
     summary="Post-completion suggestions: next level + similar journeys, unique to the user",
 )
-async def journey_suggestions(journey_id: str, background_tasks: BackgroundTasks, ctx: tuple = Depends(get_acting_uid)):
+async def journey_suggestions(journey_id: str, background_tasks: BackgroundTasks, ctx: tuple = Depends(get_active_acting_uid)):
     uid, _ = ctx
     source = _db_journey(journey_id) or _journey_map.get(journey_id)
     if not source:
@@ -954,7 +954,7 @@ async def get_step_content(
     journey_id: str,
     step_id: str,
     background_tasks: BackgroundTasks,
-    ctx: tuple = Depends(get_acting_uid),
+    ctx: tuple = Depends(get_active_acting_uid),
 ):
     """Returns AI-generated lesson content for a step. Checks cache first.
 
@@ -1032,7 +1032,7 @@ async def get_step_content(
     response_model=StepVisualResponse,
     summary="Get the planned visual for a step, if any",
 )
-async def get_step_visual(journey_id: str, step_id: str, ctx: tuple = Depends(get_acting_uid)):
+async def get_step_visual(journey_id: str, step_id: str, ctx: tuple = Depends(get_active_acting_uid)):
     """Read-only — never triggers planning. Planning happens as a side effect
     of step content generation (ai_service.warm_journey_steps /
     _generate_step_for_journey), gated by VISUAL_INTELLIGENCE_ENABLED.
@@ -1092,7 +1092,7 @@ async def regenerate_step_content(
     request: Request,
     journey_id: str,
     step_id: str,
-    ctx: tuple = Depends(get_acting_uid),
+    ctx: tuple = Depends(get_active_acting_uid),
 ):
     """Force-regenerates a step's content, overwriting the cache."""
     uid, _ = ctx
@@ -1162,7 +1162,7 @@ async def step_feedback(
     step_id: str,
     body: StepFeedbackRequest,
     background_tasks: BackgroundTasks,
-    ctx: tuple = Depends(get_acting_uid),
+    ctx: tuple = Depends(get_active_acting_uid),
 ):
     uid, _ = ctx
     try:

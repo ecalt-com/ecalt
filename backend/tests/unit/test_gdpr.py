@@ -15,6 +15,11 @@ def client():
     from app.core.auth import get_required_user, get_optional_user
 
     app.dependency_overrides[get_required_user] = lambda: TEST_UID
+    # Account-level endpoints (sign-up, billing, deletion) use the account-holder deps.
+    from app.core.auth import get_account_holder, get_signed_in_uid, get_unlocked_account_holder
+    app.dependency_overrides[get_account_holder] = lambda: TEST_UID
+    app.dependency_overrides[get_unlocked_account_holder] = lambda: TEST_UID
+    app.dependency_overrides[get_signed_in_uid] = lambda: TEST_UID
     app.dependency_overrides[get_optional_user] = lambda: TEST_UID
 
     with TestClient(app, raise_server_exceptions=False) as c:

@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowRight, Loader2, MessageCircle } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../lib/AuthContext'
-import { completeOnboarding, optInWhatsApp, saveNotificationPrefs } from '../lib/api'
+import { useProfiles } from '../lib/ProfileContext'
+import { authHeaders, completeOnboarding, optInWhatsApp, saveNotificationPrefs } from '../lib/api'
 
 const TOPICS = [
   { emoji: '🧬', label: 'Biology' },
@@ -53,6 +54,9 @@ function guessDefaultCode(): string {
 export default function OnboardingModal() {
   const navigate = useNavigate()
   const { getToken, dismissOnboarding } = useAuth()
+  // Child profiles skip the WhatsApp step — no phone numbers from children,
+  // and notifications go to the parent's account.
+  const { isKidMode } = useProfiles()
   const [step, setStep] = useState<1 | 2>(1)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [saving, setSaving] = useState(false)
@@ -81,7 +85,7 @@ export default function OnboardingModal() {
           calls.push(
             fetch('/api/v1/users/me/interests', {
               method: 'PATCH',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
               body: JSON.stringify({ topics }),
             }),
           )
@@ -99,8 +103,8 @@ export default function OnboardingModal() {
     }
   }
 
-  const handleTopicsContinue = () => setStep(2)
-  const handleTopicsSkip   = () => finish({ declined: true })
+  const handleTopicsContinue = () => (isKidMode ? finish({}) : setStep(2))
+  const handleTopicsSkip   = () => finish(isKidMode ? {} : { declined: true })
 
   const handleWhatsAppEnable = () => {
     const digits = phoneDigits.replace(/\D/g, '')

@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ECALT — Management Presentation</title>
+<style>
+  :root {
+    --bg: #0a0a12;
+    --surface: #13131f;
+    --card: #1a1a2e;
+    --accent: #7c6af7;
+    --accent2: #4fd1c5;
+    --accent3: #f6ad55;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --border: #2d2d45;
+    --green: #48bb78;
+    --red: #fc8181;
+    --pink: #f687b3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    background: rgba(10,10,18,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex; align-items: center; gap: 1.5rem;
+    height: 52px; overflow-x: auto;
+  }
+  nav a {
+    color: var(--muted); text-decoration: none;
+    font-size: 0.78rem; font-weight: 500; letter-spacing: .03em;
+    white-space: nowrap; padding: 4px 0;
+    border-bottom: 2px solid transparent; transition: all .2s;
+  }
+  nav a:hover { color: var(--accent); border-color: var(--accent); }
+  .nav-logo { color: var(--accent); font-weight: 700; font-size: .9rem; margin-right: .5rem; flex-shrink: 0; }
+
+  /* ── SLIDE ── */
+  .slide {
+    min-height: 100vh; padding: 90px 6vw 60px;
+    display: flex; flex-direction: column; justify-content: center;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .slide:nth-child(odd) { background: var(--bg); }
+  .slide:nth-child(even) { background: var(--surface); }
+
+  .slide-label {
+    font-size: 0.7rem; font-weight: 700; letter-spacing: .15em;
+    text-transform: uppercase; color: var(--accent); margin-bottom: .6rem;
+  }
+  h1 { font-size: clamp(2.2rem, 5vw, 3.8rem); font-weight: 800; line-height: 1.15; }
+  h2 { font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 700; margin-bottom: 1.5rem; }
+  h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: .5rem; color: var(--text); }
+  h4 { font-size: .9rem; font-weight: 600; color: var(--accent2); margin-bottom: .3rem; }
+  p { color: var(--muted); font-size: .95rem; }
+  .lead { font-size: clamp(1rem, 2vw, 1.25rem); color: var(--muted); max-width: 680px; margin-top: 1rem; }
+
+  .tag {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: .72rem; font-weight: 600; letter-spacing: .05em;
+    background: rgba(124,106,247,.18); color: var(--accent); border: 1px solid rgba(124,106,247,.3);
+  }
+  .tag-green { background: rgba(72,187,120,.15); color: var(--green); border-color: rgba(72,187,120,.3); }
+  .tag-amber { background: rgba(246,173,85,.15); color: var(--accent3); border-color: rgba(246,173,85,.3); }
+  .tag-pink { background: rgba(246,135,179,.15); color: var(--pink); border-color: rgba(246,135,179,.3); }
+  .tag-teal { background: rgba(79,209,197,.15); color: var(--accent2); border-color: rgba(79,209,197,.3); }
+
+  /* ── GRID LAYOUTS ── */
+  .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.2rem; margin-top: 1.5rem; }
+  .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; margin-top: 1.5rem; }
+  .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-top: 1.5rem; }
+
+  /* ── CARD ── */
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.4rem; position: relative; overflow: hidden;
+  }
+  .card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 12px 12px 0 0;
+  }
+  .card.amber::before { background: linear-gradient(90deg, var(--accent3), var(--pink)); }
+  .card.teal::before  { background: linear-gradient(90deg, var(--accent2), var(--green)); }
+  .card.pink::before  { background: linear-gradient(90deg, var(--pink), var(--accent)); }
+
+  .card-icon { font-size: 1.8rem; margin-bottom: .7rem; display: block; }
+  .card p { font-size: .87rem; margin-top: .4rem; }
+
+  /* ── STAT ROW ── */
+  .stat-row { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1.5rem; }
+  .stat {
+    flex: 1; min-width: 150px;
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 10px; padding: 1.2rem 1.4rem; text-align: center;
+  }
+  .stat-val { font-size: 2rem; font-weight: 800; color: var(--accent); display: block; }
+  .stat-label { font-size: .78rem; color: var(--muted); margin-top: .2rem; }
+
+  /* ── FLOW ── */
+  .flow { display: flex; flex-wrap: wrap; gap: .8rem; align-items: center; margin-top: 1.2rem; }
+  .flow-step {
+    background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+    padding: .6rem 1.1rem; font-size: .85rem; font-weight: 500;
+  }
+  .flow-arrow { color: var(--accent); font-size: 1.2rem; }
+
+  /* ── TECH BADGE ── */
+  .tech-row { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1rem; }
+  .tech {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 6px; padding: .35rem .8rem;
+    font-size: .8rem; font-weight: 500; color: var(--text);
+  }
+  .tech.highlight { border-color: var(--accent); color: var(--accent); }
+
+  /* ── TABLE ── */
+  table { width: 100%; border-collapse: collapse; margin-top: 1.2rem; font-size: .88rem; }
+  th { background: var(--card); color: var(--accent); font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; padding: .8rem 1rem; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: .75rem 1rem; border-bottom: 1px solid var(--border); color: var(--muted); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--text); font-weight: 500; }
+  .check { color: var(--green); }
+  .cross { color: var(--red); }
+
+  /* ── FEATURE LIST ── */
+  ul.feat { list-style: none; margin-top: .8rem; display: flex; flex-direction: column; gap: .5rem; }
+  ul.feat li { display: flex; gap: .6rem; font-size: .88rem; color: var(--muted); }
+  ul.feat li::before { content: '▸'; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+
+  /* ── TITLE SLIDE ── */
+  #hero { min-height: 100vh; background: radial-gradient(ellipse at 30% 40%, rgba(124,106,247,.18) 0%, transparent 60%), radial-gradient(ellipse at 70% 70%, rgba(79,209,197,.1) 0%, transparent 60%), var(--bg); }
+  .hero-sub { color: var(--accent2); font-size: 1rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 1rem; }
+  .hero-url { color: var(--muted); font-size: .85rem; margin-top: 1.5rem; }
+  .hero-url a { color: var(--accent); }
+  .divider { width: 60px; height: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 2px; margin: 1.5rem 0; }
+
+  /* ── QUOTE BLOCK ── */
+  blockquote {
+    border-left: 3px solid var(--accent); padding: .8rem 1.2rem;
+    margin: 1.2rem 0; background: var(--card); border-radius: 0 8px 8px 0;
+    font-style: italic; color: var(--muted); font-size: .95rem;
+  }
+
+  /* ── SECTION DIVIDER ── */
+  .section-divider {
+    text-align: center; padding: 3rem 1rem;
+    background: linear-gradient(135deg, rgba(124,106,247,.08), rgba(79,209,197,.05));
+    border-bottom: 1px solid var(--border);
+  }
+  .section-divider span { font-size: .7rem; letter-spacing: .2em; text-transform: uppercase; color: var(--accent); }
+  .section-divider h2 { margin: .4rem 0 0; font-size: 1.4rem; }
+
+  /* ── COLS ── */
+  .cols { display: grid; gap: 2rem; margin-top: 1.5rem; }
+  .cols-2 { grid-template-columns: 1fr 1fr; }
+  .cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  @media (max-width: 768px) { .cols-2, .cols-3 { grid-template-columns: 1fr; } }
+
+  /* ── TIMELINE ── */
+  .timeline { margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0; }
+  .tl-item { display: flex; gap: 1.2rem; padding-bottom: 1.5rem; position: relative; }
+  .tl-item::before { content: ''; position: absolute; left: 14px; top: 26px; bottom: 0; width: 2px; background: var(--border); }
+  .tl-item:last-child::before { display: none; }
+  .tl-dot { width: 28px; height: 28px; border-radius: 50%; background: var(--accent); border: 3px solid var(--bg); flex-shrink: 0; margin-top: 2px; display: flex; align-items: center; justify-content: center; font-size: .7rem; font-weight: 700; color: white; }
+  .tl-dot.teal { background: var(--accent2); }
+  .tl-dot.amber { background: var(--accent3); }
+  .tl-content { flex: 1; }
+
+  /* ── PRINT ── */
+  @media print { nav { display: none; } .slide { page-break-after: always; } }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <span class="nav-logo">ECALT</span>
+  <a href="#hero">Overview</a>
+  <a href="#product">Product</a>
+  <a href="#features">Features</a>
+  <a href="#ai">AI Engine</a>
+  <a href="#safety">Safety</a>
+  <a href="#monetization">Monetization</a>
+  <a href="#engagement">Engagement</a>
+  <a href="#admin">Admin</a>
+  <a href="#stack">Tech Stack</a>
+  <a href="#infra">Infrastructure</a>
+  <a href="#compliance">Compliance</a>
+  <a href="#roadmap">Roadmap</a>
+</nav>
+
+
+<!-- ─────────────────── SLIDE 1 — HERO ─────────────────── -->
+<section class="slide" id="hero">
+  <div class="hero-sub">Management Briefing · June 2026</div>
+  <h1>ECALT</h1>
+  <h1 style="background: linear-gradient(90deg,#7c6af7,#4fd1c5); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">Turn Curiosity Into Capability</h1>
+  <div class="divider"></div>
+  <p class="lead">
+    An AI-powered personalised learning platform for kids, families, and lifelong learners.
+    Users type any question and receive a structured, multi-step learning journey — delivered
+    conversationally by state-of-the-art language models with real-time streaming.
+  </p>
+  <div class="stat-row" style="margin-top:2.5rem;">
+    <div class="stat"><span class="stat-val">2</span><span class="stat-label">AI Providers (Anthropic + OpenAI)</span></div>
+    <div class="stat"><span class="stat-val">2</span><span class="stat-label">Payment Gateways (Stripe + Razorpay)</span></div>
+    <div class="stat"><span class="stat-val">2</span><span class="stat-label">Notification Channels (Email + WhatsApp)</span></div>
+    <div class="stat"><span class="stat-val">14+</span><span class="stat-label">API Endpoint Modules</span></div>
+  </div>
+  <p class="hero-url" style="margin-top:2rem;">
+    Live at <a href="https://ecalt.vercel.app" target="_blank">ecalt.vercel.app</a> &nbsp;·&nbsp;
+    API at <a href="https://ecalt-production.up.railway.app" target="_blank">ecalt-production.up.railway.app</a>
+  </p>
+</section>
+
+
+<!-- ─────────────────── SLIDE 2 — WHAT IS ECALT ─────────────────── -->
+<section class="slide" id="product">
+  <div class="slide-label">01 · Product Overview</div>
+  <h2>What ECALT Does</h2>
+  <div class="cols cols-2">
+    <div>
+      <blockquote>
+        "Ask any question, get a personalised AI-powered learning journey. ECALT turns curiosity
+        into capability for kids, families, and lifelong learners."
+      </blockquote>
+      <p style="margin-top:1rem;">ECALT is a full-stack SaaS learning application. A user types any question or topic —
+      the AI instantly generates a structured, multi-step <strong style="color:var(--text)">Journey</strong>.
+      Each step is an interactive AI conversation that teaches, tests, and tracks understanding.
+      Progress is saved, gamified, and visualised as a <strong style="color:var(--text)">Capability Passport</strong>.</p>
+      <div class="tech-row" style="margin-top:1.2rem;">
+        <span class="tag">EdTech</span>
+        <span class="tag tag-teal">AI-Native</span>
+        <span class="tag tag-amber">Family-Safe</span>
+        <span class="tag tag-pink">SaaS / Subscription</span>
+      </div>
+    </div>
+    <div>
+      <h3 style="margin-bottom:1rem;">Application Pages</h3>
+      <ul class="feat">
+        <li><strong style="color:var(--text)">Home</strong> — ask a question, get a Journey preview</li>
+        <li><strong style="color:var(--text)">Explore</strong> — curiosity-driven content discovery</li>
+        <li><strong style="color:var(--text)">Learn</strong> — today's spark + AI conversation + knowledge map</li>
+        <li><strong style="color:var(--text)">Journey</strong> — structured step-by-step learning path</li>
+        <li><strong style="color:var(--text)">Journeys</strong> — library of all journeys (filterable)</li>
+        <li><strong style="color:var(--text)">Passport</strong> — personal capability certificate</li>
+        <li><strong style="color:var(--text)">Mind Signature</strong> — AI-generated learning constellation</li>
+        <li><strong style="color:var(--text)">Pricing</strong> — plan selector with coupon support</li>
+        <li><strong style="color:var(--text)">Profile</strong> — notification prefs, theme, account data</li>
+        <li><strong style="color:var(--text)">Admin</strong> — analytics, budgets, coupons, users</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 3 — CORE FEATURES ─────────────────── -->
+<section class="slide" id="features">
+  <div class="slide-label">02 · Core Features</div>
+  <h2>What Users Can Do</h2>
+  <div class="grid-3">
+
+    <div class="card">
+      <span class="card-icon">🛤️</span>
+      <h3>AI Journeys</h3>
+      <h4>Personalised learning paths</h4>
+      <p>Type any topic → AI generates a structured multi-step Journey. Each step is an expandable lesson
+      with AI-powered explanation. Users mark steps complete; progress is persisted and visualised.</p>
+      <div class="tech-row" style="margin-top:.8rem;">
+        <span class="tech">Optimistic UI updates</span>
+        <span class="tech">Completion overlay</span>
+      </div>
+    </div>
+
+    <div class="card teal">
+      <span class="card-icon">💬</span>
+      <h3>Conversation Interface</h3>
+      <h4>Real-time streaming AI chat</h4>
+      <p>Server-Sent Events stream AI responses token-by-token. Context is preserved across turns.
+      Cliffhanger mechanism sends a re-engagement notification when the user drifts mid-conversation.
+      Budget gate triggers upgrade prompt on exhaustion.</p>
+      <div class="tech-row" style="margin-top:.8rem;">
+        <span class="tech">SSE streaming</span>
+        <span class="tech">Cliffhanger nudge</span>
+      </div>
+    </div>
+
+    <div class="card amber">
+      <span class="card-icon">✨</span>
+      <h3>Today's Spark</h3>
+      <h4>Daily AI knowledge burst</h4>
+      <p>A bite-sized AI-generated fact or concept delivered daily. Free tier: 5 sparks per session
+      (DB-backed, fail-open rate limiter). Paid tier: unlimited. Displayed prominently on the Learn page.</p>
+      <div class="tech-row" style="margin-top:.8rem;">
+        <span class="tech">Rate-limited</span>
+        <span class="tech">Session-scoped</span>
+      </div>
+    </div>
+
+    <div class="card pink">
+      <span class="card-icon">🔭</span>
+      <h3>Explore</h3>
+      <h4>Curiosity-driven discovery</h4>
+      <p>Free-text curiosity input generates an Explore result with AI-curated step nodes.
+      Steps can be toggled complete with the same optimistic update pattern as Journeys.
+      Anonymous users get a session ID for stateless exploration.</p>
+      <div class="tech-row" style="margin-top:.8rem;">
+        <span class="tech">Anonymous-friendly</span>
+        <span class="tech">Step nodes</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="card-icon">🌌</span>
+      <h3>Knowledge Universe</h3>
+      <h4>Visual concept graph</h4>
+      <p>After each AI conversation, the backend extracts named knowledge nodes and maps them
+      into a visual constellation. The user sees their growing web of understood concepts — a
+      living map of their mental model.</p>
+      <div class="tech-row" style="margin-top:.8rem;">
+        <span class="tech">Auto-extraction</span>
+        <span class="tech">D3-powered viz</span>
+      </div>
+    </div>
+
+    <div class="card teal">
+      <span class="card-icon">🪪</span>
+      <h3>Capability Passport</h3>
+      <h4>Shareable achievement record</h4>
+      <p>A structured, public-facing summary of all completed Journeys and demonstrated capabilities.
+      Acts as a verifiable learning portfolio — the "what I know" document a user can share
+      with teachers, employers, or parents.</p>
+      <div class="tech-row" style="margin-top:.8rem;">
+        <span class="tech">Publicly shareable</span>
+        <span class="tech">Journey-linked</span>
+      </div>
+    </div>
+
+    <div class="card amber">
+      <span class="card-icon">🧬</span>
+      <h3>Mind Signature</h3>
+      <h4>AI capability certificate</h4>
+      <p>AI analyses the user's conversation history and mastery data to generate a unique
+      "Mind Signature" — a constellation diagram showing cognitive strengths across domains.
+      Publicly verifiable and shareable. Can be manually refreshed by admins.</p>
+      <div class="tech-row" style="margin-top:.8rem;">
+        <span class="tech">AI-generated</span>
+        <span class="tech">Public verify endpoint</span>
+      </div>
+    </div>
+
+    <div class="card pink">
+      <span class="card-icon">📊</span>
+      <h3>Progress Tracking</h3>
+      <h4>Per-journey completion state</h4>
+      <p>Step-level completion is tracked per user per Journey. A progress endpoint returns
+      completion percentages. The Passport aggregates completed journeys into a
+      capability overview across all topics the user has studied.</p>
+      <div class="tech-row" style="margin-top:.8rem;">
+        <span class="tech">Step-granular</span>
+        <span class="tech">Cross-journey view</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <span class="card-icon">🎨</span>
+      <h3>Cosmic Home Page</h3>
+      <h4>Immersive landing experience</h4>
+      <p>Alternate "HomeCosmic" landing page with custom cursor, animated particle field, and
+      domain field cards. Uses the "light delay as learning gap" metaphor to communicate
+      the product's philosophy. Preloads four premium fonts (Inter, Garamond, Playfair, SpaceMono).</p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 4 — AI ENGINE ─────────────────── -->
+<section class="slide" id="ai">
+  <div class="slide-label">03 · AI Architecture</div>
+  <h2>The AI Engine</h2>
+
+  <div class="cols cols-2" style="margin-top:1.5rem;">
+    <div>
+      <h3>Provider Abstraction Layer</h3>
+      <p style="margin-top:.5rem;">A unified <code style="background:var(--card);padding:2px 6px;border-radius:4px;">provider_service</code> abstracts over
+      <strong style="color:var(--text)">Anthropic Claude</strong> and <strong style="color:var(--text)">OpenAI</strong> behind a single interface.
+      Supports both streaming completions (<code style="background:var(--card);padding:2px 6px;border-radius:4px;">stream_completion()</code>) and
+      one-shot text generation (<code style="background:var(--card);padding:2px 6px;border-radius:4px;">complete_text()</code>).
+      Token cost is calculated per provider per model and fed into the budget enforcement system.</p>
+
+      <h3 style="margin-top:1.5rem;">AI Content Generation Pipeline</h3>
+      <div class="flow" style="margin-top:.8rem;">
+        <div class="flow-step">User question</div><span class="flow-arrow">→</span>
+        <div class="flow-step">generate_journey()</div><span class="flow-arrow">→</span>
+        <div class="flow-step">generate_step_content()</div><span class="flow-arrow">→</span>
+        <div class="flow-step">SSE stream to client</div>
+      </div>
+      <div class="flow" style="margin-top:.6rem;">
+        <div class="flow-step">Post-stream</div><span class="flow-arrow">→</span>
+        <div class="flow-step">extract_knowledge_nodes()</div><span class="flow-arrow">→</span>
+        <div class="flow-step">record_usage()</div>
+      </div>
+
+      <h3 style="margin-top:1.5rem;">Warm-Up Pre-caching</h3>
+      <p style="margin-top:.5rem;"><code style="background:var(--card);padding:2px 6px;border-radius:4px;">warm_journey_steps()</code> pre-generates step content
+      in the background immediately after a Journey is created. The next user request hits
+      cache instead of waiting for LLM generation — dramatically reducing perceived latency.
+      Cached content costs zero budget tokens on delivery.</p>
+    </div>
+
+    <div>
+      <h3>Budget Enforcement System</h3>
+      <p style="margin-top:.5rem;">Every AI call goes through a two-stage gate:</p>
+      <div class="flow" style="margin-top:.8rem; flex-direction:column; align-items:flex-start;">
+        <div style="display:flex;gap:.7rem;align-items:center;">
+          <div class="flow-step" style="background:rgba(252,129,129,.1);border-color:rgba(252,129,129,.3);">check_budget()</div>
+          <span style="color:var(--muted);font-size:.85rem;">→ 402 if exhausted</span>
+        </div>
+        <div style="width:2px;height:16px;background:var(--border);margin-left:24px;"></div>
+        <div style="display:flex;gap:.7rem;align-items:center;">
+          <div class="flow-step">AI provider call</div>
+          <span style="color:var(--muted);font-size:.85rem;">+ token count</span>
+        </div>
+        <div style="width:2px;height:16px;background:var(--border);margin-left:24px;"></div>
+        <div style="display:flex;gap:.7rem;align-items:center;">
+          <div class="flow-step">record_usage()</div>
+          <span style="color:var(--muted);font-size:.85rem;">cost_for_tokens()</span>
+        </div>
+      </div>
+      <ul class="feat" style="margin-top:1rem;">
+        <li>Free trial: <strong style="color:var(--text)">6 lifetime messages</strong> (chat context) or token budget</li>
+        <li>Paid plans: token budget in <strong style="color:var(--text)">cents/month</strong>, configurable per plan</li>
+        <li>Coupons can <strong style="color:var(--text)">extend the budget</strong> beyond the base plan limit</li>
+        <li>Cache hits are <strong style="color:var(--text)">free</strong> — no budget deducted</li>
+        <li>Budget exhaustion returns HTTP 402 with structured error for graceful UI degradation</li>
+      </ul>
+
+      <h3 style="margin-top:1.5rem;">AI-Powered Notifications</h3>
+      <p style="margin-top:.5rem;"><code style="background:var(--card);padding:2px 6px;border-radius:4px;">copy_generator</code> uses the LLM to write
+      personalised notification copy (email subject lines, WhatsApp messages) tailored to
+      each user's learning context — no static templates.</p>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 5 — AUTH & SAFETY ─────────────────── -->
+<section class="slide" id="safety">
+  <div class="slide-label">04 · Authentication & Child Safety</div>
+  <h2>Auth, Age Gates &amp; Family Safety</h2>
+
+  <div class="grid-3" style="margin-top:1.5rem;">
+
+    <div class="card">
+      <span class="card-icon">🔑</span>
+      <h3>Firebase Google Auth</h3>
+      <p>Sign-in is exclusively via Google OAuth through Firebase Authentication.
+      The backend verifies Firebase ID tokens on every protected request via
+      <code style="background:var(--bg);padding:2px 5px;border-radius:3px;">verify_firebase_token()</code>.
+      Three auth guard levels: optional (anonymous allowed), required, and admin-only.</p>
+    </div>
+
+    <div class="card amber">
+      <span class="card-icon">🔞</span>
+      <h3>COPPA Age Gate</h3>
+      <p>Birth year is collected at first sign-in via <strong style="color:var(--text)">BirthYearGate</strong>.
+      Users identified as under-13 trigger the full COPPA flow:
+      <strong style="color:var(--text)">Under13Block</strong> halts access,
+      a parental consent email is dispatched automatically, and the account
+      is suspended pending parent approval via <strong style="color:var(--text)">ParentalConsentForm</strong>.</p>
+    </div>
+
+    <div class="card pink">
+      <span class="card-icon">👨‍👩‍👧</span>
+      <h3>Teen Consent Flow</h3>
+      <p>Teen users (13–17) are routed through a separate consent confirmation screen
+      (<code style="background:var(--bg);padding:2px 5px;border-radius:3px;">ConsentConfirm</code>).
+      Parental consent emails are sent via the <strong style="color:var(--text)">email_service</strong>
+      and tracked. The <code style="background:var(--bg);padding:2px 5px;border-radius:3px;">/users/consent-confirm</code>
+      endpoint handles parent click-through.</p>
+    </div>
+
+    <div class="card teal">
+      <span class="card-icon">🌍</span>
+      <h3>Geo Detection</h3>
+      <p>Server-side country detection via <strong style="color:var(--text)">Cloudflare headers</strong>
+      with <strong style="color:var(--text)">ip-api</strong> as fallback.
+      Country code is used to select the correct payment gateway (Razorpay for India,
+      Stripe elsewhere) and to pre-fill the WhatsApp country code selector.</p>
+    </div>
+
+    <div class="card">
+      <span class="card-icon">🎭</span>
+      <h3>Anonymous Sessions</h3>
+      <p>Unauthenticated users can access Explore and Spark with a session ID for
+      stateless rate-limiting. The <code style="background:var(--bg);padding:2px 5px;border-radius:3px;">get_optional_user()</code>
+      guard allows graceful degradation — no login wall on discovery features.</p>
+    </div>
+
+    <div class="card amber">
+      <span class="card-icon">🔒</span>
+      <h3>Admin Guard + Cache</h3>
+      <p>A separate <code style="background:var(--bg);padding:2px 5px;border-radius:3px;">get_admin_user()</code>
+      dependency raises HTTP 403 for non-admins. The admin status check result is
+      <strong style="color:var(--text)">cached in-memory for 60 seconds</strong>
+      per UID to avoid repeated DB lookups on every admin API call. Bootstrap script creates the first admin.</p>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 6 — MONETIZATION ─────────────────── -->
+<section class="slide" id="monetization">
+  <div class="slide-label">05 · Monetisation</div>
+  <h2>Subscription, Payments &amp; Coupons</h2>
+
+  <div class="cols cols-2" style="margin-top:1.5rem;">
+    <div>
+      <h3>Dual Payment Gateway</h3>
+      <p style="margin-top:.5rem;">ECALT runs <strong style="color:var(--text)">Stripe</strong> (global) and
+      <strong style="color:var(--text)">Razorpay</strong> (India) simultaneously.
+      Gateway selection is automatic based on the user's detected country.
+      Both gateways have full webhook handling for subscription lifecycle events.</p>
+      <div class="flow" style="margin-top:1rem; flex-wrap:wrap;">
+        <div class="flow-step">Geo detect country</div><span class="flow-arrow">→</span>
+        <div class="flow-step">Select gateway</div><span class="flow-arrow">→</span>
+        <div class="flow-step">create_checkout()</div><span class="flow-arrow">→</span>
+        <div class="flow-step">Webhook confirms</div><span class="flow-arrow">→</span>
+        <div class="flow-step">upsert_subscription()</div>
+      </div>
+
+      <h3 style="margin-top:1.5rem;">Coupon System</h3>
+      <ul class="feat" style="margin-top:.5rem;">
+        <li>Admin creates coupons with token-budget extensions</li>
+        <li>Users apply coupons on the Pricing page via <code style="background:var(--card);padding:2px 5px;border-radius:3px;">CouponApply()</code></li>
+        <li>Backend validates and stacks coupon extras on top of plan base budget</li>
+        <li>Expired and active coupons tracked separately; soft-delete pattern</li>
+        <li>Coupon stats visible in the Admin panel</li>
+      </ul>
+    </div>
+    <div>
+      <h3>Plan Tiers</h3>
+      <table style="margin-top:.8rem;">
+        <thead>
+          <tr><th>Plan</th><th>Chat</th><th>AI Budget</th><th>Journeys</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="tag tag-green">Free Trial</span></td>
+            <td>6 lifetime messages</td>
+            <td>Token budget (≤$0.20)</td>
+            <td>Limited</td>
+          </tr>
+          <tr>
+            <td><span class="tag">Paid</span></td>
+            <td>Unlimited turns</td>
+            <td>Monthly token budget</td>
+            <td>Full access</td>
+          </tr>
+          <tr>
+            <td><span class="tag tag-amber">+ Coupon</span></td>
+            <td>As per plan</td>
+            <td>Plan + coupon extras</td>
+            <td>Full access</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3 style="margin-top:1.5rem;">Subscription State Machine</h3>
+      <ul class="feat" style="margin-top:.5rem;">
+        <li><code style="background:var(--card);padding:2px 5px;border-radius:3px;">get_my_subscription()</code> returns plan, usage, coupon in one query</li>
+        <li><code style="background:var(--card);padding:2px 5px;border-radius:3px;">sync_subscription()</code> re-syncs state from Stripe on demand</li>
+        <li>Stripe webhook handles: checkout completed, subscription updated/deleted, invoice paid</li>
+        <li>Razorpay webhook handles: payment captured/failed, subscription events</li>
+        <li>Idempotency keys prevent duplicate provisioning on webhook retries</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 7 — ENGAGEMENT ─────────────────── -->
+<section class="slide" id="engagement">
+  <div class="slide-label">06 · Engagement & Notifications</div>
+  <h2>Re-engagement &amp; Notification System</h2>
+
+  <div class="grid-3" style="margin-top:1.5rem;">
+
+    <div class="card">
+      <span class="card-icon">📧</span>
+      <h3>Email Notifications</h3>
+      <p>Transactional emails sent via <code style="background:var(--bg);padding:2px 5px;border-radius:3px;">email_service</code>.
+      Includes parental consent emails, daily spark reminders, journey completion nudges,
+      mind signature updates. One-click unsubscribe with signed token verification.
+      Open tracking via pixel.</p>
+    </div>
+
+    <div class="card teal">
+      <span class="card-icon">💚</span>
+      <h3>WhatsApp Notifications</h3>
+      <p>Twilio-powered WhatsApp messaging via <code style="background:var(--bg);padding:2px 5px;border-radius:3px;">whatsapp_service</code>.
+      Users opt in with a phone number + country code (auto-detected by geo).
+      OTP-style confirmation flow. Users can opt out from Profile or via one-click link.
+      WhatsApp nudge banner shown in the Learn page UI.</p>
+    </div>
+
+    <div class="card amber">
+      <span class="card-icon">⏰</span>
+      <h3>Background Scheduler</h3>
+      <p>A persistent background task scheduler manages timed notifications.
+      Enqueues: daily spark dispatch, journey-completion nudge, mind signature nudge.
+      Respects per-user channel preferences and "not sent recently" guards to avoid
+      spam. Preferred channel (email vs WhatsApp) selected per user.</p>
+    </div>
+
+  </div>
+
+  <div class="cols cols-2" style="margin-top:1.5rem;">
+    <div>
+      <h3>Notification Pipeline</h3>
+      <div class="flow" style="flex-direction:column;align-items:flex-start;gap:.5rem;">
+        <div class="flow-step">Scheduler enqueues event</div>
+        <div style="width:2px;height:12px;background:var(--border);margin-left:20px;"></div>
+        <div class="flow-step">can_send() — channel gate + recency guard</div>
+        <div style="width:2px;height:12px;background:var(--border);margin-left:20px;"></div>
+        <div class="flow-step">generate_copy() — AI-personalised message</div>
+        <div style="width:2px;height:12px;background:var(--border);margin-left:20px;"></div>
+        <div class="flow-step">send_email() or send_whatsapp()</div>
+        <div style="width:2px;height:12px;background:var(--border);margin-left:20px;"></div>
+        <div class="flow-step">track_open() — engagement event recorded</div>
+      </div>
+    </div>
+    <div>
+      <h3>Cliffhanger Re-engagement</h3>
+      <p style="margin-top:.5rem;">When a user starts an AI chat but doesn't complete it,
+      the backend queues a <strong style="color:var(--text)">"cliffhanger" notification</strong>
+      via <code style="background:var(--card);padding:2px 5px;border-radius:3px;">queue_cliffhanger()</code>.
+      This fires after a delay with an AI-written personalised message referencing
+      the exact topic the user was learning — driving re-engagement without generic reminders.</p>
+
+      <h3 style="margin-top:1.2rem;">User Notification Preferences</h3>
+      <ul class="feat" style="margin-top:.5rem;">
+        <li>Per-channel opt-in/out (email, WhatsApp)</li>
+        <li>Preferences stored in <code style="background:var(--card);padding:2px 5px;border-radius:3px;">notification_preferences</code> table</li>
+        <li>PATCH endpoint for granular updates from Profile page</li>
+        <li>Admin can trigger test notifications for debugging</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 8 — ADMIN ─────────────────── -->
+<section class="slide" id="admin">
+  <div class="slide-label">07 · Admin &amp; Analytics</div>
+  <h2>Admin Panel &amp; Business Intelligence</h2>
+
+  <div class="grid-3" style="margin-top:1.5rem;">
+
+    <div class="card">
+      <span class="card-icon">📈</span>
+      <h3>Platform Analytics</h3>
+      <ul class="feat">
+        <li>Total users, active users, conversion funnel</li>
+        <li>Revenue breakdown by plan and gateway</li>
+        <li>Feature usage frequency across all endpoints</li>
+        <li>Retention cohort data</li>
+        <li>AI cost analysis (spend per user/plan)</li>
+      </ul>
+    </div>
+
+    <div class="card teal">
+      <span class="card-icon">💰</span>
+      <h3>Budget Management</h3>
+      <ul class="feat">
+        <li>Live <strong style="color:var(--text)">BudgetBar</strong> per user in admin view</li>
+        <li>Usage history per user</li>
+        <li>Usage breakdown by interaction type</li>
+        <li>At-risk users flag (approaching budget limit)</li>
+        <li>Admin can adjust plan configs and token budgets</li>
+      </ul>
+    </div>
+
+    <div class="card amber">
+      <span class="card-icon">🎟️</span>
+      <h3>Coupon Management</h3>
+      <ul class="feat">
+        <li>Create coupons with custom budget extensions</li>
+        <li>View active vs expired coupons</li>
+        <li>Redemption counts and stats via <code style="background:var(--bg);padding:2px 5px;border-radius:3px;">useCouponStats</code></li>
+        <li>Soft-delete coupons without data loss</li>
+      </ul>
+    </div>
+
+    <div class="card pink">
+      <span class="card-icon">👤</span>
+      <h3>User Management</h3>
+      <ul class="feat">
+        <li>User detail panel with full history</li>
+        <li>Subscription status + plan info</li>
+        <li>GDPR export &amp; deletion triggers</li>
+        <li>Admin user promotion via bootstrap script</li>
+        <li>Admin status cached 60s per UID</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <span class="card-icon">🤖</span>
+      <h3>AI Config Management</h3>
+      <ul class="feat">
+        <li>Live-update AI provider settings without redeploy</li>
+        <li>Switch between Anthropic and OpenAI per feature</li>
+        <li>Adjust model, temperature, max tokens per endpoint</li>
+        <li>Config changes persisted in <code style="background:var(--bg);padding:2px 5px;border-radius:3px;">ai_configs</code> table</li>
+      </ul>
+    </div>
+
+    <div class="card teal">
+      <span class="card-icon">📊</span>
+      <h3>Content &amp; Journey Stats</h3>
+      <ul class="feat">
+        <li>Most-used Journey topics and completion rates</li>
+        <li>Spark engagement metrics</li>
+        <li>Knowledge node extraction counts</li>
+        <li>Mind Signature generation volume</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 9 — TECH STACK ─────────────────── -->
+<section class="slide" id="stack">
+  <div class="slide-label">08 · Technical Stack</div>
+  <h2>Technology Choices</h2>
+
+  <div class="cols cols-2" style="margin-top:1.5rem;">
+
+    <div>
+      <h3 style="color:var(--accent2); margin-bottom:1rem;">Frontend</h3>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th></tr></thead>
+        <tbody>
+          <tr><td>Framework</td><td>React 18 + TypeScript (Vite)</td></tr>
+          <tr><td>Routing</td><td>React Router v6 (lazy-loaded routes)</td></tr>
+          <tr><td>Styling</td><td>Tailwind CSS + CSS custom properties</td></tr>
+          <tr><td>Auth</td><td>Firebase SDK (Google OAuth)</td></tr>
+          <tr><td>State</td><td>React Context (Auth, Subscription, Geo, Theme, Toast, Payment)</td></tr>
+          <tr><td>Animations</td><td>Custom CSS + D3 (Knowledge Universe)</td></tr>
+          <tr><td>Notifications</td><td>Sentry (error monitoring)</td></tr>
+          <tr><td>SEO</td><td>react-helmet-async, Open Graph meta, canonical URLs</td></tr>
+          <tr><td>Icons</td><td>Lucide React</td></tr>
+          <tr><td>Build</td><td>Vite (dev proxy → Railway API)</td></tr>
+          <tr><td>Deploy</td><td>Vercel (with prod rewrites)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div>
+      <h3 style="color:var(--accent); margin-bottom:1rem;">Backend</h3>
+      <table>
+        <thead><tr><th>Layer</th><th>Technology</th></tr></thead>
+        <tbody>
+          <tr><td>Framework</td><td>FastAPI (Python 3.12)</td></tr>
+          <tr><td>Database</td><td>PostgreSQL via Supabase</td></tr>
+          <tr><td>DB Client</td><td>psycopg2 (threaded connection pool, warm-up on startup)</td></tr>
+          <tr><td>Auth</td><td>Firebase Admin SDK (token verification)</td></tr>
+          <tr><td>AI</td><td>Anthropic Claude API + OpenAI API</td></tr>
+          <tr><td>Streaming</td><td>Server-Sent Events (SSE) via FastAPI StreamingResponse</td></tr>
+          <tr><td>Payments</td><td>Stripe SDK + Razorpay SDK</td></tr>
+          <tr><td>Messaging</td><td>Twilio (WhatsApp) + SMTP (email)</td></tr>
+          <tr><td>Scheduler</td><td>Custom in-process background scheduler</td></tr>
+          <tr><td>Logging</td><td>Structured JSON logging (logging_config.py)</td></tr>
+          <tr><td>Testing</td><td>pytest + httpx (integration + unit)</td></tr>
+          <tr><td>Deploy</td><td>Railway (Docker)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 10 — ARCHITECTURE ─────────────────── -->
+<section class="slide" id="infra">
+  <div class="slide-label">09 · Architecture &amp; Infrastructure</div>
+  <h2>System Architecture</h2>
+
+  <div class="cols cols-2" style="margin-top:1.5rem;">
+    <div>
+      <h3>Request Flow</h3>
+      <div class="flow" style="flex-direction:column;align-items:flex-start;gap:.5rem;margin-top:.8rem;">
+        <div class="flow-step">User Browser (Vercel CDN)</div>
+        <div style="width:2px;height:12px;background:var(--accent);margin-left:20px;"></div>
+        <div class="flow-step">React SPA — lazy routes + Context providers</div>
+        <div style="width:2px;height:12px;background:var(--accent);margin-left:20px;"></div>
+        <div class="flow-step">api.ts → request() — attaches Firebase ID token</div>
+        <div style="width:2px;height:12px;background:var(--accent);margin-left:20px;"></div>
+        <div class="flow-step">Vercel edge rewrite → Railway (HTTPS)</div>
+        <div style="width:2px;height:12px;background:var(--accent);margin-left:20px;"></div>
+        <div class="flow-step">FastAPI — auth guard → route handler</div>
+        <div style="width:2px;height:12px;background:var(--accent);margin-left:20px;"></div>
+        <div class="flow-step">Service layer → DB pool → Supabase Postgres</div>
+        <div style="width:2px;height:12px;background:var(--accent);margin-left:20px;"></div>
+        <div class="flow-step">AI provider → SSE stream back to browser</div>
+      </div>
+    </div>
+    <div>
+      <h3>Database Connection Pool</h3>
+      <p style="margin-top:.5rem;">On startup, <code style="background:var(--card);padding:2px 5px;border-radius:3px;">warm_pool()</code>
+      pre-creates all remaining connection slots in parallel so the first burst of requests
+      doesn't experience cold connection overhead. The pool is a psycopg2
+      <strong style="color:var(--text)">ThreadedConnectionPool</strong> sized for Railway's concurrency tier.</p>
+
+      <h3 style="margin-top:1.5rem;">Error Handling</h3>
+      <ul class="feat" style="margin-top:.5rem;">
+        <li>All HTTPExceptions logged with detail before returning to client</li>
+        <li>Catch-all unhandled exception handler returns JSON 500 with correct CORS headers</li>
+        <li>Frontend <code style="background:var(--card);padding:2px 5px;border-radius:3px;">ErrorBoundary</code> prevents white-screen crashes</li>
+        <li>Sentry captures frontend errors with stack traces</li>
+      </ul>
+
+      <h3 style="margin-top:1.5rem;">Performance Patterns</h3>
+      <ul class="feat" style="margin-top:.5rem;">
+        <li><strong style="color:var(--text)">Optimistic UI</strong> — step toggles update instantly, sync in background</li>
+        <li><strong style="color:var(--text)">Lazy routes</strong> — every page code-split, loaded on first visit</li>
+        <li><strong style="color:var(--text)">Content cache</strong> — step content pre-warmed and served free</li>
+        <li><strong style="color:var(--text)">Admin cache</strong> — 60s in-memory cache on auth checks</li>
+        <li><strong style="color:var(--text)">Manual scroll restore</strong> — SPA preserves scroll position across navigation</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 11 — COMPLIANCE ─────────────────── -->
+<section class="slide" id="compliance">
+  <div class="slide-label">10 · Compliance &amp; Security</div>
+  <h2>Regulatory Compliance &amp; Security</h2>
+
+  <div class="grid-2" style="margin-top:1.5rem;">
+
+    <div class="card">
+      <span class="card-icon">🇺🇸</span>
+      <h3>COPPA Compliance</h3>
+      <p style="margin-top:.4rem;">Full Children's Online Privacy Protection Act implementation:</p>
+      <ul class="feat" style="margin-top:.8rem;">
+        <li>Birth year collected at account creation via <strong style="color:var(--text)">BirthYearGate</strong></li>
+        <li>Under-13 users blocked from app content immediately (<strong style="color:var(--text)">Under13Block</strong>)</li>
+        <li>Parental consent email sent automatically via <code style="background:var(--card);padding:2px 5px;border-radius:3px;">send_parental_consent_email()</code></li>
+        <li>Consent stored and verified before account activation</li>
+        <li>Teen (13–17) flow routes through additional consent confirmation</li>
+        <li>Unit test suite: <code style="background:var(--card);padding:2px 5px;border-radius:3px;">test_age_verification.py</code></li>
+      </ul>
+    </div>
+
+    <div class="card teal">
+      <span class="card-icon">🇪🇺</span>
+      <h3>GDPR Data Rights</h3>
+      <p style="margin-top:.4rem;">Full General Data Protection Regulation support:</p>
+      <ul class="feat" style="margin-top:.8rem;">
+        <li><strong style="color:var(--text)">Right to export</strong> — <code style="background:var(--card);padding:2px 5px;border-radius:3px;">export_account()</code> packages all user data</li>
+        <li><strong style="color:var(--text)">Right to erasure</strong> — <code style="background:var(--card);padding:2px 5px;border-radius:3px;">delete_account()</code> hard-deletes all records</li>
+        <li>Privacy Policy, Terms of Service, and Parents pages published</li>
+        <li>Unit test suite: <code style="background:var(--card);padding:2px 5px;border-radius:3px;">test_gdpr.py</code></li>
+        <li>Email unsubscribe uses signed tokens (not user IDs) to prevent enumeration</li>
+      </ul>
+    </div>
+
+    <div class="card amber">
+      <span class="card-icon">🔐</span>
+      <h3>API Security</h3>
+      <ul class="feat" style="margin-top:.8rem;">
+        <li>All endpoints protected by Firebase ID token verification</li>
+        <li>Admin endpoints gated by separate <code style="background:var(--card);padding:2px 5px;border-radius:3px;">get_admin_user()</code> dependency</li>
+        <li>Chat injection defense pattern implemented in <code style="background:var(--card);padding:2px 5px;border-radius:3px;">chat_service</code></li>
+        <li>Stripe webhook signature verified before processing</li>
+        <li>Razorpay webhook HMAC signature verification</li>
+        <li>Razorpay payment signature verified before subscription activation</li>
+      </ul>
+    </div>
+
+    <div class="card pink">
+      <span class="card-icon">🏗️</span>
+      <h3>Database Security</h3>
+      <ul class="feat" style="margin-top:.8rem;">
+        <li>Supabase Row-Level Security (RLS) policies enforced at DB layer</li>
+        <li>All queries use parameterised statements — no string interpolation</li>
+        <li>Connection pool credentials loaded from environment variables</li>
+        <li>Sensitive fields (tokens, keys) never logged</li>
+        <li>Coupon soft-delete preserves audit trail without exposing deleted data</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 12 — TEST COVERAGE ─────────────────── -->
+<section class="slide">
+  <div class="slide-label">11 · Quality &amp; Testing</div>
+  <h2>Test Coverage</h2>
+
+  <div class="grid-3" style="margin-top:1.5rem;">
+
+    <div class="card">
+      <h3>Unit Tests</h3>
+      <ul class="feat" style="margin-top:.6rem;">
+        <li><code style="background:var(--bg);padding:2px 5px;border-radius:3px;">test_budget.py</code> — token budget logic, free trial exhaustion, coupon stacking</li>
+        <li><code style="background:var(--bg);padding:2px 5px;border-radius:3px;">test_coupons.py</code> — expired vs active coupon counting, mixed states</li>
+        <li><code style="background:var(--bg);padding:2px 5px;border-radius:3px;">test_age_verification.py</code> — COPPA under-13 detection, edge cases</li>
+        <li><code style="background:var(--bg);padding:2px 5px;border-radius:3px;">test_gdpr.py</code> — data export and deletion endpoints</li>
+      </ul>
+    </div>
+
+    <div class="card teal">
+      <h3>Integration Tests</h3>
+      <ul class="feat" style="margin-top:.6rem;">
+        <li><code style="background:var(--bg);padding:2px 5px;border-radius:3px;">test_api_budget.py</code> — full HTTP layer: cache hits, budget gate, explore, chat stream, coupon apply, admin endpoints</li>
+        <li>Shared <code style="background:var(--bg);padding:2px 5px;border-radius:3px;">conftest.py</code> fixtures for mock DB and auth context</li>
+        <li>Authenticated and anonymous client fixtures</li>
+      </ul>
+    </div>
+
+    <div class="card amber">
+      <h3>Key Scenarios Covered</h3>
+      <ul class="feat" style="margin-top:.6rem;">
+        <li>Cache hit → budget NOT deducted</li>
+        <li>Cache miss + exhausted budget → HTTP 402</li>
+        <li>Free trial message limit gate</li>
+        <li>Coupon extends budget beyond base plan</li>
+        <li>Admin-only endpoint returns 403 for regular users</li>
+        <li>COPPA age gate blocks under-13 on upsert</li>
+      </ul>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 13 — ROADMAP ─────────────────── -->
+<section class="slide" id="roadmap">
+  <div class="slide-label">12 · Roadmap</div>
+  <h2>In-Progress &amp; Planned Work</h2>
+
+  <div class="timeline" style="margin-top:2rem;">
+
+    <div class="tl-item">
+      <div class="tl-dot">1</div>
+      <div class="tl-content">
+        <h3>Journey UX Overhaul <span class="tag tag-amber" style="margin-left:.5rem;">In Progress</span></h3>
+        <p>4-phase plan drafted (June 2026). Full redesign of the Journey page experience —
+        new step layout, progress visualisation, and completion celebration flow.
+        Plans located in <code style="background:var(--card);padding:2px 5px;border-radius:3px;">backend/plans/journey-ux-overhaul/</code>.</p>
+      </div>
+    </div>
+
+    <div class="tl-item">
+      <div class="tl-dot teal">2</div>
+      <div class="tl-content">
+        <h3>Mobile Responsiveness <span class="tag tag-teal" style="margin-left:.5rem;">Audited</span></h3>
+        <p>Full mobile audit completed (June 2026) across all 14 pages. 4-phase implementation
+        plan in <code style="background:var(--card);padding:2px 5px;border-radius:3px;">backend/plans/mobile-responsiveness/</code>.
+        Not yet implemented — ready to begin.</p>
+      </div>
+    </div>
+
+    <div class="tl-item">
+      <div class="tl-dot amber">3</div>
+      <div class="tl-content">
+        <h3>Admin Panel Modularisation <span class="tag tag-amber" style="margin-left:.5rem;">Planned</span></h3>
+        <p>The <code style="background:var(--card);padding:2px 5px;border-radius:3px;">Admin.tsx</code> monolith is being split into modular tabs
+        (<code>AIProvidersTab</code>, <code>CouponsTab</code>, <code>ContentTab</code>),
+        shared UI primitives (StatCard, BudgetBar, SimpleBarChart, UserDetailPanel),
+        and custom hooks (<code>useAdminData</code>, <code>useCouponStats</code>).</p>
+      </div>
+    </div>
+
+    <div class="tl-item">
+      <div class="tl-dot" style="background:var(--green);">4</div>
+      <div class="tl-content">
+        <h3>Upcoming Capabilities <span class="tag tag-green" style="margin-left:.5rem;">Backlog</span></h3>
+        <ul class="feat" style="margin-top:.5rem;">
+          <li>Social sharing for Mind Signature and Passport</li>
+          <li>Group/classroom mode for family plans</li>
+          <li>Offline-capable PWA (service worker + cache)</li>
+          <li>In-app purchase on iOS/Android (StoreKit + Google Play Billing)</li>
+          <li>Knowledge Universe 3D visualisation upgrade</li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+
+<!-- ─────────────────── SLIDE 14 — SUMMARY ─────────────────── -->
+<section class="slide" id="summary" style="background: radial-gradient(ellipse at 60% 30%, rgba(124,106,247,.15) 0%, transparent 60%), var(--surface);">
+  <div class="slide-label">Summary</div>
+  <h2>Why ECALT is Production-Ready</h2>
+
+  <div class="grid-4" style="margin-top:2rem;">
+    <div class="card">
+      <span class="card-icon">🏗️</span>
+      <h3>Solid Architecture</h3>
+      <p>Clean separation: React SPA → FastAPI service layer → Supabase Postgres. Provider abstraction allows hot-swapping AI models.</p>
+    </div>
+    <div class="card teal">
+      <span class="card-icon">💸</span>
+      <h3>Cost Control</h3>
+      <p>Token budget enforcement with cent-level precision. Cache-first content delivery. Coupon-stackable budget extensions.</p>
+    </div>
+    <div class="card amber">
+      <span class="card-icon">🛡️</span>
+      <h3>Compliance Built-In</h3>
+      <p>COPPA age gating, GDPR data rights, parental consent email, signed unsubscribe tokens — all tested.</p>
+    </div>
+    <div class="card pink">
+      <span class="card-icon">🌍</span>
+      <h3>Global + India Ready</h3>
+      <p>Dual Stripe/Razorpay gateways with geo-detection. WhatsApp notifications for markets where email open rates are low.</p>
+    </div>
+    <div class="card">
+      <span class="card-icon">🤖</span>
+      <h3>Multi-Model AI</h3>
+      <p>Anthropic Claude + OpenAI behind one abstraction. Live-switchable via Admin panel without redeploy.</p>
+    </div>
+    <div class="card teal">
+      <span class="card-icon">📣</span>
+      <h3>Retention Engine</h3>
+      <p>Cliffhanger re-engagement, daily sparks, AI-personalised notification copy, scheduler-driven nudges.</p>
+    </div>
+    <div class="card amber">
+      <span class="card-icon">🧪</span>
+      <h3>Tested &amp; Verified</h3>
+      <p>Integration tests cover the full HTTP budget enforcement path. Unit tests for COPPA, GDPR, coupons, and budget logic.</p>
+    </div>
+    <div class="card pink">
+      <span class="card-icon">🚀</span>
+      <h3>Modern Deploy</h3>
+      <p>Vercel for CDN-edge frontend. Railway for always-on API. Zero-downtime deploys. Structured JSON logging.</p>
+    </div>
+  </div>
+
+  <div style="margin-top:3rem; text-align:center;">
+    <p style="font-size:.85rem; color:var(--muted);">Generated from live codebase via graphify knowledge graph analysis — frontend (581 nodes · 1059 edges) + backend (727 nodes · 1475 edges)</p>
+    <p style="font-size:.8rem; color:var(--border); margin-top:.4rem;">ecalt.vercel.app · June 2026</p>
+  </div>
+</section>
+
+</body>
+</html>

@@ -4,7 +4,7 @@ import clsx from 'clsx'
 import MarkdownContent from '../MarkdownContent'
 import UpgradePrompt from '../UpgradePrompt'
 import { useSubscription } from '../../lib/SubscriptionContext'
-import { getImpersonationSessionId } from '../../lib/impersonationStore'
+import { authHeaders } from '../../lib/api'
 
 interface Message {
   id: string
@@ -92,10 +92,8 @@ export default function JourneyTutor({
     try {
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...authHeaders(token),
       }
-      const impersonationId = getImpersonationSessionId()
-      if (impersonationId) headers['X-Impersonate-Session'] = impersonationId
 
       const response = await fetch('/api/v1/chat/stream', {
         method: 'POST',

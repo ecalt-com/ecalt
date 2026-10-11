@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Sparkles, Copy, Check, RefreshCw, ExternalLink } from 'lucide-react'
 import { useAuth } from '../lib/AuthContext'
+import { authHeaders } from '../lib/api'
 import PageMeta from '../components/PageMeta'
 import ConstellationMap from '../components/constellation/ConstellationMap'
 import { MindSignatureDisclaimer } from '../components/MindSignatureDisclaimer'
@@ -62,7 +63,7 @@ export default function MindSignature() {
       const token = await getToken()
       if (!token) return
       const res = await fetch('/api/v1/mind-signature/me', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders(token),
       })
       const data = await res.json()
       setSignature(data.signature ?? null)
@@ -83,7 +84,7 @@ export default function MindSignature() {
       const endpoint = force ? '/api/v1/mind-signature/generate/force' : '/api/v1/mind-signature/generate'
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders(token),
       })
       const data = await res.json()
       if (!res.ok) {
