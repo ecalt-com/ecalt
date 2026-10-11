@@ -268,9 +268,19 @@ def get_unlocked_account_holder(
 
 def get_active_account_holder(uid: str = Depends(get_account_holder)) -> str:
     """Account holder whose account is active. No PIN needed — use for the
-    profile picker and the PIN endpoints themselves."""
+    profile picker and setting the PIN."""
     assert_account_active(uid)
     return uid
+
+
+def get_active_signed_in_account(real_uid: Optional[str] = Depends(get_signed_in_uid)) -> str:
+    """The signed-in account, active, even when the request comes from inside a
+    child profile. Only for the PIN check and PIN reset: they are how a parent
+    leaves a child's profile, and the PIN (or a fresh Google sign-in) is the gate."""
+    if not real_uid:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    assert_account_active(real_uid)
+    return real_uid
 
 
 def get_parent_session(
