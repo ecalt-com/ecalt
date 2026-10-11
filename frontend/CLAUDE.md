@@ -15,7 +15,7 @@ ECALT is a React + TypeScript SPA built with Vite and deployed on Vercel. It is 
 | Build tool | Vite 8, dev port 3000 |
 | Routing | React Router v6 (`v7_startTransition` + `v7_relativeSplatPath` future flags) |
 | Styling | Tailwind CSS v3 (`darkMode: 'class'`) + CSS vars in `index.css` |
-| Auth | Firebase v12 — Google popup sign-in **and** email/password (managed kids' accounts) |
+| Auth | Firebase v12 — Google popup sign-in (+ legacy email/password for `/kids-login`, being replaced) |
 | Payments | Stripe (global, redirect checkout) + Razorpay (India, in-page checkout.js) |
 | Diagrams | mermaid v11 (step diagrams, `securityLevel: 'strict'`), D3 v7 (constellation map) |
 | Icons / classes | lucide-react, clsx |
@@ -37,7 +37,7 @@ npm run preview              # serve dist/ at localhost:4173
 npm run lint                 # eslint src --ext ts,tsx
 ```
 
-There is no frontend test suite — `npm run build` (which runs `tsc`) is the correctness gate. Unused locals/params fail the build.
+There is no frontend test suite — **`npm run build` (which runs `tsc`) is the correctness gate.** Unused locals/params fail the build. Run `npm run lint` too, and check UI changes in the browser (light + dark, ~375px width).
 
 `@` alias: `import '@/components/Foo'` → `src/components/Foo` (most code uses relative imports).
 
@@ -112,7 +112,7 @@ All pages are `React.lazy` + `Suspense` (`PageSkeleton` spinner) and wrapped in 
 | `/consent/confirm`, `/consent/report` | ConsentConfirm / ConsentReport | Parent-facing, token in query; child gates suppressed here |
 | `/family` | Family | Parent dashboard (children, link requests, add child) |
 | `/family/child/:uid` | FamilyChild | Per-child overview, activity, transcripts, settings, consent, export/delete |
-| `/kids-login` | KidsLogin | Email/password sign-in for parent-created child accounts |
+| `/kids-login` | KidsLogin | Legacy email/password child sign-in — **backend no longer creates these logins** (see Family profiles) |
 | `/sign-in`, `/get-started`, `*` | ComingSoon | Placeholder / 404 |
 
 ---
@@ -139,7 +139,7 @@ HelmetProvider
 
 ### Sign-in methods
 - `signIn()` — Google popup (`signInWithPopup`). A `signingIn` ref prevents double-invocation.
-- `signInWithEmail(email, password)` — used by `/kids-login` for managed child accounts created by a parent.
+- `signInWithEmail(email, password)` — legacy, used only by `/kids-login`; goes away with family profiles.
 - `getToken()` — stable (`useCallback` + `userRef`), safe as a `useEffect` dep; Firebase refreshes silently.
 - `role: 'learner' | 'parent' | null` comes from the backend profile.
 
@@ -234,9 +234,18 @@ Tabs: Overview, Plans, AI Providers, Prompts, Notification Templates, Users (wit
 Admin starts a session from the Users tab → `ImpersonationContext` stores it, `impersonationStore` exposes the id to `request()`, `ImpersonationBanner` shows while active, auto-stops at expiry. All requests then act as the target user; the backend audits them.
 
 ### Family / parental accounts
-- Parents: `/family` dashboard, `AddChildWizard` (managed child with email/password; card verification where required), `/family/child/:uid` for controls.
-- Children: consent flow via the phase machine above; `ReconsentBanner` prompts re-acceptance after a policy-version bump.
+- Parents: `/family` dashboard, `AddChildWizard` (card verification where required), `/family/child/:uid` for controls.
+- Teens: consent flow via the phase machine above; `ReconsentBanner` prompts re-acceptance after a policy-version bump.
 - Parents approve consent via emailed `/consent/confirm?token=…` links.
+
+### Family profiles — backend ahead of frontend
+The backend (uncommitted on `feature/dev`) now models children as **profiles on the parent's Google login** instead of separate email/password accounts. The frontend has **not** been updated yet; the spec is `../backend/plans/family-profiles/frontend-changes.md`. Key contract:
+- `GET /family/profiles` → "Who's learning?" picker (parent + child profiles).
+- Acting as a child: send `X-Profile-Id: prof_…` on every learner request (belongs in `request()`, like the impersonation header). Can't be combined with `X-Impersonate-Session` (400).
+- Parent-only routes (`/family/*`, billing, account deletion) need `X-Parent-Unlock: <token>` from `POST /family/pin/verify` (15-min TTL) when the account has profiles. Set/reset PIN: `POST /family/pin`, `/family/pin/reset`.
+- New 403 codes: `parent_unlock_required` (prompt PIN), `parent_profile_required` (switch to parent), `profile_not_allowed`.
+- `AddChildWizard` must stop collecting child email/password; `/kids-login` and `signInWithEmail` are to be removed.
+- Profile users have no email — don't assume `user.email` exists.
 
 ---
 
@@ -289,4 +298,27 @@ Security headers on all routes: `X-Frame-Options: DENY`, `nosniff`, strict refer
 - **D3 constellation** mutates the DOM directly in a `useEffect`; don't mix React children into it.
 - **Home waitlist form is UI-only** — no API call.
 - **Plan copy is hardcoded** in `Pricing.tsx` / admin constants — changing copy needs a frontend deploy.
-- When a backend feature needs frontend work, the project convention is to document the frontend changes in an md plan (see `../backend/plans/`) before implementing.
+- **Stray `src/app/` Next.js files** — never edit or import them (see top of file).
+- When a backend feature needs frontend work, the project convention is to document the frontend changes in an md plan (see `../backend/plans/<feature>/frontend-changes.md`) before implementing.
+
+---
+
+## Common Tasks
+
+| Task | Where |
+|---|---|
+| New page | `pages/X.tsx` (default export) → `React.lazy` import + `<Route>` wrapped in `<ErrorBoundary>` in `App.tsx` |
+| New API call | Typed wrapper in `lib/api.ts` (or `familyApi.ts`) using `request()`; shared types in `lib/types.ts` |
+| New admin tab | `pages/admin/tabs/XTab.tsx`, register in `pages/Admin.tsx` |
+| New visual renderer | `components/visual/renderers/XRenderer.tsx` + one line in the `VisualLearningObject` registry |
+| New external domain/script | Add to the CSP in `vercel.json` |
+| New env var | `VITE_` prefix, add to `.env.example` and Vercel project env |
+
+## Before You Finish
+
+1. `npm run build` passes (type-check + bundle).
+2. `npm run lint` is clean.
+3. Auth-gated pages wait for `authLoading === false` before redirecting.
+4. New API calls go through `request()` (impersonation header preserved).
+5. UI works in light and dark mode and at ~375px; animations respect `useReducedMotion()`.
+6. Any new third-party host is in the `vercel.json` CSP.
