@@ -10,6 +10,8 @@ import { SubscriptionProvider } from './lib/SubscriptionContext'
 import { GeoProvider } from './lib/GeoContext'
 import { PaymentConfigProvider } from './lib/PaymentConfig'
 import { ImpersonationProvider } from './lib/ImpersonationContext'
+import { ProfileProvider } from './lib/ProfileContext'
+import { KidModeGuard, KidModeNotice, usePickerRedirect } from './components/family/ProfileRouting'
 import OnboardingModal from './components/OnboardingModal'
 import ImpersonationBanner from './components/ImpersonationBanner'
 import ReconsentBanner from './components/ReconsentBanner'
@@ -36,7 +38,8 @@ const ConsentConfirm = lazy(() => import('./pages/ConsentConfirm'))
 const ConsentReport = lazy(() => import('./pages/ConsentReport'))
 const Family        = lazy(() => import('./pages/Family'))
 const FamilyChild   = lazy(() => import('./pages/FamilyChild'))
-const KidsLogin     = lazy(() => import('./pages/KidsLogin'))
+const Profiles      = lazy(() => import('./pages/Profiles'))
+const Claim         = lazy(() => import('./pages/Claim'))
 const Welcome       = lazy(() => import('./pages/Welcome'))
 const ComingSoon    = lazy(() => import('./pages/ComingSoon'))
 const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
@@ -60,10 +63,12 @@ function AppShell() {
   // overlays must not cover them. The birth-year gate stays: a parent signing
   // in fresh on the consent page still needs their adult account established.
   const suppressChildGates = pathname.startsWith('/consent/')
+  const pickerRedirect = usePickerRedirect()
 
   return (
     <>
       <Suspense fallback={<PageSkeleton />}>
+        {pickerRedirect ?? <KidModeGuard>
         <Routes>
           <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
           <Route path="/learn" element={<ErrorBoundary><Learn /></ErrorBoundary>} />
@@ -87,7 +92,10 @@ function AppShell() {
           <Route path="/consent/report" element={<ErrorBoundary><ConsentReport /></ErrorBoundary>} />
           <Route path="/family" element={<ErrorBoundary><Family /></ErrorBoundary>} />
           <Route path="/family/child/:uid" element={<ErrorBoundary><FamilyChild /></ErrorBoundary>} />
-          <Route path="/kids-login" element={<ErrorBoundary><KidsLogin /></ErrorBoundary>} />
+          <Route path="/profiles" element={<ErrorBoundary><Profiles /></ErrorBoundary>} />
+          <Route path="/claim" element={<ErrorBoundary><Claim /></ErrorBoundary>} />
+          {/* Child email/password logins were replaced by profiles on the parent's account. */}
+          <Route path="/kids-login" element={<Navigate to="/" replace />} />
           <Route
             path="/sign-in"
             element={<ComingSoon title="Sign In — Coming Soon" description="User accounts are on the way. Drop your email and we'll notify you." />}
@@ -101,6 +109,7 @@ function AppShell() {
             element={<ComingSoon title="Page not found" description="This page doesn't exist yet — but your next learning journey is just one question away." />}
           />
         </Routes>
+        </KidModeGuard>}
       </Suspense>
 
       {/* Post-sign-in compliance gates — rendered in order of priority */}
@@ -119,6 +128,7 @@ function AppShell() {
 
       {needsOnboarding && <OnboardingModal />}
       <ReconsentBanner />
+      <KidModeNotice />
       <ImpersonationBanner />
     </>
   )
@@ -129,6 +139,7 @@ export default function App() {
     <HelmetProvider>
       <ThemeProvider>
         <AuthProvider>
+          <ProfileProvider>
           <ImpersonationProvider>
           <GeoProvider>
           <PaymentConfigProvider>
@@ -142,6 +153,7 @@ export default function App() {
           </PaymentConfigProvider>
           </GeoProvider>
           </ImpersonationProvider>
+          </ProfileProvider>
         </AuthProvider>
         <Analytics />
         <SpeedInsights />

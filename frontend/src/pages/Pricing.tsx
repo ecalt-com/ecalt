@@ -3,6 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Check, Zap, Users, GraduationCap, Building2, ArrowLeft, Ticket } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../lib/AuthContext'
+import { authHeaders } from '../lib/api'
+import { useProfiles } from '../lib/ProfileContext'
 import { useSubscription } from '../lib/SubscriptionContext'
 import { useGeo, isIndia } from '../lib/GeoContext'
 import { usePaymentConfig } from '../lib/PaymentConfig'
@@ -63,6 +65,7 @@ export default function Pricing() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user, getToken } = useAuth()
+  const { ensureParentUnlock } = useProfiles()
   const { plan: currentPlan, plans, loading: loadingPlans } = useSubscription()
   const { country, loading: loadingGeo } = useGeo()
   const { razorpayKeyId } = usePaymentConfig()
@@ -99,7 +102,7 @@ export default function Pricing() {
           try {
             const verifyRes = await fetch('/api/v1/subscriptions/razorpay/verify', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+              headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
               body: JSON.stringify({
                 razorpay_subscription_id: response.razorpay_subscription_id,
                 razorpay_payment_id: response.razorpay_payment_id,
@@ -118,7 +121,7 @@ export default function Pricing() {
         options.handler = async (response: RazorpayOrderResponse) => {
           const verifyRes = await fetch('/api/v1/subscriptions/razorpay/verify', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
             body: JSON.stringify({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
@@ -145,12 +148,14 @@ export default function Pricing() {
       return
     }
 
+    // Billing is parent-only: accounts with child profiles confirm with the PIN.
+    if (!(await ensureParentUnlock('Enter your parent PIN to change your plan.'))) return
     setLoadingPlan(planId)
     try {
       const token = await getToken()
       const res = await fetch('/api/v1/subscriptions/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
         body: JSON.stringify({ plan_id: planId, country }),
       })
       const data = await res.json()
@@ -319,7 +324,7 @@ function CouponApply() {
       const token = await getToken()
       const res = await fetch('/api/v1/coupons/apply', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
         body: JSON.stringify({ code: code.trim().toUpperCase() }),
       })
       const data = await res.json()

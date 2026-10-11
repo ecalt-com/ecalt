@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Sparkles, ArrowRight, Loader2 } from 'lucide-react'
 import { useAuth } from '../../lib/AuthContext'
-import { getImpersonationSessionId } from '../../lib/impersonationStore'
+import { authHeaders } from '../../lib/api'
 
 interface TodaysSparkProps {
   onSelect: (prompt: string) => void
@@ -18,9 +18,7 @@ export default function TodaysSpark({ onSelect }: TodaysSparkProps) {
       try {
         const token = await getToken()
         if (!token) return
-        const headers: Record<string, string> = { Authorization: `Bearer ${token}` }
-        const sid = getImpersonationSessionId()
-        if (sid) headers['X-Impersonate-Session'] = sid
+        const headers = authHeaders(token)
         const res = await fetch('/api/v1/knowledge/spark', { headers })
         if (!res.ok || cancelled) return
         const data = await res.json()

@@ -179,39 +179,46 @@ async def send_parental_consent_email(parent_email: str, uid: str, token: str) -
 
 
 async def send_child_account_created_email(parent_email: str, child_name: str,
-                                           child_login_email: str, parent_uid: str) -> bool:
-    """COPPA direct-notice receipt after a parent creates a managed child account."""
+                                           parent_uid: str) -> bool:
+    """COPPA direct-notice receipt after a parent adds a child profile."""
+    from html import escape
     family_url = f"{settings.FRONTEND_URL}/family"
-    subject = f"You created an ECALT account for {child_name}"
+    name = escape(child_name)
+    subject = f"You added a profile for {child_name} on ECALT"
     html_body = f"""\
 <p style="font-family:sans-serif;font-size:16px">Hi,</p>
 <p style="font-family:sans-serif">
-  You just created an ECALT account for <strong>{child_name}</strong>
-  (login: {child_login_email}). This email is your record of the consent you gave.
+  You just added a learning profile for <strong>{name}</strong> to your ECALT account.
+  {name} uses ECALT through your sign-in — they have no login, email or password of
+  their own. This email is your record of the consent you gave.
 </p>
-<h3 style="font-family:sans-serif">What ECALT collects for {child_name}:</h3>
+<h3 style="font-family:sans-serif">What ECALT collects for {name}:</h3>
 <ul style="font-family:sans-serif">
-  <li>The name and login email you provided</li>
-  <li>Their learning questions and journeys</li>
+  <li>The name, birth month/year and country you provided</li>
+  <li>Their learning questions, journeys, quiz results and chat with the AI tutor</li>
   <li>AI-generated knowledge nodes (topics they've explored)</li>
 </ul>
 <h3 style="font-family:sans-serif">Your rights as a parent:</h3>
 <ul style="font-family:sans-serif">
   <li>See what they're learning from your <a href="{family_url}">Family dashboard</a></li>
   <li>Export or delete their data at any time</li>
-  <li>Withdraw consent at any time — this deactivates and deletes the account</li>
+  <li>Withdraw consent at any time — this deactivates and deletes the profile</li>
 </ul>
+<p style="font-family:sans-serif">
+  Your parent PIN keeps {name} from leaving their profile or changing these settings.
+</p>
 <p style="font-family:sans-serif;color:#666;font-size:14px">
-  If you did not create this account, reply to this email or contact support@ecalt.com immediately.
+  If you did not add this profile, reply to this email or contact support@ecalt.com immediately.
 </p>
 <p style="font-family:sans-serif;font-size:12px;color:#999">
   ECALT Privacy Policy: {settings.FRONTEND_URL}/privacy
 </p>"""
     text_body = (
-        f"Hi,\n\nYou created an ECALT account for {child_name} (login: {child_login_email}).\n\n"
+        f"Hi,\n\nYou added a learning profile for {child_name} to your ECALT account. "
+        f"They use ECALT through your sign-in and have no login of their own.\n\n"
         f"Manage it any time from your Family dashboard: {family_url}\n"
         f"You can export or delete their data, or withdraw consent, at any time.\n\n"
-        f"If you did not create this account, contact support@ecalt.com immediately.\n\n"
+        f"If you did not add this profile, contact support@ecalt.com immediately.\n\n"
         f"Privacy Policy: {settings.FRONTEND_URL}/privacy"
     )
     return await send_email(

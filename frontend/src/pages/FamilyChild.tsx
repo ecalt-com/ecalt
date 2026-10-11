@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
   Loader2, ArrowLeft, Flame, BookOpen, Brain, MessageCircle, CheckCircle2,
-  Download, Trash2, AlertTriangle, X, ShieldCheck, Undo2, FileText, RefreshCw,
+  Download, Trash2, AlertTriangle, X, ShieldCheck, Undo2, FileText, RefreshCw, KeyRound, Copy,
 } from 'lucide-react'
 import clsx from 'clsx'
 import Navigation from '../components/Navigation'
@@ -13,8 +13,8 @@ import { apiErrorCode } from '../lib/api'
 import {
   getChildren, getChildOverview, getChildActivity, getChildTranscript, getChildConsentRecord,
   patchChildSettings, revokeChildConsent, cancelChildRevocation, reconsentChild,
-  exportChildData, deleteChild,
-  type ChildOverview, type ChildActivity, type ChildTranscript, type ChildConsentRecord,
+  exportChildData, deleteChild, createClaimInvite,
+  type ChildOverview, type ClaimInvite, type FamilyChild as FamilyChildRow, type ChildActivity, type ChildTranscript, type ChildConsentRecord,
   type ChildSettings, type ContentAgeBand, type TranscriptVisibility,
 } from '../lib/familyApi'
 
@@ -463,6 +463,9 @@ const METHOD_LABELS: Record<string, string> = {
   email_link: 'by email link',
   email_link_authenticated: 'by signed-in approval',
   parent_created: 'by parent-created account',
+  parent_created_profile: 'by parent-created profile',
+  claim: 'when they linked their own login',
+  lifecycle_profile: 'automatically at 18 (awaiting own login)',
   card_verification: 'by card verification',
   parent_dashboard: 'from the Family dashboard',
 }
@@ -599,6 +602,7 @@ function SettingsTab({
   const [exporting, setExporting] = useState(false)
   const [showRevokeModal, setShowRevokeModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [childRow, setChildRow] = useState<FamilyChildRow | null>(null)
 
   // There is no per-child settings GET — the values live on the children list.
   useEffect(() => {
@@ -610,6 +614,7 @@ function SettingsTab({
         const { children } = await getChildren(token)
         const child = children.find(c => c.child_uid === uid)
         if (!cancelled && child) {
+          setChildRow(child)
           setSettings({
             paused: Boolean(child.paused),
             chat_enabled: child.chat_enabled ?? true,
@@ -717,6 +722,10 @@ function SettingsTab({
         </div>
       </div>
 
+      {childRow?.profile_type === 'profile' && (
+        <OwnLoginCard uid={uid} childName={childName} child={childRow} />
+      )}
+
       {/* Danger zone */}
       <div className="glass-card rounded-2xl p-5 border border-rose-200 dark:border-rose-900/40">
         <h3 className="text-xs font-semibold text-rose-500 uppercase tracking-wide mb-4">Danger zone</h3>
@@ -775,6 +784,85 @@ function SettingsTab({
       )}
       {showDeleteModal && (
         <DeleteChildModal uid={uid} childName={childName} onClose={() => setShowDeleteModal(false)} />
+      )}
+    </div>
+  )
+}
+
+// Conservative whole-year age, same rule as the backend (birthday month must
+// have fully passed).
+function ageOf(year: number | null, month: number | null): number | null {
+  if (year == null) return null
+  const now = new Date()
+  let age = now.getFullYear() - year
+  if (month && now.getMonth() + 1 <= month) age -= 1
+  return age
+}
+
+// Claim flow: a 13+ profile can move onto the teen's own Google login.
+function OwnLoginCard({ uid, childName, child }: { uid: string; childName: string; child: FamilyChildRow }) {
+  const { getToken } = useAuth()
+  const { addToast } = useToast()
+  const [invite, setInvite] = useState<ClaimInvite | null>(null)
+  const [busy, setBusy] = useState(false)
+  const age = ageOf(child.birth_year, child.birth_month)
+  const eligible = age != null && age >= 13 && child.account_status === 'active'
+
+  const create = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      setInvite(await createClaimInvite(uid, token))
+    } catch (err) {
+      const code = apiErrorCode(err)
+      addToast(code === 'too_young_to_claim' ? 'Children can have their own login from age 13.'
+        : code === 'profile_not_active' ? 'Finish verification for this profile first.'
+          : 'Could not create a code. Please try again.', 'error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const copy = async () => {
+    if (!invite) return
+    try {
+      await navigator.clipboard.writeText(invite.claim_url)
+      addToast('Link copied ✓')
+    } catch {
+      addToast('Copy failed — select the link and copy it manually.', 'error')
+    }
+  }
+
+  return (
+    <div className="glass-card rounded-2xl p-5">
+      <h3 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+        <KeyRound size={13} /> Their own login
+      </h3>
+      <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
+        {childName} uses ECALT through your sign-in. From 13, they can move this profile onto their own Google
+        account and keep all their progress. You'll still be linked as their parent; you'll see summaries
+        instead of opening their profile.
+      </p>
+      {!eligible ? (
+        <p className="text-xs text-slate-400">Available from age 13{age != null && age < 13 ? ` — in ${13 - age} year${13 - age === 1 ? '' : 's'}` : ''}.</p>
+      ) : invite ? (
+        <div className="rounded-xl border border-violet-200 dark:border-violet-500/30 bg-violet-50 dark:bg-violet-500/10 p-4">
+          <p className="text-xs text-slate-600 dark:text-slate-300 mb-2">Give {childName} this code, or send them the link. It works once and expires {fmtDate(invite.expires_at)}.</p>
+          <p className="text-2xl font-mono font-bold tracking-widest text-violet-700 dark:text-violet-300 mb-3">{invite.code}</p>
+          <div className="flex items-center gap-2">
+            <input readOnly value={invite.claim_url} className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs text-slate-600 dark:text-slate-300" />
+            <button onClick={copy} className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-violet-600 hover:bg-violet-500 text-white">
+              <Copy size={12} /> Copy
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button onClick={create} disabled={busy} className="btn-primary text-sm inline-flex items-center gap-1.5 disabled:opacity-60">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : <KeyRound size={14} />}
+          Give {childName} their own login
+        </button>
       )}
     </div>
   )

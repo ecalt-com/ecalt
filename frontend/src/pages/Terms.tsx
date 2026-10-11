@@ -61,10 +61,10 @@ export default function Terms() {
 
           <Section title="2. Parent-managed accounts">
             <p>
-              <span className="font-medium text-slate-700 dark:text-slate-200">Credentials:</span>{' '}
-              For accounts you create from the Family dashboard, you set and are responsible for your
-              child's login email and password — keeping them safe, sharing them only with your child,
-              and resetting them if compromised.
+              <span className="font-medium text-slate-700 dark:text-slate-200">Profiles and your PIN:</span>{' '}
+              Children you add from the Family dashboard use ECALT as profiles on your account, through
+              your sign-in. You are responsible for your parent PIN — keeping it secret from your children
+              and resetting it if it may be known — since it is what keeps a child inside their own profile.
             </p>
             <p>
               <span className="font-medium text-slate-700 dark:text-slate-200">Your controls:</span>{' '}

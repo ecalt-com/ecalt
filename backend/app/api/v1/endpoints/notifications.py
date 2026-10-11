@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, Field
 
-from app.core.auth import get_required_user, get_admin_user
+from app.core.auth import get_account_holder, get_required_user, get_admin_user
 from app.core.config import settings
 from app.core.database import get_db
 
@@ -190,7 +190,7 @@ def opt_out_whatsapp(uid: str = Depends(get_required_user)):
 # ── WhatsApp opt-in ───────────────────────────────────────────────────────────
 
 @router.post("/whatsapp/opt-in", response_model=NotificationPreferences)
-async def whatsapp_opt_in(body: WhatsAppOptInRequest, uid: str = Depends(get_required_user)):
+async def whatsapp_opt_in(body: WhatsAppOptInRequest, uid: str = Depends(get_account_holder)):
     """Store phone number and begin the opt-in flow.
 
     Production: sends a Twilio WhatsApp consent prompt and leaves whatsapp_opted_in=FALSE
@@ -231,7 +231,7 @@ async def whatsapp_opt_in(body: WhatsAppOptInRequest, uid: str = Depends(get_req
 
 
 @router.post("/whatsapp/confirm", response_model=NotificationPreferences)
-def whatsapp_confirm(body: WhatsAppConfirmRequest, uid: str = Depends(get_required_user)):
+def whatsapp_confirm(body: WhatsAppConfirmRequest, uid: str = Depends(get_account_holder)):
     """Confirm WhatsApp opt-in. In production this is triggered by a Twilio inbound webhook
     that matches the user's stored phone number after they reply YES."""
     phone = _normalize_phone(body.phone)

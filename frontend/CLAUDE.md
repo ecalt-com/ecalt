@@ -15,7 +15,7 @@ ECALT is a React + TypeScript SPA built with Vite and deployed on Vercel. It is 
 | Build tool | Vite 8, dev port 3000 |
 | Routing | React Router v6 (`v7_startTransition` + `v7_relativeSplatPath` future flags) |
 | Styling | Tailwind CSS v3 (`darkMode: 'class'`) + CSS vars in `index.css` |
-| Auth | Firebase v12 — Google popup sign-in (+ legacy email/password for `/kids-login`, being replaced) |
+| Auth | Firebase v12 — Google popup sign-in only. Children use **profiles** on the parent's login (see Family profiles) |
 | Payments | Stripe (global, redirect checkout) + Razorpay (India, in-page checkout.js) |
 | Diagrams | mermaid v11 (step diagrams, `securityLevel: 'strict'`), D3 v7 (constellation map) |
 | Icons / classes | lucide-react, clsx |
@@ -112,7 +112,9 @@ All pages are `React.lazy` + `Suspense` (`PageSkeleton` spinner) and wrapped in 
 | `/consent/confirm`, `/consent/report` | ConsentConfirm / ConsentReport | Parent-facing, token in query; child gates suppressed here |
 | `/family` | Family | Parent dashboard (children, link requests, add child) |
 | `/family/child/:uid` | FamilyChild | Per-child overview, activity, transcripts, settings, consent, export/delete |
-| `/kids-login` | KidsLogin | Legacy email/password child sign-in — **backend no longer creates these logins** (see Family profiles) |
+| `/profiles` | Profiles | "Who's learning?" picker for accounts with child profiles |
+| `/claim` | Claim | Teen (13+) attaches their own Google login to their profile with a parent's code; sign-up gates skipped here |
+| `/kids-login` | → `/` | Redirect — child email/password logins were removed |
 | `/sign-in`, `/get-started`, `*` | ComingSoon | Placeholder / 404 |
 
 ---
@@ -123,6 +125,7 @@ All pages are `React.lazy` + `Suspense` (`PageSkeleton` spinner) and wrapped in 
 HelmetProvider
   ThemeProvider
     AuthProvider
+      ProfileProvider           ← family profiles + PIN prompt (needs useAuth)
       ImpersonationProvider     ← needs getToken from AuthProvider
         GeoProvider             ← GET /api/v1/geo/country (unauth)
           PaymentConfigProvider ← GET /api/v1/subscriptions/config (unauth)
@@ -139,7 +142,6 @@ HelmetProvider
 
 ### Sign-in methods
 - `signIn()` — Google popup (`signInWithPopup`). A `signingIn` ref prevents double-invocation.
-- `signInWithEmail(email, password)` — legacy, used only by `/kids-login`; goes away with family profiles.
 - `getToken()` — stable (`useCallback` + `userRef`), safe as a `useEffect` dep; Firebase refreshes silently.
 - `role: 'learner' | 'parent' | null` comes from the backend profile.
 
@@ -174,12 +176,13 @@ Never redirect before `loading === false` — a hard refresh would kick the user
 
 ### `request<T>(path, init?, token?)` in `lib/api.ts`
 - Sets `Content-Type: application/json`, `Authorization: Bearer <token>` when given.
-- Adds `X-Impersonate-Session: <id>` automatically when an admin impersonation session is active (read from `impersonationStore`).
+- Headers come from `authHeaders(token)`: `Authorization`, `X-Impersonate-Session` (admin impersonation, from `impersonationStore`), `X-Profile-Id` (active child profile, from `profileStore`) and `X-Parent-Unlock` (parent PIN unlock).
+- On 403 `parent_unlock_required` it opens the PIN prompt (registered by `ProfileContext`) and retries once.
 - Non-OK → throws `ApiError` with `.status` and `.detail`. Message is `detail` (string) or `detail.message`. Structured errors look like `{ error, message }` → `apiErrorCode(err)`.
 - 204 → `undefined`.
 - Base URL: `VITE_API_URL || ''` (empty = same origin).
 
-**Rule: new endpoint calls go in `api.ts` (or `familyApi.ts` for family/consent) using `request()`.** Direct `fetch()` bypasses the impersonation header — only use it for SSE streams or pre-auth bootstrapping.
+**Rule: new endpoint calls go in `api.ts` (or `familyApi.ts` for family/consent) using `request()`.** If you must use `fetch()` (SSE streams, file downloads), build headers with `authHeaders(token)` — a call without `X-Profile-Id` silently acts as the parent. The only intentional exceptions are AuthContext's account-level `POST /users` and `GET /users/me` (role) and the admin pages.
 
 ### Wrapper groups (`api.ts`)
 - Spark / session: `askSpark`, `getSessionStatus`
@@ -195,7 +198,7 @@ Never redirect before `loading === false` — a hard refresh would kick the user
 Children CRUD, link-request approve/decline, card verification (start/confirm), child overview/activity/transcript, `getMyFamily`, consent record, `patchChildSettings`, revoke/cancel-revoke/reconsent, `exportChildData`, self consent (`getMyConsent`, `reconsentSelf`), and token-based parent consent (`getConsentStatus`, `decideConsent`, `resendConsentEmail`, `reportConsent`).
 
 ### Remaining direct `fetch()` users
-`AuthContext` (POST `/users`), `GeoContext`, `PaymentConfig`, `SubscriptionContext`, `ConversationInterface` + `JourneyTutor` (SSE), and older code (`Pricing`, `Profile`, `Welcome`, `Verify`, `MindSignature`, `Admin` + `admin/hooks` + several admin tabs, `KnowledgeUniverse`, `TodaysSpark`, `OnboardingModal`). `pages/Privacy.tsx` is unrouted (`/privacy` redirects to `/profile`). When touching these, prefer migrating to `request()`; if you keep `fetch`, add the impersonation header manually (see `SubscriptionContext`).
+`AuthContext` (POST `/users`), `GeoContext`, `PaymentConfig`, `SubscriptionContext`, `ConversationInterface` + `JourneyTutor` (SSE), and older code (`Pricing`, `Profile`, `Welcome`, `Verify`, `MindSignature`, `Admin` + `admin/hooks` + several admin tabs, `KnowledgeUniverse`, `TodaysSpark`, `OnboardingModal`). `pages/Privacy.tsx` is unrouted (`/privacy` redirects to `/profile`). All of them except AuthContext and admin now use `authHeaders(token)`.
 
 ---
 
@@ -238,14 +241,15 @@ Admin starts a session from the Users tab → `ImpersonationContext` stores it, 
 - Teens: consent flow via the phase machine above; `ReconsentBanner` prompts re-acceptance after a policy-version bump.
 - Parents approve consent via emailed `/consent/confirm?token=…` links.
 
-### Family profiles — backend ahead of frontend
-The backend (uncommitted on `feature/dev`) now models children as **profiles on the parent's Google login** instead of separate email/password accounts. The frontend has **not** been updated yet; the spec is `../backend/plans/family-profiles/frontend-changes.md`. Key contract:
-- `GET /family/profiles` → "Who's learning?" picker (parent + child profiles).
-- Acting as a child: send `X-Profile-Id: prof_…` on every learner request (belongs in `request()`, like the impersonation header). Can't be combined with `X-Impersonate-Session` (400).
-- Parent-only routes (`/family/*`, billing, account deletion) need `X-Parent-Unlock: <token>` from `POST /family/pin/verify` (15-min TTL) when the account has profiles. Set/reset PIN: `POST /family/pin`, `/family/pin/reset`.
-- New 403 codes: `parent_unlock_required` (prompt PIN), `parent_profile_required` (switch to parent), `profile_not_allowed`.
-- `AddChildWizard` must stop collecting child email/password; `/kids-login` and `signInWithEmail` are to be removed.
-- Profile users have no email — don't assume `user.email` exists.
+### Family profiles
+Children use ECALT as **profiles on the parent's Google login** — no child email or password. Contract: `../backend/plans/family-profiles/`.
+- `lib/profileStore.ts` (module-level, like `impersonationStore`): active profile per account in `localStorage` (`ecalt.activeProfile.<uid>`), parent unlock token in `sessionStorage` (cleared on entering a child profile), PIN-prompt hook for `api.ts`.
+- `lib/ProfileContext.tsx` (`useProfiles()`): loads `GET /family/profiles`; exposes `isKidMode`, `activeProfile`, `needsPicker`, `switchTo(uid)` (PIN to leave a child profile; full page reload so every context restarts as the new profile), `ensureParentUnlock(reason)` (call before raw-fetch parent actions: checkout, export, delete). Renders `PinPrompt`.
+- `components/family/ProfileRouting.tsx`: picker redirect (to `/profiles` until the device picks), `KidModeGuard` (parent-only pages → "for grown-ups" screen), `KidModeNotice` (disclosure to the child/teen).
+- In kid mode: Family/Admin nav hidden, `/family`, `/pricing`, `/profile`, `/admin`, `/welcome` guarded, onboarding skips WhatsApp, `ReconsentBanner` hidden.
+- `AddChildWizard`: set PIN (if none) → name + avatar + birth → consent → create profile → card verification when required. `FamilyChild` settings has "Give them their own login" (claim code, 13+).
+- 403 codes: `parent_unlock_required` (PIN), `parent_profile_required` (switch to parent), `profile_not_allowed` (stale profile → picker).
+- Profile users have no email — don't assume `user.email` (the Firebase user is always the parent).
 
 ---
 

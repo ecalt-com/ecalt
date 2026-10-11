@@ -76,9 +76,10 @@ export default function PrivacyPolicy() {
               <li>Birth year and month (not the exact day), used solely for age checks.</li>
               <li>Country, recorded once at signup as the consent jurisdiction.</li>
             </ul>
-            <p className="font-medium text-slate-700 dark:text-slate-200 pt-2">From children under 13 (parent-created accounts):</p>
+            <p className="font-medium text-slate-700 dark:text-slate-200 pt-2">For child profiles (created by a parent on their own account):</p>
             <ul className="list-disc list-inside space-y-1 pl-1">
-              <li>The same learning data, but the login identity (name, email) is created and controlled by the parent.</li>
+              <li>The same learning data, plus the name, birth month/year, country and avatar the parent enters.</li>
+              <li>No email address, password or other login is collected from the child — they use ECALT through the parent's sign-in, protected by a parent PIN.</li>
               <li>AI chat is off by default for under-13s; a parent must explicitly enable it.</li>
             </ul>
             <p className="font-medium text-slate-700 dark:text-slate-200 pt-2">We do NOT collect:</p>
@@ -98,7 +99,7 @@ export default function PrivacyPolicy() {
               There are two paths:
             </p>
             <ul className="list-disc list-inside space-y-1 pl-1">
-              <li><span className="font-medium">Parent-created:</span> you create the account from your Family dashboard, reviewing and accepting the data disclosure as part of setup.</li>
+              <li><span className="font-medium">Parent-created profile:</span> you add your child as a profile on your own account from the Family dashboard, reviewing and accepting the data disclosure as part of setup. From 13, you can give them a code to move the profile onto their own Google login.</li>
               <li><span className="font-medium">Teen self-signup:</span> the teen signs up and names you; we email you a review page where you explicitly approve or decline. The link expires in 7 days, and nothing activates until you decide.</li>
             </ul>
             <p className="font-medium text-slate-700 dark:text-slate-200 pt-2">How we verify it's really a parent:</p>
@@ -146,13 +147,13 @@ export default function PrivacyPolicy() {
           <Section title="6. Data retention and your rights">
             <ul className="list-disc list-inside space-y-1.5 pl-1">
               <li><span className="font-medium">Active accounts:</span> data is retained while the account is active.</li>
-              <li><span className="font-medium">Pending accounts:</span> if parental consent never arrives, the account and all associated data (including the login credential) are deleted after 30 days.</li>
+              <li><span className="font-medium">Pending accounts:</span> if parental consent never arrives, the account and all associated data (including any login credential) are deleted after 30 days.</li>
               <li><span className="font-medium">Inactive child accounts:</span> after 12 months of inactivity we notify the parent; if the account stays unused for another 30 days, deletion is scheduled with a 14-day grace window the parent can cancel.</li>
               <li><span className="font-medium">Consent withdrawal:</span> the account pauses immediately and is deleted after a 14-day grace window.</li>
               <li><span className="font-medium">Deleted accounts:</span> personal data is removed immediately on deletion; every deletion is logged.</li>
               <li><span className="font-medium">Consent proof:</span> consent events are retained in pseudonymised form (no name or email) as legally required evidence that consent existed.</li>
               <li><span className="font-medium">Un-actioned policy re-consent:</span> if a parent doesn't re-accept a materially changed policy, the child's account is paused 30 days after the notice.</li>
-              <li><span className="font-medium">Turning 18:</span> the family link is graduated — parental controls are removed and the learner re-consents as an adult.</li>
+              <li><span className="font-medium">Turning 18:</span> the family link is graduated — parental controls are removed and the learner re-consents as an adult. A child profile without its own login keeps its link until the parent hands over a login code, but its parental controls are lifted.</li>
             </ul>
             <p className="pt-1">
               You have the right to access, correct, and delete your data at any time.

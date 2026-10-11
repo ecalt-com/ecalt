@@ -6,7 +6,7 @@ from app.models.schemas import SparkRequest, SparkResponse
 from app.services.spark_service import consume_spark, generate_spark
 from app.services.subscription_service import check_budget, record_usage, get_user_plan
 from app.services.provider_service import get_config
-from app.core.auth import get_optional_user
+from app.core.auth import assert_account_active, get_optional_user
 from app.core.limiter import limiter
 from app.services.content_filter import check_topic_scope
 
@@ -40,6 +40,7 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
 
     # Budget check for authenticated users — guests use session window only
     if uid:
+        assert_account_active(uid)  # paused / consent-pending children are blocked
         allowed, reason = check_budget(uid, context="ai")
         if not allowed:
             raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})

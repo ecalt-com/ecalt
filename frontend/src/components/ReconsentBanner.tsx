@@ -1,18 +1,22 @@
 import { useEffect, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { useAuth } from '../lib/AuthContext'
+import { useProfiles } from '../lib/ProfileContext'
 import { getMyConsent, reconsentSelf } from '../lib/familyApi'
 
 // Shown when the privacy policy version was bumped after the user's last
 // consent (GET /users/me/consent → needs_reconsent). Accept → POST /me/reconsent.
 export default function ReconsentBanner() {
   const { user, getToken } = useAuth()
+  // A child profile can't accept the policy itself — the parent re-consents
+  // for it from the Family dashboard.
+  const { isKidMode } = useProfiles()
   const [needed, setNeeded] = useState(false)
   const [policyVersion, setPolicyVersion] = useState<string | null>(null)
   const [accepting, setAccepting] = useState(false)
 
   useEffect(() => {
-    if (!user) { setNeeded(false); return }
+    if (!user || isKidMode) { setNeeded(false); return }
     let cancelled = false
     ;(async () => {
       const token = await getToken()
@@ -26,7 +30,7 @@ export default function ReconsentBanner() {
       } catch { /* non-critical */ }
     })()
     return () => { cancelled = true }
-  }, [user, getToken])
+  }, [user, isKidMode, getToken])
 
   if (!needed) return null
 

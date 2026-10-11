@@ -96,13 +96,13 @@ export default function Parents() {
             </h2>
             <div className="space-y-3">
               <div className="glass-card rounded-2xl p-5">
-                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">You create it (recommended)</p>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">Add them as a profile (recommended, and the only way under 13)</p>
                 <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                   Sign in with Google, open your <Link to="/family" className="text-violet-600 dark:text-violet-400 underline">Family dashboard</Link>,
-                  and add your child: their name, date of birth, a consent review, and a login you set for them.
-                  They sign in with that email and password at{' '}
-                  <Link to="/kids-login" className="text-violet-600 dark:text-violet-400 underline">ecalt.com/kids-login</Link> —
-                  their own account, linked to yours.
+                  set a parent PIN and add your child: their name, date of birth and a consent review. No email
+                  or password for your child — they pick their profile on the “Who's learning?” screen and use
+                  ECALT through your sign-in. Your PIN is needed to leave their profile, so they can't wander into
+                  yours. From 13 you can give them a code to move their profile onto their own Google login.
                 </p>
               </div>
               <div className="glass-card rounded-2xl p-5">

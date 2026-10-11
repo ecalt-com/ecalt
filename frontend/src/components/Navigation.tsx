@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Menu, X, LogOut } from 'lucide-react'
+import { Menu, X, LogOut, Users } from 'lucide-react'
 import clsx from 'clsx'
 import ThemeToggle from './ThemeToggle'
 import { useAuth } from '../lib/AuthContext'
 import { useSubscription } from '../lib/SubscriptionContext'
+import { useProfiles } from '../lib/ProfileContext'
+import ProfileAvatar from './family/ProfileAvatar'
 
 const PUBLIC_LINKS = [
   { to: '/explore', label: 'Explore' },
@@ -21,26 +23,22 @@ const AUTH_LINKS = [
   { to: '/mind-signature', label: 'Mind Signature' },
 ]
 
-function UserAvatar({ photoURL, displayName }: { photoURL: string | null; displayName: string | null }) {
-  if (photoURL) {
-    return <img src={photoURL} alt={displayName ?? 'User'} className="w-7 h-7 rounded-full object-cover" referrerPolicy="no-referrer" />
-  }
-  const initials = (displayName ?? 'U').split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
-  return (
-    <div className="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center text-white text-xs font-bold">
-      {initials}
-    </div>
-  )
-}
-
 export default function Navigation() {
   const { pathname } = useLocation()
   const { user, loading, role, signIn, signOut } = useAuth()
   const { isAdmin } = useSubscription()
+  const { isKidMode, activeProfile, profiles } = useProfiles()
   const [open, setOpen] = useState(false)
   const baseLinks = user ? AUTH_LINKS : PUBLIC_LINKS
-  const withFamily = user && role === 'parent' ? [...baseLinks, { to: '/family', label: 'Family' }] : baseLinks
-  const visibleLinks = isAdmin ? [...withFamily, { to: '/admin', label: 'Admin' }] : withFamily
+  // Inside a child's profile, parent-only areas are hidden (and guarded by KidModeGuard).
+  const withFamily = user && role === 'parent' && !isKidMode ? [...baseLinks, { to: '/family', label: 'Family' }] : baseLinks
+  const visibleLinks = isAdmin && !isKidMode ? [...withFamily, { to: '/admin', label: 'Admin' }] : withFamily
+  const hasProfiles = profiles.length > 0
+  // Who the session currently acts as: a child profile, or the signed-in parent.
+  const shownName = isKidMode ? activeProfile?.display_name ?? null : user?.displayName ?? null
+  const shownAvatar = isKidMode ? activeProfile?.avatar ?? null : null
+  const shownPhoto = isKidMode ? null : user?.photoURL ?? null
+  const accountLink = isKidMode ? '/profiles' : '/profile'
 
   return (
     <>
@@ -83,24 +81,35 @@ export default function Navigation() {
             ) : user ? (
               <>
                 <Link
-                  to="/profile"
+                  to={accountLink}
+                  title={isKidMode ? 'Switch profile' : undefined}
                   className={clsx(
                     'flex items-center gap-2 px-2 py-1 rounded-lg transition-all',
-                    pathname === '/profile'
+                    pathname === accountLink
                       ? 'bg-violet-50 dark:bg-violet-600/20'
                       : 'hover:bg-slate-100 dark:hover:bg-slate-800/50'
                   )}
                 >
-                  <UserAvatar photoURL={user.photoURL} displayName={user.displayName} />
+                  <ProfileAvatar name={shownName} avatar={shownAvatar} photoUrl={shownPhoto} />
                   <span className={clsx(
                     'text-sm font-medium max-w-[120px] truncate',
-                    pathname === '/profile'
+                    pathname === accountLink
                       ? 'text-violet-700 dark:text-violet-300'
                       : 'text-slate-600 dark:text-slate-400'
                   )}>
-                    {user.displayName?.split(' ')[0] ?? user.email}
+                    {shownName?.split(' ')[0] ?? user.email}
                   </span>
                 </Link>
+                {hasProfiles && !isKidMode && (
+                  <Link
+                    to="/profiles"
+                    title="Switch profile"
+                    aria-label="Switch profile"
+                    className="p-1.5 rounded-lg text-slate-500 hover:text-violet-600 hover:bg-slate-100 dark:hover:bg-slate-800/50 transition-all"
+                  >
+                    <Users size={14} />
+                  </Link>
+                )}
                 <button
                   onClick={signOut}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-all ml-1"
@@ -152,10 +161,16 @@ export default function Navigation() {
             {/* User info when signed in */}
             {user && (
               <div className="flex items-center gap-3 px-4 py-3 mb-1 border-b border-slate-200/80 dark:border-slate-700/50">
-                <UserAvatar photoURL={user.photoURL} displayName={user.displayName} />
+                <ProfileAvatar name={shownName} avatar={shownAvatar} photoUrl={shownPhoto} />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{user.displayName}</p>
-                  <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                  <p className="text-sm font-medium text-slate-800 dark:text-slate-200 truncate">{shownName}</p>
+                  <p className="text-xs text-slate-400 truncate">
+                    {isKidMode
+                      ? activeProfile?.age_group === 'child'
+                        ? 'Your grown-up manages this profile'
+                        : 'Managed by your parent, who can open this profile'
+                      : user.email}
+                  </p>
                 </div>
               </div>
             )}
@@ -180,6 +195,16 @@ export default function Navigation() {
 
             {!loading && (
               <div className="border-t border-slate-200/80 dark:border-slate-700/50 mt-2 pt-2 space-y-0.5">
+                {user && hasProfiles && (
+                  <Link
+                    to="/profiles"
+                    onClick={() => setOpen(false)}
+                    className="flex items-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-slate-800/50 transition-colors"
+                  >
+                    <Users size={14} />
+                    Switch profile
+                  </Link>
+                )}
                 {user ? (
                   <button
                     onClick={() => { signOut(); setOpen(false) }}

@@ -16,11 +16,17 @@ CHILD_UID = "child-uid-123"
 @pytest.fixture
 def client():
     from app.main import app
-    from app.core.auth import get_required_user, get_optional_user, get_active_user
+    from app.core.auth import (
+        get_active_account_holder, get_active_user, get_optional_user,
+        get_parent_session, get_required_user, get_signed_in_uid,
+    )
 
     app.dependency_overrides[get_required_user] = lambda: TEST_UID
     app.dependency_overrides[get_optional_user] = lambda: TEST_UID
     app.dependency_overrides[get_active_user] = lambda: TEST_UID
+    app.dependency_overrides[get_signed_in_uid] = lambda: TEST_UID
+    app.dependency_overrides[get_parent_session] = lambda: TEST_UID
+    app.dependency_overrides[get_active_account_holder] = lambda: TEST_UID
 
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
@@ -69,8 +75,6 @@ def _create_child_body(**overrides):
     body = {
         "display_name": "Kid",
         "birth_year": CURRENT_YEAR - 15,
-        "email": "kid@example.com",
-        "password": "supersecret1",
     }
     body.update(overrides)
     return body
@@ -81,8 +85,8 @@ def _create_child_body(**overrides):
 def test_create_child_success(client):
     with (
         patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
-        patch("app.services.firebase_admin.create_firebase_user",
-              new_callable=AsyncMock, return_value=(CHILD_UID, None)),
+        patch("app.services.profile_service.has_pin", return_value=True),
+        patch("app.services.profile_service.new_profile_uid", return_value=CHILD_UID),
         patch("app.api.v1.endpoints.family.asyncio.ensure_future"),
     ):
         mock_cur = _mock_db(mock_get_db, [_parent_row(), {"n": 0}])
@@ -92,6 +96,7 @@ def test_create_child_success(client):
     body = resp.json()
     assert body["child_uid"] == CHILD_UID
     assert body["managed"] is True
+    assert body["profile_type"] == "profile"
     assert body["chat_enabled"] is True  # 13+ default on
 
     executed = [str(c[0][0]) for c in mock_cur.execute.call_args_list]
@@ -99,10 +104,17 @@ def test_create_child_success(client):
     assert any("INSERT INTO child_settings" in q for q in executed)
     assert any("INSERT INTO consent_events" in q for q in executed)
     assert any("role = 'parent'" in q for q in executed)
+    # A profile: no login, no email, profile_type set.
+    user_insert = next(c for c in mock_cur.execute.call_args_list
+                       if "INSERT INTO users" in str(c[0][0]))
+    assert "'profile'" in str(user_insert[0][0]) and "NULL" in str(user_insert[0][0])
 
 
 def test_create_child_under_13_blocked_by_default(client):
-    with patch("app.api.v1.endpoints.family.get_db") as mock_get_db:
+    with (
+        patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
+        patch("app.services.profile_service.has_pin", return_value=True),
+    ):
         _mock_db(mock_get_db, [_parent_row()])
         resp = client.post(
             "/api/v1/family/children",
@@ -117,8 +129,8 @@ def test_create_child_under_13_allowed_with_flag_and_chat_off(client):
     with (
         patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
         patch("app.api.v1.endpoints.family.settings.ENABLE_MANAGED_CHILDREN", True),
-        patch("app.services.firebase_admin.create_firebase_user",
-              new_callable=AsyncMock, return_value=(CHILD_UID, None)),
+        patch("app.services.profile_service.has_pin", return_value=True),
+        patch("app.services.profile_service.new_profile_uid", return_value=CHILD_UID),
         patch("app.api.v1.endpoints.family.asyncio.ensure_future"),
     ):
         mock_cur = _mock_db(mock_get_db, [_parent_row(), {"n": 0}])
@@ -141,7 +153,10 @@ def test_create_child_under_13_allowed_with_flag_and_chat_off(client):
 
 
 def test_create_child_rejects_adults(client):
-    with patch("app.api.v1.endpoints.family.get_db") as mock_get_db:
+    with (
+        patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
+        patch("app.services.profile_service.has_pin", return_value=True),
+    ):
         _mock_db(mock_get_db, [_parent_row()])
         resp = client.post(
             "/api/v1/family/children",
@@ -162,7 +177,10 @@ def test_create_child_requires_adult_parent(client):
 
 
 def test_create_child_seat_limit(client):
-    with patch("app.api.v1.endpoints.family.get_db") as mock_get_db:
+    with (
+        patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
+        patch("app.services.profile_service.has_pin", return_value=True),
+    ):
         _mock_db(mock_get_db, [_parent_row(), {"n": 5}])
         resp = client.post("/api/v1/family/children", json=_create_child_body())
 
@@ -170,17 +188,16 @@ def test_create_child_seat_limit(client):
     assert resp.json()["detail"]["error"] == "family_full"
 
 
-def test_create_child_email_exists(client):
+def test_create_child_requires_pin(client):
     with (
         patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
-        patch("app.services.firebase_admin.create_firebase_user",
-              new_callable=AsyncMock, return_value=(None, "EMAIL_EXISTS")),
+        patch("app.services.profile_service.has_pin", return_value=False),
     ):
-        _mock_db(mock_get_db, [_parent_row(), {"n": 0}])
+        _mock_db(mock_get_db, [_parent_row()])
         resp = client.post("/api/v1/family/children", json=_create_child_body())
 
     assert resp.status_code == 409
-    assert resp.json()["detail"]["error"] == "email_exists"
+    assert resp.json()["detail"]["error"] == "pin_required"
 
 
 # ── GET /family/children ──────────────────────────────────────────────────────
@@ -273,14 +290,15 @@ def test_delete_child_authorized(client):
         patch("app.api.v1.endpoints.family.get_db") as mock_get_db,
         patch("app.api.v1.endpoints.family.record_consent_event") as mock_event,
         patch("app.services.account_service.delete_user_account") as mock_delete,
-        patch("app.services.firebase_admin.delete_firebase_user",
-              new_callable=AsyncMock, return_value=True),
+        patch("app.services.firebase_admin.purge_login",
+              new_callable=AsyncMock, return_value=True) as mock_purge,
     ):
         _mock_db(mock_get_db, [_parent_row()])
         resp = client.delete(f"/api/v1/family/children/{CHILD_UID}")
 
     assert resp.status_code == 204
     mock_delete.assert_called_once_with(CHILD_UID)
+    mock_purge.assert_awaited_once_with(CHILD_UID)
     assert mock_event.call_args[0][:2] == (CHILD_UID, "revoked")
 
 

@@ -8,7 +8,7 @@ per-jurisdiction gates.
 - [ ] `FIREBASE_SERVICE_ACCOUNT_JSON` set on Railway (full service-account key
       JSON). Without it: under-13 Firebase purge is a no-op, child creation
       returns 503.
-- [ ] **Email/Password provider enabled** in the Firebase console (kids login).
+- [x] ~~Email/Password provider in the Firebase console~~ — no longer needed: children are profiles on the parent's Google login (plans/family-profiles).
 - [ ] `STRIPE_SECRET_KEY` present (already used for billing) — card verification
       reuses it. Verify Checkout **setup mode** works on the account (test mode
       run: create child in an IN-jurisdiction test account → verify card flow).

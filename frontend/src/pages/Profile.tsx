@@ -14,8 +14,10 @@ import {
   optInWhatsApp,
   optOutWhatsApp,
   type NotificationPreferences,
+  authHeaders,
 } from '../lib/api'
 import { getMyFamily, type MyFamily } from '../lib/familyApi'
+import { useProfiles } from '../lib/ProfileContext'
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i)
 
@@ -53,6 +55,7 @@ interface UserProfile {
 
 export default function Profile() {
   const { user, loading: authLoading, getToken, signOut, role } = useAuth()
+  const { ensureParentUnlock } = useProfiles()
   const { addToast } = useToast()
   const { plan, couponExtras, loading: subLoading } = useSubscription()
   const { country, loading: geoLoading } = useGeo()
@@ -86,7 +89,7 @@ export default function Profile() {
     if (!user) return
     getToken().then(token => {
       if (!token) return
-      fetch('/api/v1/users/me', { headers: { Authorization: `Bearer ${token}` } })
+      fetch('/api/v1/users/me', { headers: authHeaders(token) })
         .then(r => r.ok ? r.json() : null)
         .then(data => { if (data) setProfile(data) })
         .catch(() => {})
@@ -169,11 +172,12 @@ export default function Profile() {
   }
 
   const handleExport = async () => {
+    if (!(await ensureParentUnlock('Enter your parent PIN to export your data.'))) return
     setExporting(true)
     try {
       const token = await getToken()
       const res = await fetch('/api/v1/users/me/export', {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders(token),
       })
       if (!res.ok) return
       const blob = await res.blob()
@@ -190,20 +194,21 @@ export default function Profile() {
 
   const handleDeleteAccount = async () => {
     if (deleteInput !== 'DELETE') return
+    if (!(await ensureParentUnlock('Enter your parent PIN to delete your account.'))) return
     setDeleting(true)
     setDeleteError(null)
     try {
       const token = await getToken()
       const res = await fetch('/api/v1/users/me', {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: authHeaders(token),
       })
       if (!res.ok) {
         const body = await res.json().catch(() => ({}))
         const detailStr = typeof body.detail === 'string' ? body.detail : ''
         const detailCode = typeof body.detail === 'object' && body.detail ? body.detail.error : ''
         if (detailCode === 'managed_children_exist' || detailStr.includes('managed_children_exist')) {
-          setDeleteError("You manage children's accounts. Delete them from your Family dashboard before deleting your own account.")
+          setDeleteError("You manage children's profiles. Delete them from your Family dashboard before deleting your own account.")
         } else if (detailStr.includes('already_deleted')) {
           setDeleteError('This account has already been deleted.')
         } else {

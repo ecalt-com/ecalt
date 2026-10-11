@@ -14,10 +14,10 @@ class Settings(BaseSettings):
     FIREBASE_PROJECT_ID: str = ""
     # Service-account JSON (full key file contents) for Firebase Admin REST calls —
     # needed to purge under-13 Firebase Auth records created before the age gate
-    # and to create managed child credentials from the Family dashboard.
+    # and the logins of deleted accounts.
     FIREBASE_SERVICE_ACCOUNT_JSON: str = ""
-    # Under-13 managed accounts stay off until the jurisdiction's verifiable-consent
-    # tier (plan Phase 2) is live; 13+ children can be parent-created regardless.
+    # Under-13 family profiles stay off until card verification is tested end to
+    # end (plans/family-profiles Phase 4); 13+ profiles can be created regardless.
     ENABLE_MANAGED_CHILDREN: bool = False
     MAX_CHILDREN_PER_PARENT: int = 5
     # Supabase Storage — hero images bucket. Service-role key is required for

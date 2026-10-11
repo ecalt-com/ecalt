@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CheckCircle2, Sparkles, BookOpen, Zap, Star, ArrowRight } from 'lucide-react'
 import { useAuth } from '../lib/AuthContext'
+import { authHeaders } from '../lib/api'
 import { useSubscription } from '../lib/SubscriptionContext'
 import PageMeta from '../components/PageMeta'
 
@@ -78,7 +79,7 @@ export default function Welcome() {
         if (!token) return
         const res = await fetch('/api/v1/subscriptions/sync', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          headers: { 'Content-Type': 'application/json', ...authHeaders(token) },
           body: JSON.stringify({ session_id: sessionId || null }),
         })
         if (res.ok) {

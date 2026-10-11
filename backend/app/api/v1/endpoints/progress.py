@@ -3,7 +3,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
-from app.core.auth import get_required_user, get_acting_uid
+from app.core.auth import get_active_user, get_acting_uid
 from app.core.database import get_db
 from app.services.knowledge_service import credit_step_knowledge
 from app.services.quiz_service import step_quiz_passed
@@ -189,7 +189,7 @@ async def mark_step_complete(
     journey_id: str,
     step_id: str,
     background_tasks: BackgroundTasks,
-    uid: str = Depends(get_required_user),
+    uid: str = Depends(get_active_user),
 ):
     """Mark a step as complete. Idempotent. Updates daily streak and knowledge graph.
 
@@ -238,7 +238,7 @@ async def mark_step_complete(
 
 @router.delete("/{journey_id}/{step_id}", response_model=ProgressResponse)
 async def mark_step_incomplete(
-    journey_id: str, step_id: str, uid: str = Depends(get_required_user)
+    journey_id: str, step_id: str, uid: str = Depends(get_active_user)
 ):
     """Unmark a step as complete."""
     with get_db() as conn:

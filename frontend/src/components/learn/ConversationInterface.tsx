@@ -7,7 +7,7 @@ import UpgradePrompt from '../UpgradePrompt'
 import AccountPausedScreen from '../AccountPausedScreen'
 import { useAuth } from '../../lib/AuthContext'
 import { useSubscription } from '../../lib/SubscriptionContext'
-import { getImpersonationSessionId } from '../../lib/impersonationStore'
+import { authHeaders } from '../../lib/api'
 
 interface Message {
   id: string
@@ -78,10 +78,8 @@ export default function ConversationInterface({
     try {
       const streamHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...authHeaders(token),
       }
-      const impersonationId = getImpersonationSessionId()
-      if (impersonationId) streamHeaders['X-Impersonate-Session'] = impersonationId
       const response = await fetch('/api/v1/chat/stream', {
         method: 'POST',
         headers: streamHeaders,
