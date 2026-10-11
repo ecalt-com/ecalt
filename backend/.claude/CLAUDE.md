@@ -43,6 +43,10 @@ python scripts/make_admin.py --email you@x.com [--revoke]   # or --uid <firebase
 
 **Verify every change with `pytest`** before calling it done.
 
+- Run tests with a dead DB URL so nothing can reach production: `DATABASE_URL=postgresql://x:y@127.0.0.1:1/none pytest`. Repeated failed logins also trip the Supabase pooler's auth circuit breaker.
+- Settings are read from `.env`, so a test that depends on a flag (e.g. `ENABLE_MANAGED_CHILDREN`) must patch it explicitly — never rely on the local `.env` value.
+- 62 tests fail on `feature/dev` before any change (as of 2026-10-11). Compare the failure count before and after your change rather than expecting a clean run.
+
 ---
 
 ## Layout
@@ -109,7 +113,8 @@ backend/
 | `get_required_user` | `uid` (401 otherwise) | Signed in, **status not checked** (bootstrap, consent flow) |
 | `get_active_user` | `uid` | **Default for learner features.** 403 `consent_pending` / `account_paused`; status cached 60 s, fails closed (503) |
 | `get_account_holder` | `uid` | Account-level actions; 403 `parent_profile_required` when called from inside a child profile |
-| `get_active_account_holder` | `uid` | Account holder + active status, no PIN (profile picker, PIN endpoints) |
+| `get_active_account_holder` | `uid` | Account holder + active status, no PIN (profile picker, setting the PIN) |
+| `get_active_signed_in_account` | `uid` | Signed-in, active account, **ignoring `X-Profile-Id`**. Only for `POST /family/pin/verify` and `/pin/reset` — they are how a parent leaves a child profile, so the request still carries the profile header. Don't use it elsewhere |
 | `get_unlocked_account_holder` | `uid` | Account holder + parent PIN unlock, no status check (e.g. account deletion) |
 | `get_parent_session` | `uid` | Active account holder + parent PIN unlock. **Default for `/family` routes** |
 | `get_admin_user` | `uid` | Admin endpoints (403 otherwise) |
@@ -202,11 +207,20 @@ Children (all under-13s, optionally teens) use ECALT as **profiles on the parent
 - Parent acts as a profile by sending `X-Profile-Id` (see Auth).
 - **Parent PIN** (`parent_pins`, scrypt-hashed, 5 attempts → 15 min lock): `POST /family/pin/verify` mints a 15-min HMAC unlock token sent as `X-Parent-Unlock` on parent-only requests. Required only when the account has at least one profile. Forgot-PIN → `/family/pin/reset` after a fresh Google sign-in.
 - Lifecycle: a profile can be **claimed** by the child's own Google login (`POST /users/claim`, `/family/children/{uid}/claim-invite`) → `auth_identities` maps the new Firebase uid to the existing `prof_…` uid. The scheduler ages up unclaimed profiles and handles turning 13.
-- Under-13 profile creation is gated by `ENABLE_MANAGED_CHILDREN` (403 `under_13_not_available` when off).
-- Migration: `../migrations/013_family_profiles.sql`. Frontend work is specified in `plans/family-profiles/frontend-changes.md` (the frontend still ships the old `/kids-login` flow until that lands).
+- **Under-13s never get a login or password** — only a profile under the parent's login. The claim flow refuses under-13s (`too_young_to_claim`).
+- Under-13 profile creation is gated by `ENABLE_MANAGED_CHILDREN` (403 `under_13_not_available` when off). It is **on** in Railway dev and production since 2026-10-11.
+- **PIN endpoints from inside a child profile:** `/family/pin/verify` and `/family/pin/reset` use `get_active_signed_in_account` so they work while `X-Profile-Id` is set (otherwise the parent is locked in). Every other parent-only route still rejects the profile header.
+- Migration: `../migrations/013_family_profiles.sql`. The frontend side is implemented (`/profiles`, `/claim`, PIN prompt; `/kids-login` now redirects to `/`).
+
+### Parental verification (`plans/family-profiles/parental-consent-verification.md`)
+`required_verification_tier()` returns `card` for every under-13 and for every minor in India, `email_plus` otherwise. A card-tier child stays `parental_consent_pending` until verified, by either:
+- **Paid subscription** (`_paid_subscription` / `_verify_via_subscription` in `endpoints/family.py`): the parent has a subscription with `status = 'active'`, a plan other than `free_trial`, and a Stripe or Razorpay reference. Trials, coupon grants and admin-assigned plans don't count. Applied on profile creation, on teen link approval, and in `POST /family/children/{uid}/verify/card` (which then returns `checkout_url` = `<FRONTEND_URL>/family` instead of a Stripe URL).
+- **Card check:** Stripe Checkout in `setup` mode (nothing charged), confirmed by `/verify/card/confirm`.
+
+Both write a `consent_events` row with action `verified` and method `paid_subscription` or `card`.
 
 ### Parental controls
-Built on `family_links` + `child_settings`, per uid: dashboard (overview/activity/transcripts), pause, chat on/off, age band, transcript visibility, digest, card verification (Stripe setup mode), consent audit log (`consent_events`), re-consent, revocation with 14-day grace, export, delete.
+Built on `family_links` + `child_settings`, per uid: dashboard (overview/activity/transcripts), pause, chat on/off, age band, transcript visibility, digest, verification (paid subscription or Stripe setup-mode card check), consent audit log (`consent_events`), re-consent, revocation with 14-day grace, export, delete.
 
 ---
 
@@ -237,7 +251,7 @@ Jobs must catch and log their own exceptions.
 | `ENVIRONMENT` | `development` | Non-dev enforces `NOTIFICATION_SIGNING_SECRET` |
 | `SCHEDULER_ENABLED` | `True` | **Set `false` everywhere except prod** |
 | `NOTIFICATIONS_EMAIL_ENABLED` / `NOTIFICATIONS_WHATSAPP_ENABLED` | `True` | Global kill-switches |
-| `ENABLE_MANAGED_CHILDREN` | `False` | Under-13 family profiles; 13+ profiles can be created regardless |
+| `ENABLE_MANAGED_CHILDREN` | `False` | Under-13 family profiles; 13+ profiles can be created regardless. Set `true` on Railway dev + production |
 | `MAX_CHILDREN_PER_PARENT` | `5` | |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | empty | Firebase Admin REST — purging under-13 / deleted-account logins |
 | `VISUAL_INTELLIGENCE_ENABLED`, `VISUAL_NATIVE_RENDER_ENABLED`, `VISUAL_RETRIEVAL_ENABLED`, `VISUAL_IMAGE_GENERATION_ENABLED`, `VISUAL_VIDEO_GENERATION_ENABLED`, `VISUAL_TELEMETRY_ENABLED` | `False` | Visual learning objects; disabled → API returns no visual |
@@ -267,7 +281,7 @@ Other env vars (see `.env.example`): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FIR
 | Folder | Topic |
 |---|---|
 | `parental-accounts/` | Consent, family links, controls, launch checklist |
-| `family-profiles/` | Kid profiles under the parent login + PIN (replaces `/kids-login`) |
+| `family-profiles/` | Kid profiles under the parent login + PIN (replaces `/kids-login`); `parental-consent-verification.md` covers the verification rules |
 | `journey-images/` | Journey hero images in Supabase Storage |
 | `course-content-quality/` | Content-quality improvements for generated courses |
 | `visual-intelligence/` | Visual learning objects pipeline |
