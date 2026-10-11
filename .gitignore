@@ -50,5 +50,5 @@ Thumbs.db
 # MCP
 .mcp.json
 
-# Graphify
-graphify-out/
+.vercel
+.env*
