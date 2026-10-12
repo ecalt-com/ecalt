@@ -27,6 +27,7 @@ import { PromptsTab } from './admin/tabs/PromptsTab'
 import { NotificationTemplatesTab } from './admin/tabs/NotificationTemplatesTab'
 import { ImpersonationLogTab } from './admin/tabs/ImpersonationLogTab'
 import { MarketplaceQueueTab } from './admin/tabs/MarketplaceQueueTab'
+import { SchoolsTab } from './admin/tabs/SchoolsTab'
 
 
 export default function Admin() {
@@ -607,6 +608,10 @@ export default function Admin() {
 
           {tab === 'marketplace' && (
             <MarketplaceQueueTab getToken={getToken} />
+          )}
+
+          {tab === 'schools' && (
+            <SchoolsTab getToken={getToken} />
           )}
 
           {tab === 'impersonation-log' && (

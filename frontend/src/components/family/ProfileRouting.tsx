@@ -5,9 +5,9 @@ import { useProfiles } from '../../lib/ProfileContext'
 import ProfileAvatar from './ProfileAvatar'
 
 // Pages that belong to the account holder, never to a child profile.
-const PARENT_ONLY = ['/family', '/pricing', '/profile', '/admin', '/welcome']
+const PARENT_ONLY = ['/family', '/pricing', '/profile', '/admin', '/welcome', '/school', '/school-invite']
 // Pages reachable before a profile is picked.
-const PICKER_EXEMPT = ['/profiles', '/claim', '/consent/', '/privacy-policy', '/terms', '/parents', '/contact']
+const PICKER_EXEMPT = ['/profiles', '/claim', '/consent/', '/privacy-policy', '/terms', '/parents', '/contact', '/school-invite']
 
 const matches = (pathname: string, prefixes: string[]) =>
   prefixes.some(p => pathname === p || pathname.startsWith(p.endsWith('/') ? p : `${p}/`))

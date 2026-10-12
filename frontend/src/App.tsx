@@ -11,6 +11,7 @@ import { GeoProvider } from './lib/GeoContext'
 import { PaymentConfigProvider } from './lib/PaymentConfig'
 import { ImpersonationProvider } from './lib/ImpersonationContext'
 import { ProfileProvider } from './lib/ProfileContext'
+import { SchoolProvider } from './lib/SchoolContext'
 import { KidModeGuard, KidModeNotice, usePickerRedirect } from './components/family/ProfileRouting'
 import OnboardingModal from './components/OnboardingModal'
 import ImpersonationBanner from './components/ImpersonationBanner'
@@ -46,6 +47,11 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
 const Terms         = lazy(() => import('./pages/Terms'))
 const Parents       = lazy(() => import('./pages/Parents'))
 const Contact       = lazy(() => import('./pages/Contact'))
+const SchoolLayout    = lazy(() => import('./pages/school/SchoolLayout'))
+const SchoolDashboard = lazy(() => import('./pages/school/SchoolDashboard'))
+const SchoolStaff     = lazy(() => import('./pages/school/SchoolStaff'))
+const SchoolSettings  = lazy(() => import('./pages/school/SchoolSettings'))
+const SchoolInviteAccept = lazy(() => import('./pages/SchoolInviteAccept'))
 
 function PageSkeleton() {
   return (
@@ -94,6 +100,13 @@ function AppShell() {
           <Route path="/family/child/:uid" element={<ErrorBoundary><FamilyChild /></ErrorBoundary>} />
           <Route path="/profiles" element={<ErrorBoundary><Profiles /></ErrorBoundary>} />
           <Route path="/claim" element={<ErrorBoundary><Claim /></ErrorBoundary>} />
+          {/* Schools (backend/plans/school-courses) — staff area + invite links */}
+          <Route path="/school" element={<ErrorBoundary><SchoolLayout /></ErrorBoundary>}>
+            <Route index element={<SchoolDashboard />} />
+            <Route path="staff" element={<SchoolStaff />} />
+            <Route path="settings" element={<SchoolSettings />} />
+          </Route>
+          <Route path="/school-invite" element={<ErrorBoundary><SchoolInviteAccept /></ErrorBoundary>} />
           {/* Child email/password logins were replaced by profiles on the parent's account. */}
           <Route path="/kids-login" element={<Navigate to="/" replace />} />
           <Route
@@ -140,6 +153,7 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <ProfileProvider>
+          <SchoolProvider>
           <ImpersonationProvider>
           <GeoProvider>
           <PaymentConfigProvider>
@@ -153,6 +167,7 @@ export default function App() {
           </PaymentConfigProvider>
           </GeoProvider>
           </ImpersonationProvider>
+          </SchoolProvider>
           </ProfileProvider>
         </AuthProvider>
         <Analytics />

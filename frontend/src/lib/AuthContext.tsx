@@ -15,6 +15,9 @@ const onClaimPage = () => window.location.pathname.startsWith('/claim')
 
 export type PostSignInPhase = 'none' | 'birth_year' | 'under_13' | 'consent_pending' | 'consent_sent'
 export type UserRole = 'learner' | 'parent'
+// 'school_student' accounts are created by their school (backend/plans/school-courses):
+// no birth-year, consent or onboarding gates.
+export type AccountKind = 'account' | 'profile' | 'school_student'
 
 interface AuthContextValue {
   user: User | null
@@ -23,6 +26,7 @@ interface AuthContextValue {
   postSignInPhase: PostSignInPhase
   parentEmail: string | null
   role: UserRole | null
+  accountKind: AccountKind | null
   signIn: () => Promise<void>
   signOut: () => Promise<void>
   getToken: () => Promise<string | null>
@@ -42,6 +46,7 @@ const AuthContext = createContext<AuthContextValue>({
   postSignInPhase: 'none',
   parentEmail: null,
   role: null,
+  accountKind: null,
   signIn: async () => {},
   signOut: async () => {},
   getToken: async () => null,
@@ -61,6 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [postSignInPhase, setPostSignInPhase] = useState<PostSignInPhase>('none')
   const [parentEmail, setParentEmail] = useState<string | null>(null)
   const [role, setRole] = useState<UserRole | null>(null)
+  const [accountKind, setAccountKind] = useState<AccountKind | null>(null)
   const [pendingBirthYear, setPendingBirthYear] = useState<number | null>(null)
   const [pendingBirthMonth, setPendingBirthMonth] = useState<number | null>(null)
   const [pendingCountry, setPendingCountry] = useState<string | null>(null)
@@ -113,6 +119,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (res.ok) {
             const profile = await res.json()
             if (profile.role) setRole(profile.role)
+            if (profile.account_kind) setAccountKind(profile.account_kind)
+            if (profile.account_kind === 'school_student') return
             if (profile.needs_birth_year) {
               pendingUserRef.current = u
               setPostSignInPhase('birth_year')
@@ -168,6 +176,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const profile = await res.json()
         if (profile.role) setRole(profile.role)
+        if (profile.account_kind) setAccountKind(profile.account_kind)
         if (profile.needs_birth_year === true) {
           pendingUserRef.current = result.user
           setPostSignInPhase('birth_year')
@@ -226,6 +235,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const profile = await res.json()
         if (profile.role) setRole(profile.role)
+        if (profile.account_kind) setAccountKind(profile.account_kind)
         pendingUserRef.current = null
         if (profile.account_status === 'parental_consent_pending') {
           setPendingBirthYear(birthYear)
@@ -293,6 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pendingUserRef.current = null
     setParentEmail(null)
     setRole(null)
+    setAccountKind(null)
     setPendingBirthYear(null)
     setPendingBirthMonth(null)
     setPendingCountry(null)
@@ -329,7 +340,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, needsOnboarding, postSignInPhase, parentEmail, role,
+      user, loading, needsOnboarding, postSignInPhase, parentEmail, role, accountKind,
       signIn, signOut, getToken, refreshRole,
       dismissOnboarding, requireOnboarding, completeBirthYear, submitParentalConsent, markConsentSent, dismissPostSignIn,
     }}>
