@@ -15,9 +15,12 @@ def test_student_uid_prefix(uid, expected):
     assert is_school_student_uid(uid) is expected
 
 
-def _request(method, path_format):
-    route = SimpleNamespace(path_format=path_format) if path_format else None
-    return SimpleNamespace(method=method, scope={"route": route} if route else {})
+def _request(method, path):
+    """A request whose matched endpoint is the app's endpoint for path."""
+    from app.core.school_auth import api_routes
+    from app.main import app
+    endpoint = next((ep for m, p, ep, _ in api_routes(app) if p == path and m in (method, "GET")), None)
+    return SimpleNamespace(method=method, app=app, scope={"endpoint": endpoint} if endpoint else {})
 
 
 def test_allowlist_allows_listed_routes_and_treats_head_as_get():

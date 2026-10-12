@@ -116,12 +116,14 @@ def get_signed_in_uid(request: Request, authorization: Optional[str] = Header(No
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization.split(" ", 1)[1]
-    firebase_uid = _verify_firebase_token(token)
+    decoded = _decode_firebase_token(token)
+    firebase_uid = decoded and (decoded.get("uid") or decoded.get("sub"))
     if not firebase_uid:
         return None
     uid = _map_identity(firebase_uid)
-    from app.core.school_auth import enforce_student_route, is_school_student_uid
+    from app.core.school_auth import enforce_student_route, enforce_student_session_age, is_school_student_uid
     if is_school_student_uid(uid):
+        enforce_student_session_age(decoded)
         enforce_student_route(request)
     return uid
 

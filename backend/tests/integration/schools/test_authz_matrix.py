@@ -3,7 +3,6 @@ sweep for M1 staff routes (TESTING.md §4)."""
 import hashlib
 
 import pytest
-from fastapi.routing import APIRoute
 
 from tests.factories import schools as f
 from tests.integration.schools.authz_matrix import MATRIX, PERSONAS
@@ -22,9 +21,9 @@ _ERRORS = {
 
 
 def test_authz_cov_every_school_route_has_a_matrix_row():
+    from app.core.school_auth import api_routes
     from app.main import app
-    routes = {(m, r.path_format) for r in app.routes if isinstance(r, APIRoute)
-              for m in r.methods if r.path_format.startswith(SCHOOL_PREFIXES)}
+    routes = {(m, p) for m, p, _, _ in api_routes(app) if p.startswith(SCHOOL_PREFIXES)}
     covered = {(c.method, c.template) for c in MATRIX}
     assert routes - covered == set(), f"school routes missing from MATRIX: {sorted(routes - covered)}"
     assert covered - routes == set(), f"MATRIX rows for routes that don't exist: {sorted(covered - routes)}"

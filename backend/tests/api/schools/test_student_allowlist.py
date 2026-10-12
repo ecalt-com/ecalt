@@ -14,10 +14,9 @@ a 5xx).
 import uuid
 
 import pytest
-from fastapi.routing import APIRoute
 
 from app.core.auth import get_signed_in_uid
-from app.core.school_auth import STUDENT_ALLOWED_ROUTES
+from app.core.school_auth import STUDENT_ALLOWED_ROUTES, api_routes
 from tests.schools import identity
 
 STUDENT = "stu_0123456789abcdef"
@@ -60,12 +59,7 @@ def _uses_identity(dependant) -> bool:
 
 def _routes():
     from app.main import app
-    out = []
-    for route in app.routes:
-        if isinstance(route, APIRoute):
-            for method in sorted(route.methods):
-                out.append((method, route.path_format, _uses_identity(route.dependant)))
-    return out
+    return [(method, path, _uses_identity(dependant)) for method, path, _, dependant in api_routes(app)]
 
 
 ROUTES = _routes()
@@ -125,3 +119,13 @@ def test_sec02_student_login_cannot_claim_a_family_profile(client):
     r = client.post("/api/v1/users/claim", json={"code": "ABCD2345"}, headers=identity.bearer(STUDENT))
     assert r.status_code == 400
     assert r.json()["detail"]["error"] == "invalid_login"
+
+
+def test_sec01_each_allowlisted_endpoint_is_mounted_once():
+    # The runtime check matches endpoint functions; a function mounted twice
+    # would silently allow its second path too.
+    from collections import Counter
+    from app.main import app
+    endpoints = Counter((m, ep) for m, _, ep, _ in api_routes(app))
+    allowed = [(m, ep) for m, p, ep, _ in api_routes(app) if (m, p) in STUDENT_ALLOWED_ROUTES]
+    assert all(endpoints[key] == 1 for key in allowed)

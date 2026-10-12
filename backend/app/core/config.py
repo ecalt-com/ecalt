@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     # bump it when the DPA text changes so owners must accept again.
     SCHOOL_DPA_VERSION: str = "2026-10"
     SCHOOL_INVITE_TTL_DAYS: int = 7
+    # Student sessions (class-code / picture / PIN / badge sign-in) end this
+    # long after the sign-in, whatever Firebase's token refresh does — shared
+    # classroom devices.
+    SCHOOL_STUDENT_SESSION_HOURS: int = 12
 
     @property
     def allowed_origins(self) -> list[str]:

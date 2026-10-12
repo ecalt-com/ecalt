@@ -17,7 +17,7 @@ import logging
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from fastapi import Depends, HTTPException, Request
 
@@ -72,13 +72,68 @@ def student_not_allowed() -> HTTPException:
     })
 
 
+def enforce_student_session_age(claims: dict) -> None:
+    """401 school_session_expired once a student's sign-in (Firebase
+    `auth_time`, unchanged by silent token refreshes) is older than
+    SCHOOL_STUDENT_SESSION_HOURS — classroom devices are shared."""
+    from app.core.config import settings
+    try:
+        auth_time = int(claims.get("auth_time"))
+    except (TypeError, ValueError):
+        auth_time = None
+    if auth_time is None or time.time() - auth_time > settings.SCHOOL_STUDENT_SESSION_HOURS * 3600:
+        raise HTTPException(status_code=401, detail={
+            "error": "school_session_expired",
+            "message": "Your session has ended. Sign in again with your class code.",
+        })
+
+
+def api_routes(app) -> list[tuple[str, str, Callable, Any]]:
+    """(method, full path template, endpoint, dependant) for every API route.
+
+    FastAPI 0.14x keeps included routers nested inside app.routes (and puts the
+    router-relative route in scope["route"]); fastapi.routing.iter_route_contexts
+    flattens them. Older versions expose flattened APIRoutes directly."""
+    from fastapi.routing import APIRoute
+    try:
+        from fastapi.routing import iter_route_contexts
+    except ImportError:  # FastAPI < 0.14x
+        iter_route_contexts = None
+    out: list[tuple[str, str, Callable, Any]] = []
+    if iter_route_contexts is not None:
+        for rc in iter_route_contexts(app.routes):
+            if isinstance(rc.original_route, APIRoute):
+                for method in sorted(rc.methods or ()):
+                    out.append((method, rc.path_format, rc.endpoint, rc.dependant))
+    else:
+        for route in app.routes:
+            if isinstance(route, APIRoute):
+                for method in sorted(route.methods):
+                    out.append((method, route.path_format, route.endpoint, route.dependant))
+    return out
+
+
+_student_endpoint_cache: dict[int, frozenset] = {}
+
+
+def _student_endpoints(app) -> frozenset:
+    """STUDENT_ALLOWED_ROUTES resolved to (method, endpoint function) pairs —
+    the endpoint is what both old and new FastAPI put in scope["endpoint"]."""
+    key = id(app)
+    if key not in _student_endpoint_cache:
+        _student_endpoint_cache[key] = frozenset(
+            (method, endpoint) for method, path, endpoint, _ in api_routes(app)
+            if (method, path) in STUDENT_ALLOWED_ROUTES
+        )
+    return _student_endpoint_cache[key]
+
+
 def enforce_student_route(request: Request) -> None:
     """Raise 403 unless the matched route is on the student allowlist.
-    Fails closed when the route can't be determined."""
-    route = request.scope.get("route")
-    path = getattr(route, "path_format", None)
+    Fails closed when the endpoint can't be determined."""
+    endpoint = request.scope.get("endpoint")
     method = "GET" if request.method == "HEAD" else request.method
-    if path is None or (method, path) not in STUDENT_ALLOWED_ROUTES:
+    if endpoint is None or (method, endpoint) not in _student_endpoints(request.app):
         raise student_not_allowed()
 
 
@@ -199,3 +254,39 @@ def school_member(*roles: str) -> Callable[..., SchoolCtx]:
         return resolve_school_ctx(uid, school_id, allowed)
 
     return _dependency
+
+
+# ── Classes ───────────────────────────────────────────────────────────────────
+
+def class_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail={"error": "class_not_found", "message": "Class not found."})
+
+
+def load_class(ctx: SchoolCtx, class_id: str, *, manage: bool = False, cur=None) -> dict:
+    """A class of ctx's school (404 otherwise), with `is_teacher` for the
+    caller. manage=True also requires a school admin or one of the class's
+    teachers (403 school_role_required)."""
+    from app.core.database import get_db
+    cid = uuid_or_404(class_id, "class_not_found")
+    sql = """
+        SELECT c.*, EXISTS (SELECT 1 FROM class_teachers t WHERE t.class_id = c.id AND t.uid = %s) AS is_teacher
+          FROM classes c
+         WHERE c.id = %s AND c.school_id = %s
+    """
+    if cur is not None:
+        cur.execute(sql, (ctx.uid, cid, ctx.school_id))
+        row = cur.fetchone()
+    else:
+        with get_db() as conn:
+            with conn.cursor() as c:
+                c.execute(sql, (ctx.uid, cid, ctx.school_id))
+                row = c.fetchone()
+    if not row:
+        raise class_not_found()
+    if manage and not (ctx.is_admin or row["is_teacher"]):
+        raise HTTPException(status_code=403, detail={
+            "error": "school_role_required",
+            "message": "Only this class's teachers and school admins can do this.",
+            "required_roles": list(ADMIN_ROLES),
+        })
+    return dict(row)
