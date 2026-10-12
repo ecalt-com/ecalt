@@ -56,6 +56,10 @@ def _digest(db, school_id) -> str:
         f.fetch(db, "SELECT * FROM schools WHERE id = %s", (school_id,)),
         f.fetch(db, "SELECT * FROM school_members WHERE school_id = %s ORDER BY uid", (school_id,)),
         f.fetch(db, "SELECT * FROM school_invites WHERE school_id = %s ORDER BY id", (school_id,)),
+        f.fetch(db, "SELECT * FROM school_students WHERE school_id = %s ORDER BY uid", (school_id,)),
+        f.fetch(db, "SELECT * FROM classes WHERE school_id = %s ORDER BY id", (school_id,)),
+        f.fetch(db, "SELECT * FROM class_teachers WHERE school_id = %s ORDER BY class_id, uid", (school_id,)),
+        f.fetch(db, "SELECT * FROM class_enrollments WHERE school_id = %s ORDER BY class_id, student_uid", (school_id,)),
     ]
     return hashlib.sha256(repr(rows).encode()).hexdigest()
 
@@ -79,6 +83,28 @@ def test_iso_staff_routes_never_reach_another_school(client, world, db):
         ("DELETE", f"/api/v1/schools/{a}/staff/invites/{invite_b}", None),
         ("PATCH", f"/api/v1/schools/{a}/staff/{world.XA}", {"role": "teacher"}),
         ("DELETE", f"/api/v1/schools/{a}/staff/{world.XA}", None),
+        # M2: school B's students and classes through school A's routes
+        ("GET", f"/api/v1/schools/{a}/students/{world.XS}", None),
+        ("PATCH", f"/api/v1/schools/{a}/students/{world.XS}", {"display_name": "pwned"}),
+        ("DELETE", f"/api/v1/schools/{a}/students/{world.XS}", None),
+        ("POST", f"/api/v1/schools/{a}/students/{world.XS}/reset-secret", {}),
+        ("POST", f"/api/v1/schools/{a}/students/{world.XS}/rotate-badge", None),
+        ("POST", f"/api/v1/schools/{a}/students/{world.XS}/archive", None),
+        ("POST", f"/api/v1/schools/{a}/students/{world.XS}/restore", None),
+        ("GET", f"/api/v1/schools/{a}/students/{world.XS}/export", None),
+        ("POST", f"/api/v1/schools/{a}/students/archive", {"student_uids": [world.XS]}),
+        ("GET", f"/api/v1/schools/{a}/classes/{world.B1['id']}", None),
+        ("PATCH", f"/api/v1/schools/{a}/classes/{world.B1['id']}", {"name": "pwned"}),
+        ("DELETE", f"/api/v1/schools/{a}/classes/{world.B1['id']}", None),
+        ("POST", f"/api/v1/schools/{a}/classes/{world.B1['id']}/teachers", {"uid": world.T}),
+        ("DELETE", f"/api/v1/schools/{a}/classes/{world.B1['id']}/teachers/{world.XA}", None),
+        ("POST", f"/api/v1/schools/{a}/classes/{world.B1['id']}/students", {"student_uids": [world.S]}),
+        ("DELETE", f"/api/v1/schools/{a}/classes/{world.B1['id']}/students/{world.XS}", None),
+        ("POST", f"/api/v1/schools/{a}/classes/{world.B1['id']}/rotate-code", None),
+        ("POST", f"/api/v1/schools/{a}/classes/{world.B1['id']}/login-cards", {}),
+        # school A's class, school B's student
+        ("POST", f"/api/v1/schools/{a}/classes/{world.A1['id']}/students", {"student_uids": [world.XS]}),
+        ("DELETE", f"/api/v1/schools/{a}/classes/{world.A1['id']}/students/{world.XS}", None),
     ]
     for method, path, body in calls:
         r = client.request(method, path, json=body, headers=h)

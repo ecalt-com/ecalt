@@ -6,6 +6,8 @@ skip otherwise. Each DB test gets the app's connection pool pointed at
 ecalt_test, real commits (so nested get_db() calls and row locks behave as in
 production), and every table truncated afterwards.
 """
+import functools
+import json
 import os
 from dataclasses import dataclass, field
 from typing import Optional
@@ -21,9 +23,25 @@ from tests.schools import harness, identity
 TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
 __all__ = [
-    "World", "clear_caches", "client", "db", "school_db_url", "sent_emails", "world",
-    "_db_tables", "_no_real_email", "_school_test_env",
+    "World", "clear_caches", "client", "db", "school_db_url", "sent_emails", "world", "firebase_deletes",
+    "fake_service_account", "_db_tables", "_no_real_email", "_school_test_env",
 ]
+
+
+@functools.lru_cache(maxsize=1)
+def fake_service_account() -> dict:
+    """A throwaway service account (fresh RSA key, generated once per run) so
+    custom-token minting works without — and never uses — the real key."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    pem = key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                            serialization.NoEncryption()).decode()
+    public = key.public_key().public_bytes(serialization.Encoding.PEM,
+                                           serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+    return {"client_email": "test-sa@ecalt-test.iam.gserviceaccount.com", "private_key": pem,
+            "private_key_id": "test-key", "token_uri": "https://oauth2.example.invalid/token",
+            "public_key": public}
 
 
 def clear_caches() -> None:
@@ -45,6 +63,7 @@ def _school_test_env(monkeypatch):
     from app.core.limiter import limiter
     monkeypatch.setattr("app.core.auth._decode_firebase_token", identity.fake_decode)
     monkeypatch.setattr(settings, "SCHOOLS_ENABLED", True)
+    monkeypatch.setattr(settings, "FIREBASE_SERVICE_ACCOUNT_JSON", json.dumps(fake_service_account()))
     monkeypatch.setattr(settings, "VISUAL_TELEMETRY_ENABLED", False)
     identity.reset()
     clear_caches()
@@ -66,6 +85,14 @@ def sent_emails(monkeypatch):
 @pytest.fixture(autouse=True)
 def _no_real_email(sent_emails):
     return sent_emails
+
+
+@pytest.fixture(autouse=True)
+def firebase_deletes(monkeypatch):
+    """Records Firebase account deletions instead of calling Google."""
+    mock = AsyncMock(return_value=True)
+    monkeypatch.setattr("app.services.firebase_admin.delete_firebase_user", mock)
+    return mock
 
 
 @pytest.fixture(scope="session")

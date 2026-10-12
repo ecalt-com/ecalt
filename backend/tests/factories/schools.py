@@ -67,17 +67,29 @@ def make_staff(conn, school: dict, role: str = "teacher", uid: Optional[str] = N
 
 
 def make_student(conn, school: dict, *, display_name: str = "Asha K", grade: int = 6,
-                 status: str = "active", uid: Optional[str] = None) -> str:
+                 status: str = "active", uid: Optional[str] = None, pin: Optional[str] = None,
+                 picture: Optional[list] = None, badge: Optional[str] = None,
+                 external_ref: Optional[str] = None) -> str:
+    """pin='123456' or picture=[1, 2, 3] stores a hashed secret; badge stores a badge token."""
+    from app.services.profile_service import hash_pin
+    from app.services.school_student_service import hash_badge_token
     uid = uid or f"stu_{secrets.token_hex(8)}"
     make_user(conn, uid, email=None, display_name=display_name, profile_type="school_student",
               age_group="child")
+    kind, secret_hash = "pin", None
+    if pin is not None:
+        secret_hash = hash_pin(f"pin:{pin}")
+    elif picture is not None:
+        kind, secret_hash = "picture", hash_pin("picture:" + "-".join(map(str, picture)))
     with _cur(conn) as cur:
         cur.execute(
             """
-            INSERT INTO school_students (uid, school_id, display_name, grade, status)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO school_students (uid, school_id, display_name, grade, status, secret_kind, secret_hash,
+                                         badge_token_hash, external_ref)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (uid, school["id"], display_name, grade, status),
+            (uid, school["id"], display_name, grade, status, kind, secret_hash,
+             hash_badge_token(badge) if badge else None, external_ref),
         )
     return uid
 

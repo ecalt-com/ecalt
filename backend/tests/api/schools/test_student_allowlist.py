@@ -44,6 +44,9 @@ PUBLIC_ROUTES = {
     ("POST", "/api/v1/users/consent/report"),
     ("POST", "/api/v1/admin/bootstrap"),                 # only while no admin exists
     ("POST", "/api/v1/school-invites/preview"),          # invite token in the body
+    ("GET", "/api/v1/school-login/classes/{code}"),      # student sign-in: class roster
+    ("POST", "/api/v1/school-login/sessions"),           # student sign-in: picture / PIN
+    ("POST", "/api/v1/school-login/badge"),              # student sign-in: QR badge
 }
 
 # Public routes that DO read the Authorization header by hand. Each must reject

@@ -76,8 +76,8 @@ class Settings(BaseSettings):
     VISUAL_VIDEO_GENERATION_ENABLED: bool = False
     VISUAL_TELEMETRY_ENABLED: bool = False
 
-    # Schools (plans/school-courses). Off: every /schools, /school-invites and
-    # /admin/schools route returns 404. Turning it on creates nothing — schools
+    # Schools (plans/school-courses). Off: every /schools, /school-invites,
+    # /school-login and /admin/schools route returns 404. Turning it on creates nothing — schools
     # only exist once an ECALT admin creates one.
     SCHOOLS_ENABLED: bool = False
     # Version of the school data processing agreement shown to school owners;
