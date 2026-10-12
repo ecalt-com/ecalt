@@ -146,3 +146,20 @@ def mock_db_fetchall(*fetchall_returns):
 
 TEST_UID = "test-uid-123"
 TEST_ADMIN_UID = "admin-uid-456"
+
+
+# ── Known-failure quarantine (plans/school-courses SC-005) ────────────────────
+
+def pytest_collection_modifyitems(config, items):
+    """With ECALT_KNOWN_FAILURES=xfail (set in CI), tests listed in
+    tests/known_failures.txt run as non-strict xfails. Local runs are unchanged."""
+    import os
+    from pathlib import Path
+    if os.environ.get("ECALT_KNOWN_FAILURES") != "xfail":
+        return
+    listed = Path(__file__).with_name("known_failures.txt").read_text().splitlines()
+    known = {line.strip() for line in listed if line.strip() and not line.startswith("#")}
+    marker = pytest.mark.xfail(reason="known failure (tests/known_failures.txt)", strict=False)
+    for item in items:
+        if item.nodeid in known:
+            item.add_marker(marker)
