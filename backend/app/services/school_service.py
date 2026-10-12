@@ -53,8 +53,17 @@ def effective_settings(raw: Optional[dict]) -> dict:
     try:
         return SchoolSettings(**known).model_dump()
     except ValidationError:
-        logger.warning("stored school settings failed validation; using defaults")
-        return SchoolSettings().model_dump()
+        # Salvage the valid fields rather than discarding all of them — one bad
+        # value shouldn't silently reset every other setting (L7).
+        salvaged: dict = {}
+        for key, value in known.items():
+            try:
+                SchoolSettings(**{key: value})
+            except ValidationError:
+                logger.warning("ignoring invalid stored school setting %r", key)
+            else:
+                salvaged[key] = value
+        return SchoolSettings(**salvaged).model_dump()
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -115,8 +124,10 @@ def _invalidate_school_access(school_id: str) -> None:
     """A school's status changed: drop every cached decision that depends on it."""
     from app.core.auth import _status_cache
     from app.services.journey_access import invalidate_journey_access
+    from app.services.subscription_service import invalidate_student_school
     invalidate_school_member_cache(school_id=school_id)
     invalidate_journey_access()
+    invalidate_student_school()
     for uid in [k for k in _status_cache if k.startswith("stu_")]:
         _status_cache.pop(uid, None)
 
@@ -231,6 +242,9 @@ def admin_update_school(actor_uid: str, school_id: str, changes: dict) -> dict:
                           for k, v in changes.items() if v is not None})
     if changes.get("status") and changes["status"] != current["status"]:
         _invalidate_school_access(sid)
+    elif "monthly_ai_budget_cents" in changes:
+        from app.services.subscription_service import invalidate_student_school
+        invalidate_student_school()
     return get_school(sid)
 
 
@@ -285,6 +299,9 @@ def update_school(ctx: SchoolCtx, name: Optional[str], settings_patch: Optional[
             )
             school_audit(cur, ctx.school_id, ctx.uid, "school.settings_updated", "school", ctx.school_id,
                          {"name_changed": bool(name), "settings": sorted((settings_patch or {}).keys())})
+    if settings_patch:
+        from app.services.subscription_service import invalidate_student_school
+        invalidate_student_school()
     return school_detail(ctx)
 
 

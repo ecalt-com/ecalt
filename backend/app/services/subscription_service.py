@@ -1,10 +1,124 @@
 import logging
+import time
 from datetime import date
+from typing import Optional
 
 from app.core.database import get_db
 from app.services.provider_service import cost_for_tokens, cost_for_images
 
 logger = logging.getLogger(__name__)
+
+
+# ── School students ───────────────────────────────────────────────────────────
+# School students have no subscription of their own: their AI use is funded and
+# capped by their school (schools.monthly_ai_budget_cents) with per-student daily
+# caps (school settings), never the individual free-trial plan. See
+# plans/school-courses/REVIEW.md (H1) and TRACKER SC-504.
+
+# uid -> (school_id | None, monthly_budget_cents, settings dict, cached_at). A
+# student's school never changes; budget/settings tolerate up to the TTL stale.
+_student_school_cache: dict[str, tuple] = {}
+_STUDENT_SCHOOL_TTL = 60.0
+
+
+def invalidate_student_school(uid: Optional[str] = None) -> None:
+    """Drop cached school budget/settings for a student (or all). Call after a
+    school's budget or settings change."""
+    if uid is None:
+        _student_school_cache.clear()
+    else:
+        _student_school_cache.pop(uid, None)
+
+
+def _student_school(uid: str) -> Optional[tuple]:
+    """(school_id, monthly_budget_cents, settings) for an active student of an
+    open school, else None. Cached; fails closed (None) on a DB error."""
+    now = time.monotonic()
+    cached = _student_school_cache.get(uid)
+    if cached is not None and now - cached[3] < _STUDENT_SCHOOL_TTL:
+        return cached[:3]
+    from app.core.school_auth import OPEN_SCHOOL_STATUSES
+    from app.services.school_service import effective_settings
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT s.id::text AS school_id, s.monthly_ai_budget_cents, s.settings
+                      FROM school_students ss
+                      JOIN schools s ON s.id = ss.school_id
+                     WHERE ss.uid = %s AND ss.status = 'active' AND s.status = ANY(%s)
+                    """,
+                    (uid, list(OPEN_SCHOOL_STATUSES)),
+                )
+                row = cur.fetchone()
+    except Exception:
+        return cached[:3] if cached is not None else None
+    if not row:
+        resolved = (None, 0.0, effective_settings(None))
+    else:
+        resolved = (row["school_id"], float(row["monthly_ai_budget_cents"] or 0.0),
+                    effective_settings(row["settings"]))
+    _student_school_cache[uid] = resolved + (now,)
+    return resolved
+
+
+def _student_daily_counts(uid: str) -> tuple[int, int]:
+    """(tutor_messages, quiz_sets) used by the student today (UTC)."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT tutor_messages, quiz_sets FROM school_student_daily_usage
+                 WHERE student_uid = %s AND day = (now() AT TIME ZONE 'UTC')::date
+                """,
+                (uid,),
+            )
+            row = cur.fetchone()
+    return (int(row["tutor_messages"]), int(row["quiz_sets"])) if row else (0, 0)
+
+
+def _check_student_budget(uid: str, context: str) -> tuple[bool, str]:
+    """School-funded budget for a student. Blocks when the school has no AI
+    allowance, the monthly pool is spent, or the per-student daily cap is hit."""
+    school = _student_school(uid)
+    if not school or not school[0]:
+        return False, "school_budget_exhausted"
+    school_id, budget_cents, s = school
+    if budget_cents <= 0:
+        return False, "school_budget_exhausted"
+    period_start = date.today().replace(day=1)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT cost_cents FROM school_usage WHERE school_id = %s AND period_start = %s",
+                (school_id, period_start),
+            )
+            row = cur.fetchone()
+    if row and float(row["cost_cents"]) >= budget_cents:
+        return False, "school_budget_exhausted"
+    tutor_used, quiz_used = _student_daily_counts(uid)
+    if context == "chat":
+        if tutor_used >= int(s["student_daily_tutor_messages"]):
+            return False, "school_daily_limit_reached"
+    elif quiz_used >= int(s["student_daily_quiz_sets"]):
+        return False, "school_daily_limit_reached"
+    return True, "ok"
+
+
+_SCHOOL_BUDGET_REASONS = {"school_budget_exhausted", "school_daily_limit_reached"}
+
+
+def budget_error_detail(reason: str) -> dict:
+    """The 402 `detail` for a blocked AI call. School students can't upgrade, so
+    they get a friendly message instead of an upgrade link."""
+    if reason == "school_budget_exhausted":
+        return {"error": reason,
+                "message": "Your class has used up its AI help for now. Ask your teacher."}
+    if reason == "school_daily_limit_reached":
+        return {"error": reason,
+                "message": "You've used all your AI help for today. Try again tomorrow."}
+    return {"error": reason, "upgrade_url": "/pricing"}
 
 
 def get_user_plan(uid: str) -> dict:
@@ -141,7 +255,12 @@ def check_budget(uid: str, context: str = "ai") -> tuple[bool, str]:
     Returns (allowed, reason).
     context='chat'  → free trial uses message count gate; paid uses token budget.
     context='ai'    → all plans use token budget (step content, explore, etc.).
+    School students are funded by their school, not the individual plan.
     """
+    from app.core.school_auth import is_school_student_uid
+    if is_school_student_uid(uid):
+        return _check_student_budget(uid, context)
+
     plan = get_user_plan(uid)
     extras = get_coupon_extras(uid)
 
@@ -263,6 +382,38 @@ def record_usage(
                     (uid, period_start, interaction_type, input_tokens, output_tokens,
                      cached_input_tokens, cost_cents),
                 )
+
+                # School students: accrue the spend to the school's monthly pool
+                # and bump the per-student daily tutor/quiz counter.
+                from app.core.school_auth import is_school_student_uid
+                if is_school_student_uid(uid):
+                    school = _student_school(uid)
+                    if school and school[0]:
+                        cur.execute(
+                            """
+                            INSERT INTO school_usage (school_id, period_start, cost_cents,
+                                                      input_tokens, output_tokens)
+                            VALUES (%s, %s, %s, %s, %s)
+                            ON CONFLICT (school_id, period_start) DO UPDATE SET
+                                cost_cents    = school_usage.cost_cents + EXCLUDED.cost_cents,
+                                input_tokens  = school_usage.input_tokens + EXCLUDED.input_tokens,
+                                output_tokens = school_usage.output_tokens + EXCLUDED.output_tokens
+                            """,
+                            (school[0], period_start, cost_cents, input_tokens, output_tokens),
+                        )
+                        col = ("tutor_messages" if interaction_type in ("journey_tutor", "daily_chat")
+                               else "quiz_sets" if interaction_type == "quiz" else None)
+                        if col:
+                            cur.execute(
+                                f"""
+                                INSERT INTO school_student_daily_usage
+                                    (student_uid, school_id, day, {col})
+                                VALUES (%s, %s, (now() AT TIME ZONE 'UTC')::date, 1)
+                                ON CONFLICT (student_uid, day) DO UPDATE SET
+                                    {col} = school_student_daily_usage.{col} + 1
+                                """,
+                                (uid, school[0]),
+                            )
 
         try:
             plan = get_user_plan(uid)

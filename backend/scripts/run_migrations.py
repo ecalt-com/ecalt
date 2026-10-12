@@ -1,4 +1,4 @@
-"""Apply SQL migrations under backend/migrations/ to Supabase.
+"""Apply SQL migrations under <repo-root>/migrations/ to Supabase.
 
 Reads credentials from backend/.env (DATABASE_URL preferred; falls back to
 DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD).
@@ -22,7 +22,8 @@ import psycopg2
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent.parent
-MIGRATIONS_DIR = ROOT / "migrations"
+# Migrations live at the repo root (../migrations), not under backend/.
+MIGRATIONS_DIR = ROOT.parent / "migrations"
 
 
 def connect():

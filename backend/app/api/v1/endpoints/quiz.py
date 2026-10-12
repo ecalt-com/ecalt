@@ -15,7 +15,7 @@ from app.services.quiz_service import (
     step_quiz_status,
     submit_answer,
 )
-from app.services.subscription_service import check_budget, record_usage
+from app.services.subscription_service import budget_error_detail, check_budget, record_usage
 from app.services.provider_service import get_config
 
 router = APIRouter()
@@ -49,7 +49,7 @@ async def generate_quiz_endpoint(
         raise student_not_allowed()  # students only take quizzes on assigned course steps
     allowed, reason = check_budget(uid)
     if not allowed:
-        raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
+        raise HTTPException(status_code=402, detail=budget_error_detail(reason))
 
     if not body.concept.strip():
         raise HTTPException(status_code=400, detail="concept cannot be empty")

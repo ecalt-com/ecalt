@@ -133,6 +133,7 @@ def sign_in(raw_code: str, student_uid: Optional[str], external_ref: Optional[st
 
     error: Optional[HTTPException] = None
     student: Optional[dict] = None
+    custom_token: Optional[str] = None
     with get_db() as conn:
         with conn.cursor() as cur:
             cls = _open_class(cur, code)
@@ -173,12 +174,20 @@ def sign_in(raw_code: str, student_uid: Optional[str], external_ref: Optional[st
                 error = _err(423, "student_locked", "Too many tries. Ask your teacher, or wait a few minutes.",
                              locked_until=student["locked_until"].isoformat())
             elif canonical and student["secret_kind"] == secret_kind and verify_secret(canonical, student["secret_hash"]):
+                # Mint inside the transaction (M4): if the token can't be
+                # minted, the lockout reset and the signed_in audit roll back
+                # with it, so the audit never claims a sign-in that didn't ship.
+                custom_token = _custom_token(student["uid"], school_id)
                 cur.execute(
                     "UPDATE school_students SET failed_attempts = 0, locked_until = NULL WHERE uid = %s",
                     (student["uid"],),
                 )
                 school_audit(cur, school_id, None, "student.signed_in", "student", student["uid"],
                              {"method": "class_code", "class_id": class_id})
+            elif canonical and student["secret_kind"] != secret_kind:
+                # Wrong sign-in type (picture vs PIN): never a correct guess, so
+                # don't burn a lockout attempt — just ask for the other kind.
+                error = _invalid_secret()
             else:
                 failures = int(student["failed_attempts"] or 0) + 1
                 if failures >= STUDENT_MAX_FAILURES:
@@ -203,7 +212,7 @@ def sign_in(raw_code: str, student_uid: Optional[str], external_ref: Optional[st
     if error is not None:
         raise error
     return {
-        "custom_token": _custom_token(student["uid"], school_id),
+        "custom_token": custom_token,
         "expires_in": 3600,
         "student": {"uid": student["uid"], "display_name": student["display_name"]},
     }
@@ -212,6 +221,7 @@ def sign_in(raw_code: str, student_uid: Optional[str], external_ref: Optional[st
 def badge_sign_in(token: str) -> dict:
     """QR badge: a long random token printed on the student's card."""
     _require_login_configured()
+    custom_token: Optional[str] = None
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -225,13 +235,16 @@ def badge_sign_in(token: str) -> dict:
             )
             student = cur.fetchone()
             if student:
+                # Mint inside the transaction (M4) so the signed_in audit rolls
+                # back with it if the token can't be minted.
+                custom_token = _custom_token(student["uid"], student["school_id"])
                 school_audit(cur, student["school_id"], None, "student.signed_in", "student", student["uid"],
                              {"method": "badge"})
     if not student:
         time.sleep(0.05)
         raise _err(401, "invalid_badge", "This badge doesn't work any more. Ask your teacher for a new card.")
     return {
-        "custom_token": _custom_token(student["uid"], student["school_id"]),
+        "custom_token": custom_token,
         "expires_in": 3600,
         "student": {"uid": student["uid"], "display_name": student["display_name"]},
     }

@@ -9,7 +9,7 @@ from app.core.limiter import limiter
 from app.core.school_auth import is_school_student_uid, student_not_allowed
 from app.services.journey_access import assert_can_read_journey
 from app.services.chat_service import stream_chat
-from app.services.subscription_service import check_budget
+from app.services.subscription_service import budget_error_detail, check_budget
 
 router = APIRouter()
 
@@ -38,10 +38,7 @@ async def chat_stream(request: Request, body: ChatRequest, uid: str = Depends(ge
     ensure_chat_allowed(uid)  # parental control (covers daily chat + journey tutor)
     allowed, reason = check_budget(uid, context="chat")
     if not allowed:
-        raise HTTPException(
-            status_code=402,
-            detail={"error": reason, "upgrade_url": "/pricing"},
-        )
+        raise HTTPException(status_code=402, detail=budget_error_detail(reason))
     return StreamingResponse(
         stream_chat(
             uid=uid,

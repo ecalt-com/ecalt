@@ -150,6 +150,19 @@ def test_sec05_uniform_errors(client, world, cls):
     assert _sign_in(client, cls["code"], [1, 2, 3], student_uid=cls["roll"], kind="picture").status_code == 401
 
 
+def test_wrong_secret_kind_does_not_lock(client, world, db, cls):
+    # S uses a PIN. Sending a picture password (wrong kind) is never a correct
+    # guess, so it returns the generic error but must not burn a lockout attempt
+    # (L4) — a child who taps the wrong mode shouldn't get locked out.
+    for _ in range(6):
+        r = _sign_in(client, cls["code"], [1, 2, 3], student_uid=world.S, kind="picture")
+        assert r.status_code == 401 and r.json()["detail"]["error"] == "invalid_student_secret"
+    row = f.fetch(db, "SELECT failed_attempts, locked_until FROM school_students WHERE uid = %s", (world.S,))
+    assert row[0]["failed_attempts"] == 0 and row[0]["locked_until"] is None
+    # The right kind with the right PIN still signs in — no lockout in the way.
+    assert _sign_in(client, cls["code"], PIN, student_uid=world.S).status_code == 200
+
+
 def test_sec06_badge_rotation(client, world, db, cls):
     badge = "badge-token-for-asha-0123456789"
     from app.services.school_student_service import hash_badge_token

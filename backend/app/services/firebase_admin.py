@@ -22,6 +22,24 @@ logger = logging.getLogger(__name__)
 
 _SCOPE = "https://www.googleapis.com/auth/identitytoolkit"
 _token_cache: dict = {}  # {"token": str, "exp": epoch seconds}
+_sa_cache: dict = {}      # {"raw": str, "sa": dict} — parse the JSON once per key
+
+
+def _service_account() -> Optional[dict]:
+    """The parsed FIREBASE_SERVICE_ACCOUNT_JSON, cached per raw value so a key
+    rotation re-parses. Returns None when unset or malformed (logged) rather
+    than raising, so callers degrade to 'login unavailable' not a 500."""
+    raw = settings.FIREBASE_SERVICE_ACCOUNT_JSON
+    if not raw:
+        return None
+    if _sa_cache.get("raw") != raw:
+        try:
+            _sa_cache["sa"] = json.loads(raw)
+            _sa_cache["raw"] = raw
+        except (ValueError, TypeError):
+            logger.error("FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON — Firebase admin disabled")
+            return None
+    return _sa_cache.get("sa")
 
 
 async def _get_access_token() -> Optional[str]:
@@ -29,10 +47,9 @@ async def _get_access_token() -> Optional[str]:
     if _token_cache.get("token") and _token_cache.get("exp", 0) - 60 > now:
         return _token_cache["token"]
 
-    raw = settings.FIREBASE_SERVICE_ACCOUNT_JSON
-    if not raw:
+    sa = _service_account()
+    if not sa:
         return None
-    sa = json.loads(raw)
     assertion = jwt.encode(
         {
             "iss": sa["client_email"],
@@ -81,6 +98,10 @@ async def delete_firebase_user(uid: str) -> bool:
         if r.status_code == 200:
             logger.info("deleted Firebase auth user %s (age-gate rejection)", uid)
             return True
+        # No such login (e.g. a student who never signed in) — nothing to purge.
+        if r.status_code == 400 and "USER_NOT_FOUND" in r.text:
+            logger.debug("Firebase user %s already absent — nothing to delete", uid)
+            return True
         logger.warning(
             "Firebase user delete failed uid=%s status=%s body=%s",
             uid, r.status_code, r.text[:200],
@@ -122,11 +143,11 @@ def mint_custom_token(uid: str, claims: Optional[dict] = None) -> Optional[str]:
     backend-authenticated identity — school students sign in with a class code
     and a picture/PIN, then the client exchanges this for a normal Firebase ID
     token (signInWithCustomToken). Valid for at most 1 hour, as Firebase
-    requires. Returns None when FIREBASE_SERVICE_ACCOUNT_JSON is not set."""
-    raw = settings.FIREBASE_SERVICE_ACCOUNT_JSON
-    if not raw:
+    requires. Returns None when FIREBASE_SERVICE_ACCOUNT_JSON is unset or
+    malformed (so sign-in degrades to 503 login_unavailable, never a 500)."""
+    sa = _service_account()
+    if not sa:
         return None
-    sa = json.loads(raw)
     now = int(time.time())
     payload = {
         "iss": sa["client_email"],

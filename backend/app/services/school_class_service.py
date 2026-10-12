@@ -304,18 +304,27 @@ def login_cards(ctx: SchoolCtx, class_id: str, student_uids: Optional[list[str]]
             for s in students:
                 card = {"uid": s["uid"], "display_name": s["display_name"], "avatar": s["avatar"],
                         "secret_kind": s["secret_kind"], "secret": None, "badge_token": None}
-                if reset or not s["secret_hash"]:
-                    canonical, card["secret"] = generate_secret(s["secret_kind"])
-                    card["badge_token"], badge_hash = new_badge_token()
+                new_secret = reset or not s["secret_hash"]
+                # Issue a badge only when the student has none. A secret reset no
+                # longer rotates an existing badge (it can't be reprinted until
+                # QR cards ship — REVIEW.md L2); rotate_badge does that on purpose.
+                new_badge = not s["badge_token_hash"]
+                if new_secret or new_badge:
+                    sets: list[str] = []
+                    params: list = []
+                    if new_secret:
+                        canonical, card["secret"] = generate_secret(s["secret_kind"])
+                        sets += ["secret_hash = %s", "failed_attempts = 0", "locked_until = NULL"]
+                        params.append(hash_pin(canonical))
+                        regenerated += 1
+                    if new_badge:
+                        card["badge_token"], badge_hash = new_badge_token()
+                        sets.append("badge_token_hash = %s")
+                        params.append(badge_hash)
                     cur.execute(
-                        """
-                        UPDATE school_students
-                           SET secret_hash = %s, badge_token_hash = %s, failed_attempts = 0, locked_until = NULL
-                         WHERE uid = %s
-                        """,
-                        (hash_pin(canonical), badge_hash, s["uid"]),
+                        f"UPDATE school_students SET {', '.join(sets)} WHERE uid = %s",
+                        params + [s["uid"]],
                     )
-                    regenerated += 1
                 cards.append(card)
             school_audit(cur, ctx.school_id, ctx.uid, "class.login_cards", "class", str(cls["id"]),
                          {"cards": len(cards), "new_secrets": regenerated})

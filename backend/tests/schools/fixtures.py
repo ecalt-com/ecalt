@@ -46,11 +46,12 @@ def fake_service_account() -> dict:
 
 def clear_caches() -> None:
     from app.core import auth, school_auth
-    from app.services import journey_access
+    from app.services import journey_access, subscription_service
     for cache in (
         auth._identity_cache, auth._status_cache, auth._admin_cache,
         auth._profile_access_cache, auth._has_profiles_cache,
         school_auth._member_cache, journey_access._school_cache, journey_access._access_cache,
+        subscription_service._student_school_cache,
     ):
         cache.clear()
 

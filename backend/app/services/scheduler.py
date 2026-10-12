@@ -1208,6 +1208,32 @@ async def _marketplace_popularity_scan() -> None:
         logger.error("marketplace_popularity_scan failed: %s", e)
 
 
+def _prune_school_audit_log() -> None:
+    """Delete high-volume 'student.sign_in_failed' audit rows older than the
+    retention window. The class sign-in throttle only reads the last few
+    minutes, so these pile up fast; every other audit action is kept
+    (plans/school-courses/REVIEW.md M2)."""
+    try:
+        from app.core.config import settings
+        from app.core.database import get_db
+        days = int(settings.SCHOOL_SIGNIN_FAIL_RETENTION_DAYS)
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM school_audit_log
+                     WHERE action = 'student.sign_in_failed'
+                       AND created_at < now() - make_interval(days => %s)
+                    """,
+                    (days,),
+                )
+                deleted = cur.rowcount
+        if deleted:
+            logger.info("prune_school_audit_log removed %s sign-in-failed rows", deleted)
+    except Exception as e:
+        logger.error("prune_school_audit_log failed: %s", e)
+
+
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -1228,6 +1254,7 @@ def setup_scheduler() -> AsyncIOScheduler:
         (_scheduled_deletion_dispatch, "cron", {"hour": 3, "minute": 30}, "scheduled_deletion_dispatch"),
         (_family_lifecycle_dispatch,   "cron", {"hour": 4, "minute": 0},  "family_lifecycle_dispatch"),
         (_marketplace_popularity_scan, "cron", {"hour": "*/6"},           "marketplace_popularity_scan"),
+        (_prune_school_audit_log,      "cron", {"hour": 4, "minute": 20},  "prune_school_audit_log"),
     ]
     for func, trigger, kwargs, job_id in jobs:
         scheduler.add_job(func, trigger, id=job_id, replace_existing=True, **kwargs)

@@ -88,6 +88,17 @@ class Settings(BaseSettings):
     # long after the sign-in, whatever Firebase's token refresh does — shared
     # classroom devices.
     SCHOOL_STUDENT_SESSION_HOURS: int = 12
+    # Flood backstops on the public student sign-in endpoints (per client IP).
+    # The real brute-force defence is keyed on the student/class (DB throttles);
+    # these only cap pathological request floods. Sized generously for a
+    # classroom burst at the bell. NB (SC-009): behind Railway's proxy the
+    # limiter may see the proxy IP, making these effectively shared — tune up or
+    # resolve the proxy-IP keying before a large deployment.
+    SCHOOL_SIGNIN_RATELIMIT: str = "240/minute"
+    SCHOOL_BADGE_RATELIMIT: str = "120/minute"
+    # Days to keep high-volume 'student.sign_in_failed' audit rows (the class
+    # throttle only needs the last few minutes). Other audit events are kept.
+    SCHOOL_SIGNIN_FAIL_RETENTION_DAYS: int = 30
 
     @property
     def allowed_origins(self) -> list[str]:

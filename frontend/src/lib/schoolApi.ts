@@ -201,6 +201,9 @@ export function schoolErrorMessage(code: string | null, fallback = 'Something we
     case 'invalid_badge': return "This badge doesn't work any more. Ask your teacher for a new card."
     case 'login_unavailable': return "Class sign-in isn't available right now. Ask your teacher."
     case 'school_session_expired': return 'Your session has ended. Sign in again with your class code.'
+    case 'picture_secret_too_old': return 'Picture passwords are only for younger grades. Use a PIN instead.'
+    case 'school_budget_exhausted': return 'Your class has used up its AI help for now. Ask your teacher.'
+    case 'school_daily_limit_reached': return "You've used all your AI help for today. Try again tomorrow."
     default: return fallback
   }
 }
