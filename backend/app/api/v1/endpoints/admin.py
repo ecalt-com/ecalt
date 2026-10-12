@@ -726,7 +726,7 @@ def list_marketplace_queue(
     """Journeys awaiting publish/reject (default: what the popularity job has
     flagged). Pass status=all + search to browse/feature any journey directly,
     bypassing the popularity job entirely — useful while real traffic is low."""
-    filters = ["is_curated = FALSE"]
+    filters = ["is_curated = FALSE", "school_id IS NULL"]  # school courses never enter the marketplace
     params: list = []
     if status != "all":
         filters.append("marketplace_status = %s")
@@ -761,7 +761,7 @@ def _set_marketplace_status(journey_id: str, status: str, reviewer_uid: str) -> 
                 SET marketplace_status = %s,
                     marketplace_reviewed_at = now(),
                     marketplace_reviewed_by = %s
-                WHERE id = %s
+                WHERE id = %s AND school_id IS NULL
                 RETURNING id, marketplace_status
                 """,
                 (status, reviewer_uid, journey_id),
@@ -836,6 +836,7 @@ def get_content_stats(journey_id: Optional[str] = None, _uid: str = Depends(get_
                     GROUP BY journey_id, uid
                 ) step_counts ON step_counts.journey_id = j.id
                              AND step_counts.uid = up.uid
+                WHERE j.school_id IS NULL
                 GROUP BY j.id, j.title, j.icon, j.difficulty, j.estimated_hours, j.age_group
                 HAVING COUNT(DISTINCT up.uid) > 0
                 ORDER BY unique_learners DESC

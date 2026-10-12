@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
-import { useAuth } from '../lib/AuthContext'
+import { isStudentUid, useAuth } from '../lib/AuthContext'
 import { useProfiles } from '../lib/ProfileContext'
 import { getMyConsent, reconsentSelf } from '../lib/familyApi'
 
@@ -16,7 +16,8 @@ export default function ReconsentBanner() {
   const [accepting, setAccepting] = useState(false)
 
   useEffect(() => {
-    if (!user || isKidMode) { setNeeded(false); return }
+    // School students consent through their school, not the privacy policy flow.
+    if (!user || isKidMode || isStudentUid(user.uid)) { setNeeded(false); return }
     let cancelled = false
     ;(async () => {
       const token = await getToken()

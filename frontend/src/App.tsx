@@ -11,7 +11,8 @@ import { GeoProvider } from './lib/GeoContext'
 import { PaymentConfigProvider } from './lib/PaymentConfig'
 import { ImpersonationProvider } from './lib/ImpersonationContext'
 import { ProfileProvider } from './lib/ProfileContext'
-import { KidModeGuard, KidModeNotice, usePickerRedirect } from './components/family/ProfileRouting'
+import { SchoolProvider } from './lib/SchoolContext'
+import { KidModeGuard, KidModeNotice, StudentGuard, usePickerRedirect } from './components/family/ProfileRouting'
 import OnboardingModal from './components/OnboardingModal'
 import ImpersonationBanner from './components/ImpersonationBanner'
 import ReconsentBanner from './components/ReconsentBanner'
@@ -46,6 +47,18 @@ const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'))
 const Terms         = lazy(() => import('./pages/Terms'))
 const Parents       = lazy(() => import('./pages/Parents'))
 const Contact       = lazy(() => import('./pages/Contact'))
+const SchoolLayout    = lazy(() => import('./pages/school/SchoolLayout'))
+const SchoolDashboard = lazy(() => import('./pages/school/SchoolDashboard'))
+const SchoolStaff     = lazy(() => import('./pages/school/SchoolStaff'))
+const SchoolSettings  = lazy(() => import('./pages/school/SchoolSettings'))
+const SchoolStudents  = lazy(() => import('./pages/school/SchoolStudents'))
+const SchoolClasses   = lazy(() => import('./pages/school/SchoolClasses'))
+const SchoolClassDetail = lazy(() => import('./pages/school/SchoolClassDetail'))
+const LoginCardsPrint = lazy(() => import('./pages/school/LoginCardsPrint'))
+const ClassSignIn     = lazy(() => import('./pages/ClassSignIn'))
+const BadgeSignIn     = lazy(() => import('./pages/BadgeSignIn'))
+const StudentHome     = lazy(() => import('./pages/StudentHome'))
+const SchoolInviteAccept = lazy(() => import('./pages/SchoolInviteAccept'))
 
 function PageSkeleton() {
   return (
@@ -68,7 +81,7 @@ function AppShell() {
   return (
     <>
       <Suspense fallback={<PageSkeleton />}>
-        {pickerRedirect ?? <KidModeGuard>
+        {pickerRedirect ?? <StudentGuard><KidModeGuard>
         <Routes>
           <Route path="/" element={<ErrorBoundary><Home /></ErrorBoundary>} />
           <Route path="/learn" element={<ErrorBoundary><Learn /></ErrorBoundary>} />
@@ -94,6 +107,21 @@ function AppShell() {
           <Route path="/family/child/:uid" element={<ErrorBoundary><FamilyChild /></ErrorBoundary>} />
           <Route path="/profiles" element={<ErrorBoundary><Profiles /></ErrorBoundary>} />
           <Route path="/claim" element={<ErrorBoundary><Claim /></ErrorBoundary>} />
+          {/* Schools (backend/plans/school-courses) — staff area + invite links */}
+          <Route path="/school" element={<ErrorBoundary><SchoolLayout /></ErrorBoundary>}>
+            <Route index element={<SchoolDashboard />} />
+            <Route path="classes" element={<SchoolClasses />} />
+            <Route path="classes/:classId" element={<SchoolClassDetail />} />
+            <Route path="students" element={<SchoolStudents />} />
+            <Route path="staff" element={<SchoolStaff />} />
+            <Route path="settings" element={<SchoolSettings />} />
+          </Route>
+          <Route path="/school/print/cards/:classId" element={<ErrorBoundary><LoginCardsPrint /></ErrorBoundary>} />
+          <Route path="/school-invite" element={<ErrorBoundary><SchoolInviteAccept /></ErrorBoundary>} />
+          {/* School students */}
+          <Route path="/class" element={<ErrorBoundary><ClassSignIn /></ErrorBoundary>} />
+          <Route path="/class/badge" element={<ErrorBoundary><BadgeSignIn /></ErrorBoundary>} />
+          <Route path="/my-classes" element={<ErrorBoundary><StudentHome /></ErrorBoundary>} />
           {/* Child email/password logins were replaced by profiles on the parent's account. */}
           <Route path="/kids-login" element={<Navigate to="/" replace />} />
           <Route
@@ -109,7 +137,7 @@ function AppShell() {
             element={<ComingSoon title="Page not found" description="This page doesn't exist yet — but your next learning journey is just one question away." />}
           />
         </Routes>
-        </KidModeGuard>}
+        </KidModeGuard></StudentGuard>}
       </Suspense>
 
       {/* Post-sign-in compliance gates — rendered in order of priority */}
@@ -140,6 +168,7 @@ export default function App() {
       <ThemeProvider>
         <AuthProvider>
           <ProfileProvider>
+          <SchoolProvider>
           <ImpersonationProvider>
           <GeoProvider>
           <PaymentConfigProvider>
@@ -153,6 +182,7 @@ export default function App() {
           </PaymentConfigProvider>
           </GeoProvider>
           </ImpersonationProvider>
+          </SchoolProvider>
           </ProfileProvider>
         </AuthProvider>
         <Analytics />

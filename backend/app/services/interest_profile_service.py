@@ -109,7 +109,7 @@ def _build_profile(uid: str) -> InterestProfile:
                     """
                     SELECT question, tags, difficulty, created_at
                     FROM journeys
-                    WHERE uid = %s AND is_curated = FALSE
+                    WHERE uid = %s AND is_curated = FALSE AND school_id IS NULL
                     ORDER BY created_at DESC
                     LIMIT 50
                     """,

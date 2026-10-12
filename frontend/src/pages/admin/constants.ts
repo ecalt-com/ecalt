@@ -46,6 +46,7 @@ export const TABS = [
   { id: 'funnel',                  label: 'Funnel' },
   { id: 'content',                 label: 'Content' },
   { id: 'marketplace',             label: 'Marketplace Queue' },
+  { id: 'schools',                 label: 'Schools' },
   { id: 'impersonation-log',       label: 'Impersonation Log' },
 ] as const
 

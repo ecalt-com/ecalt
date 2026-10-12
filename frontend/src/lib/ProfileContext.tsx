@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { useAuth } from './AuthContext'
+import { isStudentUid, useAuth } from './AuthContext'
 import { getUserProfile } from './api'
 import { getProfiles, type PickerAccount, type PickerProfile } from './familyApi'
 import {
@@ -127,6 +127,8 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     }
     // Wait for the sign-up gates — the account row may not exist yet.
     if (postSignInPhase !== 'none') return
+    // School students have no family profiles.
+    if (isStudentUid(user.uid)) { setLoaded(true); return }
     refresh()
   }, [user, postSignInPhase, refresh])
 

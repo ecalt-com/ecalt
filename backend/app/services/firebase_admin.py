@@ -112,3 +112,31 @@ async def purge_login(uid: str) -> bool:
         return True  # unclaimed profile — there is no login to purge
     invalidate_identity_cache(row["firebase_uid"])
     return await delete_firebase_user(row["firebase_uid"])
+
+
+_CUSTOM_TOKEN_AUD = "https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit"
+
+
+def mint_custom_token(uid: str, claims: Optional[dict] = None) -> Optional[str]:
+    """Firebase custom token (RS256, signed with the service account) for a
+    backend-authenticated identity — school students sign in with a class code
+    and a picture/PIN, then the client exchanges this for a normal Firebase ID
+    token (signInWithCustomToken). Valid for at most 1 hour, as Firebase
+    requires. Returns None when FIREBASE_SERVICE_ACCOUNT_JSON is not set."""
+    raw = settings.FIREBASE_SERVICE_ACCOUNT_JSON
+    if not raw:
+        return None
+    sa = json.loads(raw)
+    now = int(time.time())
+    payload = {
+        "iss": sa["client_email"],
+        "sub": sa["client_email"],
+        "aud": _CUSTOM_TOKEN_AUD,
+        "iat": now,
+        "exp": now + 3600,
+        "uid": uid,
+    }
+    if claims:
+        payload["claims"] = claims
+    return jwt.encode(payload, sa["private_key"], algorithm="RS256",
+                      headers={"kid": sa.get("private_key_id")} if sa.get("private_key_id") else None)

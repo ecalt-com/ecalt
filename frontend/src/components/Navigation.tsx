@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Menu, X, LogOut, Users } from 'lucide-react'
 import clsx from 'clsx'
 import ThemeToggle from './ThemeToggle'
-import { useAuth } from '../lib/AuthContext'
+import { isStudentUid, useAuth } from '../lib/AuthContext'
 import { useSubscription } from '../lib/SubscriptionContext'
 import { useProfiles } from '../lib/ProfileContext'
+import { useSchool } from '../lib/SchoolContext'
 import ProfileAvatar from './family/ProfileAvatar'
 
 const PUBLIC_LINKS = [
@@ -23,16 +24,57 @@ const AUTH_LINKS = [
   { to: '/mind-signature', label: 'Mind Signature' },
 ]
 
+// Exact match, or a sub-page of the link (e.g. /school/staff under /school).
+const isActivePath = (pathname: string, to: string) => pathname === to || pathname.startsWith(`${to}/`)
+
+// School students (signed in with a class code) only have their classes.
+function StudentNavigation() {
+  const navigate = useNavigate()
+  const { signOut } = useAuth()
+  const leave = async () => { await signOut(); navigate('/class', { replace: true }) }
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 px-4 md:px-8 pb-4 safe-top">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <Link to="/my-classes" className="flex items-center">
+          <img src="/logo.png" alt="ECALT" className="h-14 w-auto object-contain dark:brightness-0 dark:invert" />
+        </Link>
+        <div className="glass rounded-xl px-2 py-1.5 flex items-center gap-1">
+          <Link to="/my-classes" className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/50">
+            My classes
+          </Link>
+          <ThemeToggle />
+          <button
+            onClick={leave}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-all"
+          >
+            <LogOut size={13} /> Sign out
+          </button>
+        </div>
+      </div>
+    </nav>
+  )
+}
+
 export default function Navigation() {
+  const { user } = useAuth()
+  if (isStudentUid(user?.uid)) return <StudentNavigation />
+  return <AccountNavigation />
+}
+
+function AccountNavigation() {
   const { pathname } = useLocation()
   const { user, loading, role, signIn, signOut } = useAuth()
   const { isAdmin } = useSubscription()
   const { isKidMode, activeProfile, profiles } = useProfiles()
+  const { schools } = useSchool()
   const [open, setOpen] = useState(false)
+  const isActive = (to: string) => isActivePath(pathname, to)
   const baseLinks = user ? AUTH_LINKS : PUBLIC_LINKS
   // Inside a child's profile, parent-only areas are hidden (and guarded by KidModeGuard).
   const withFamily = user && role === 'parent' && !isKidMode ? [...baseLinks, { to: '/family', label: 'Family' }] : baseLinks
-  const visibleLinks = isAdmin && !isKidMode ? [...withFamily, { to: '/admin', label: 'Admin' }] : withFamily
+  // Staff of at least one school (SchoolContext never loads schools in kid mode).
+  const withSchool = schools.length > 0 ? [...withFamily, { to: '/school', label: 'School' }] : withFamily
+  const visibleLinks = isAdmin && !isKidMode ? [...withSchool, { to: '/admin', label: 'Admin' }] : withSchool
   const hasProfiles = profiles.length > 0
   // Who the session currently acts as: a child profile, or the signed-in parent.
   const shownName = isKidMode ? activeProfile?.display_name ?? null : user?.displayName ?? null
@@ -64,7 +106,7 @@ export default function Navigation() {
                 to={to}
                 className={clsx(
                   'px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200',
-                  pathname === to
+                  isActive(to)
                     ? 'bg-violet-50 text-violet-700 dark:bg-violet-600/20 dark:text-violet-300'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/50'
                 )}
@@ -183,7 +225,7 @@ export default function Navigation() {
                   onClick={() => setOpen(false)}
                   className={clsx(
                     'flex items-center px-4 py-3 rounded-xl text-sm font-medium transition-all',
-                    pathname === to
+                    isActive(to)
                       ? 'bg-violet-50 text-violet-700 dark:bg-violet-600/20 dark:text-violet-300'
                       : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 dark:text-slate-400 dark:hover:text-white dark:hover:bg-slate-800/50'
                   )}

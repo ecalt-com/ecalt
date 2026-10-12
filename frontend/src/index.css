@@ -162,6 +162,13 @@ body {
   50%      { background-position: 100% 50%; }
 }
 
+/* Wrong class sign-in (pages/ClassSignIn.tsx); used via motion-safe: only. */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
 @keyframes shimmer {
   0%   { background-position: -200% 0; }
   100% { background-position:  200% 0; }

@@ -6,6 +6,8 @@ from typing import Optional
 from app.core.auth import get_active_user, get_required_user, get_acting_uid, ensure_chat_allowed
 from app.core.database import get_db
 from app.core.limiter import limiter
+from app.core.school_auth import is_school_student_uid, student_not_allowed
+from app.services.journey_access import assert_can_read_journey
 from app.services.chat_service import stream_chat
 from app.services.subscription_service import check_budget
 
@@ -29,6 +31,10 @@ class ChatRequest(BaseModel):
 async def chat_stream(request: Request, body: ChatRequest, uid: str = Depends(get_active_user)):
     if body.interaction_type not in _ALLOWED_INTERACTION_TYPES:
         raise HTTPException(status_code=400, detail="Invalid interaction_type")
+    if is_school_student_uid(uid) and not (body.interaction_type == "journey_tutor" and body.journey_id):
+        raise student_not_allowed()  # students only get the in-course tutor (D5)
+    if body.journey_id:
+        assert_can_read_journey(uid, body.journey_id)
     ensure_chat_allowed(uid)  # parental control (covers daily chat + journey tutor)
     allowed, reason = check_budget(uid, context="chat")
     if not allowed:

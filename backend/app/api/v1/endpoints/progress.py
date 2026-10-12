@@ -8,6 +8,7 @@ from app.core.database import get_db
 from app.services.knowledge_service import credit_step_knowledge
 from app.services.quiz_service import step_quiz_passed
 from app.services.interest_profile_service import invalidate as invalidate_profile
+from app.services.journey_access import assert_can_read_journey
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -171,6 +172,7 @@ def _update_streak(uid: str) -> None:
 async def get_progress(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
     """Return all completed step IDs for a journey."""
     uid, _ = ctx
+    assert_can_read_journey(uid, journey_id)
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -196,6 +198,7 @@ async def mark_step_complete(
     Steps must be completed in order (409 with the missing step IDs otherwise)
     and the step's quiz must be passed first (412 quiz_not_passed otherwise).
     """
+    assert_can_read_journey(uid, journey_id)
     resolved = _journey_steps(journey_id)
     _check_previous_steps_complete(uid, journey_id, step_id, resolved)
     _check_quiz_passed(uid, journey_id, step_id, resolved)
@@ -241,6 +244,7 @@ async def mark_step_incomplete(
     journey_id: str, step_id: str, uid: str = Depends(get_active_user)
 ):
     """Unmark a step as complete."""
+    assert_can_read_journey(uid, journey_id)
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(

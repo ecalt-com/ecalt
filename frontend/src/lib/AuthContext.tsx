@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import {
+  browserSessionPersistence,
   onAuthStateChanged,
+  setPersistence,
+  signInWithCustomToken,
   signInWithPopup,
   signOut as firebaseSignOut,
   getAdditionalUserInfo,
@@ -15,6 +18,13 @@ const onClaimPage = () => window.location.pathname.startsWith('/claim')
 
 export type PostSignInPhase = 'none' | 'birth_year' | 'under_13' | 'consent_pending' | 'consent_sent'
 export type UserRole = 'learner' | 'parent'
+// 'school_student' accounts are created by their school (backend/plans/school-courses):
+// no birth-year, consent or onboarding gates.
+export type AccountKind = 'account' | 'profile' | 'school_student'
+
+// School students' Firebase uids are minted by the backend as 'stu_…', so the
+// kind is known the moment Firebase restores the session.
+export const isStudentUid = (uid: string | null | undefined) => !!uid && uid.startsWith('stu_')
 
 interface AuthContextValue {
   user: User | null
@@ -23,7 +33,11 @@ interface AuthContextValue {
   postSignInPhase: PostSignInPhase
   parentEmail: string | null
   role: UserRole | null
+  accountKind: AccountKind | null
   signIn: () => Promise<void>
+  // Class-code / badge sign-in: exchange the backend's custom token. Session
+  // persistence — classroom devices are shared, closing the tab signs out.
+  signInWithClassToken: (customToken: string) => Promise<void>
   signOut: () => Promise<void>
   getToken: () => Promise<string | null>
   refreshRole: () => Promise<void>
@@ -42,7 +56,9 @@ const AuthContext = createContext<AuthContextValue>({
   postSignInPhase: 'none',
   parentEmail: null,
   role: null,
+  accountKind: null,
   signIn: async () => {},
+  signInWithClassToken: async () => {},
   signOut: async () => {},
   getToken: async () => null,
   refreshRole: async () => {},
@@ -61,6 +77,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [postSignInPhase, setPostSignInPhase] = useState<PostSignInPhase>('none')
   const [parentEmail, setParentEmail] = useState<string | null>(null)
   const [role, setRole] = useState<UserRole | null>(null)
+  const [accountKind, setAccountKind] = useState<AccountKind | null>(null)
   const [pendingBirthYear, setPendingBirthYear] = useState<number | null>(null)
   const [pendingBirthMonth, setPendingBirthMonth] = useState<number | null>(null)
   const [pendingCountry, setPendingCountry] = useState<string | null>(null)
@@ -113,6 +130,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (res.ok) {
             const profile = await res.json()
             if (profile.role) setRole(profile.role)
+            if (profile.account_kind) setAccountKind(profile.account_kind)
+            if (profile.account_kind === 'school_student') return
             if (profile.needs_birth_year) {
               pendingUserRef.current = u
               setPostSignInPhase('birth_year')
@@ -168,6 +187,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const profile = await res.json()
         if (profile.role) setRole(profile.role)
+        if (profile.account_kind) setAccountKind(profile.account_kind)
         if (profile.needs_birth_year === true) {
           pendingUserRef.current = result.user
           setPostSignInPhase('birth_year')
@@ -182,6 +202,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch { /* non-critical */ }
+  }
+
+  const signInWithClassToken = async (customToken: string) => {
+    await setPersistence(firebaseAuth, browserSessionPersistence)
+    // onAuthStateChanged then runs the usual POST /users check, which returns
+    // account_kind 'school_student' and skips every sign-up gate.
+    await signInWithCustomToken(firebaseAuth, customToken)
+    setAccountKind('school_student')
   }
 
   const completeBirthYear = async (birthYear: number, birthMonth?: number, country?: string) => {
@@ -226,6 +254,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const profile = await res.json()
         if (profile.role) setRole(profile.role)
+        if (profile.account_kind) setAccountKind(profile.account_kind)
         pendingUserRef.current = null
         if (profile.account_status === 'parental_consent_pending') {
           setPendingBirthYear(birthYear)
@@ -293,6 +322,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     pendingUserRef.current = null
     setParentEmail(null)
     setRole(null)
+    setAccountKind(null)
     setPendingBirthYear(null)
     setPendingBirthMonth(null)
     setPendingCountry(null)
@@ -329,8 +359,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, needsOnboarding, postSignInPhase, parentEmail, role,
-      signIn, signOut, getToken, refreshRole,
+      user, loading, needsOnboarding, postSignInPhase, parentEmail, role, accountKind,
+      signIn, signInWithClassToken, signOut, getToken, refreshRole,
       dismissOnboarding, requireOnboarding, completeBirthYear, submitParentalConsent, markConsentSent, dismissPostSignIn,
     }}>
       {children}

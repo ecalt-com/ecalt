@@ -1,16 +1,28 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Lock, X } from 'lucide-react'
+import { isStudentUid, useAuth } from '../../lib/AuthContext'
 import { useProfiles } from '../../lib/ProfileContext'
 import ProfileAvatar from './ProfileAvatar'
 
 // Pages that belong to the account holder, never to a child profile.
-const PARENT_ONLY = ['/family', '/pricing', '/profile', '/admin', '/welcome']
+const PARENT_ONLY = ['/family', '/pricing', '/profile', '/admin', '/welcome', '/school', '/school-invite']
 // Pages reachable before a profile is picked.
-const PICKER_EXEMPT = ['/profiles', '/claim', '/consent/', '/privacy-policy', '/terms', '/parents', '/contact']
+const PICKER_EXEMPT = ['/profiles', '/claim', '/consent/', '/privacy-policy', '/terms', '/parents', '/contact', '/school-invite']
 
 const matches = (pathname: string, prefixes: string[]) =>
   prefixes.some(p => pathname === p || pathname.startsWith(p.endsWith('/') ? p : `${p}/`))
+
+// School students (class-code sign-in) may only reach their classes, the
+// course pages and the legal pages; everything else sends them home.
+const STUDENT_PAGES = ['/my-classes', '/journey/', '/class', '/privacy-policy', '/terms', '/contact']
+
+export function StudentGuard({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation()
+  const { user } = useAuth()
+  if (isStudentUid(user?.uid) && !matches(pathname, STUDENT_PAGES)) return <Navigate to="/my-classes" replace />
+  return <>{children}</>
+}
 
 // Sends accounts with child profiles to the picker until this device has
 // chosen one. Returns true when it rendered a redirect.

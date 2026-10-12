@@ -36,6 +36,10 @@ pytest                                      # unit/api/services; integration exc
 pytest -m integration                       # needs a live DB
 pytest tests/unit/test_budget.py -k name    # single file / test
 
+# School DB tests (plans/school-courses/TESTING.md §3): disposable local Postgres, never prod
+docker compose -f tests/db/docker-compose.yml up -d
+TEST_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54329/ecalt_test pytest -m schools_db
+
 python scripts/run_migrations.py --dry-run  # list pending SQL migrations
 python scripts/run_migrations.py            # apply pending (tracked in schema_migrations)
 python scripts/make_admin.py --email you@x.com [--revoke]   # or --uid <firebase_uid>
@@ -45,7 +49,8 @@ python scripts/make_admin.py --email you@x.com [--revoke]   # or --uid <firebase
 
 - Run tests with a dead DB URL so nothing can reach production: `DATABASE_URL=postgresql://x:y@127.0.0.1:1/none pytest`. Repeated failed logins also trip the Supabase pooler's auth circuit breaker.
 - Settings are read from `.env`, so a test that depends on a flag (e.g. `ENABLE_MANAGED_CHILDREN`) must patch it explicitly — never rely on the local `.env` value.
-- 62 tests fail on `feature/dev` before any change (as of 2026-10-11). Compare the failure count before and after your change rather than expecting a clean run.
+- 62 tests fail on `feature/dev` before any change (as of 2026-10-11), listed in `tests/known_failures.txt`. Compare the failure count before and after your change rather than expecting a clean run. CI (`.github/workflows/backend.yml`) sets `ECALT_KNOWN_FAILURES=xfail` so those run as non-strict xfails and any new failure fails the job; delete a line when you fix one.
+- `schools_db` tests skip unless `TEST_DATABASE_URL` is set. The harness (`tests/schools/harness.py`) refuses any URL that isn't a local `ecalt_test` database and builds it from `tests/db/schema_baseline.sql` (schema only) + migrations after `BASELINE_MIGRATION`. Never load `supbase/data.sql` (a prod data dump) anywhere.
 
 ---
 
@@ -77,7 +82,7 @@ backend/
 ```
 
 ### Migrations
-- SQL migrations live at the **repo root: `../migrations/NNN_name.sql`** (currently `001`–`013`).
+- SQL migrations live at the **repo root: `../migrations/NNN_name.sql`** (currently `001`–`014`).
 - ⚠️ `scripts/run_migrations.py` sets `MIGRATIONS_DIR = backend/migrations`, which doesn't exist — point it at `../migrations` (or apply via the Supabase MCP / SQL editor) before running.
 - Number new files sequentially and make them idempotent (`IF NOT EXISTS`, guarded `DO $$` blocks). Prefer additive migrations that are safe to apply before the code deploys.
 - Schema changes are **not** applied on deploy — run them against the DB before/with the release.
@@ -103,6 +108,8 @@ backend/
 1. Bearer Firebase ID token → Firebase uid.
 2. `_map_identity` maps it to `users.uid` via `auth_identities` (identical except for a *claimed* family profile, whose data stays under its `prof_…` uid). Cached 60 s, fails closed (503).
 3. If the request carries `X-Profile-Id` naming one of the account's family profiles, the **acting uid becomes that profile** (verified via an active `family_links` row + `users.profile_type='profile'`, cached 60 s). Otherwise it's the signed-in account. `X-Profile-Id` + `X-Impersonate-Session` together → 400.
+4. **School students** (`stu_…` uids, `profile_type='school_student'`, signed in with a Firebase custom token from `/school-login`) may only call the routes in `core/school_auth.py` `STUDENT_ALLOWED_ROUTES`; `get_signed_in_uid` enforces it (matching the endpoint function, not the path) along with a 12-hour session limit, so every other route — including any you add — is 403 `school_student_not_allowed` for them. `tests/api/schools/test_student_allowlist.py` enumerates the routes and fails on a route that neither resolves the caller nor is listed as public.
+   - **FastAPI ≥ 0.14x keeps included routers nested**: `app.routes` no longer lists full `/api/v1/...` paths and `scope["route"]` holds the router-relative route. Enumerate routes with `core.school_auth.api_routes(app)` (uses `fastapi.routing.iter_route_contexts` when present). `requirements.txt` pins no FastAPI version, so CI and Railway install the latest.
 
 ### Dependencies
 
@@ -118,6 +125,8 @@ backend/
 | `get_unlocked_account_holder` | `uid` | Account holder + parent PIN unlock, no status check (e.g. account deletion) |
 | `get_parent_session` | `uid` | Active account holder + parent PIN unlock. **Default for `/family` routes** |
 | `get_admin_user` | `uid` | Admin endpoints (403 otherwise) |
+| `get_bootstrap_uid` | `uid` | `POST /users` only: account holder **or** school student (students skip every sign-up gate) |
+| `school_member(*roles)` (`core/school_auth.py`) | `SchoolCtx` | Every `/schools/{school_id}/…` route. Not a member → 404, role too low → 403 `school_role_required`, suspended school → 403 `school_access_suspended`. Builds on `get_parent_session` |
 | `get_acting_uid` / `get_active_acting_uid` | `(acting_uid, real_uid)` | Endpoints admins may impersonate (`X-Impersonate-Session`) |
 | `get_optional_acting_uid` | `uid \| None` | Optional auth + impersonation |
 
@@ -127,8 +136,11 @@ Helpers: `ensure_chat_allowed(uid)` (403 when a parent disabled AI chat), `verif
 - `invalidate_status_cache(uid)` after changing `account_status` / `paused`.
 - `invalidate_profile_cache(parent_uid=…, profile_uid=…)` after creating, deleting, revoking or claiming a profile.
 - `invalidate_identity_cache(firebase_uid)` after writing `auth_identities`.
+- `invalidate_school_member_cache(school_id=…, uid=…)` after membership/role/school-status changes; `invalidate_journey_access(uid=…, journey_id=…)` after enrollment, assignment or course-status changes.
 
-**Structured errors** use `detail={"error": "<code>", "message": "..."}` — the frontend reads `detail.error` via `apiErrorCode()`. Known codes: `consent_pending`, `account_paused`, `profile_not_allowed`, `parent_profile_required`, `parent_unlock_required`, `conflicting_headers`, `under_13_not_available`.
+**Journey access (`services/journey_access.py`).** School courses are `journeys` rows with `school_id` set and `uid` NULL. **Every endpoint that takes a journey id must call `assert_can_read_journey(uid, journey_id)` before reading, writing or calling a model**: it 404s anyone who isn't staff of that school or a student with the course assigned, 403s students on non-school journeys (D5), and returns the school id (None for ordinary journeys). Any query that builds a pool across users (lists, sitemap, recommendations, suggestions, marketplace, admin stats, scheduler scans) must filter `school_id IS NULL`. `upsert_step_content` never writes AI content for a school course or over a `locked` row.
+
+**Structured errors** use `detail={"error": "<code>", "message": "..."}` — the frontend reads `detail.error` via `apiErrorCode()`. Known codes: `consent_pending`, `account_paused`, `profile_not_allowed`, `parent_profile_required`, `parent_unlock_required`, `conflicting_headers`, `under_13_not_available`. Schools: `school_student_not_allowed`, `school_access_suspended`, `school_role_required`, `school_not_found`, `content_not_published`, `content_locked`, `invite_invalid`, `invite_expired`, `invite_email_mismatch`, `staff_must_be_adult`, `already_member`, `last_owner`, `invalid_settings`, `dpa_version_mismatch`, `school_terminated` (full list: `plans/school-courses/frontend-changes.md`).
 
 ---
 
@@ -187,6 +199,7 @@ record_usage(uid, ..., input_tokens, output_tokens, ...)   # or record_image_usa
 | Visual intelligence | `visual_orchestrator/planner/router/recipe/registry/retrieval/image/video/telemetry_service`, `wikimedia_retrieval_adapter` — all gated by `VISUAL_*` flags |
 | Money | `subscription_service`, `stripe_service`, `razorpay_service`, `coupon_service` |
 | Accounts & compliance | `account_service` (deletion, export), `consent_service` (parental consent, policy version), `profile_service` (parent PIN, unlock tokens), `firebase_admin` (delete/purge Firebase logins), `content_filter` |
+| Schools (`plans/school-courses/`) | `school_service` (schools, staff, invites, settings, DPA, `school_audit`), `school_student_service` (students, secrets, CSV import), `school_class_service` (classes, join codes, login cards), `school_login_service` (class-code / badge sign-in → Firebase custom token), `journey_access` (who may read a journey) + `core/school_auth.py` (student allowlist, `school_member`, `load_class`) |
 | Notifications | `notification_service` (queue, prefs, caps, signed unsubscribe), `email_service` (Brevo), `whatsapp_service` (Twilio), `copy_generator`, `scheduler` |
 | Config | `provider_service` (AI config, prompts, notification templates, costs) |
 
@@ -256,6 +269,9 @@ Jobs must catch and log their own exceptions.
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | empty | Firebase Admin REST — purging under-13 / deleted-account logins |
 | `VISUAL_INTELLIGENCE_ENABLED`, `VISUAL_NATIVE_RENDER_ENABLED`, `VISUAL_RETRIEVAL_ENABLED`, `VISUAL_IMAGE_GENERATION_ENABLED`, `VISUAL_VIDEO_GENERATION_ENABLED`, `VISUAL_TELEMETRY_ENABLED` | `False` | Visual learning objects; disabled → API returns no visual |
 | `GEO_DEFAULT_COUNTRY` | `IN` | Fallback for `/geo/country` (drives Razorpay vs Stripe) |
+| `SCHOOLS_ENABLED` | `False` | `/schools`, `/school-invites`, `/admin/schools` 404 while off. Journey queries reference `journeys.school_id` regardless of the flag, so any database this code runs against needs migration `014_schools.sql` (applied to the Supabase project on 2026-10-12) |
+| `SCHOOL_DPA_VERSION` / `SCHOOL_INVITE_TTL_DAYS` | `2026-10` / `7` | Bump the DPA version when its text changes — owners must accept again |
+| `SCHOOL_STUDENT_SESSION_HOURS` | `12` | School students' sessions end this long after sign-in (`auth_time`) → 401 `school_session_expired`. Student sign-in also needs `FIREBASE_SERVICE_ACCOUNT_JSON` (custom tokens) — 503 `login_unavailable` without it |
 | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | empty | Required for image storage; endpoints return 503 without them |
 
 Other env vars (see `.env.example`): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FIREBASE_PROJECT_ID`, `DATABASE_URL` (or `DB_*`), `ALLOWED_ORIGINS`, `FRONTEND_URL` (used in email links), Stripe/Razorpay keys + webhook secrets, Brevo/SMTP, Twilio, `NOTIFICATION_SIGNING_SECRET`, `SENTRY_DSN`, `LOG_LEVEL`.
@@ -270,7 +286,7 @@ Other env vars (see `.env.example`): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FIR
 - **Models:** Pydantic v2, inline in the endpoint or in `models/schemas.py`.
 - **Logging:** `logging.getLogger(__name__)`; never log tokens, PINs, email bodies or PII payloads.
 - **Rate limiting:** public/AI endpoints get `@limiter.limit(...)` (needs a `request: Request` param).
-- **Tests:** `tests/unit` (pure logic, mock `get_db`) or `tests/api`; mark DB-dependent tests `@pytest.mark.integration`.
+- **Tests:** `tests/unit` (pure logic, mock `get_db`) or `tests/api`; mark DB-dependent tests `@pytest.mark.integration`. School features follow `plans/school-courses/TESTING.md`: real-SQL tests go in `tests/integration/schools/` (`pytestmark = pytest.mark.schools_db`, `world` fixture with every persona, identities via `Bearer test:<uid>` instead of `dependency_overrides`), and every new school route needs a row in `tests/integration/schools/authz_matrix.py` (a coverage test enforces it).
 - **Null emails:** profile rows have `email IS NULL` — guard any code that emails or displays a user's address.
 - **Frontend work:** when a backend feature needs frontend changes, write them up as an md doc in `plans/<feature>/` instead of implementing them directly.
 
@@ -285,6 +301,7 @@ Other env vars (see `.env.example`): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FIR
 | `journey-images/` | Journey hero images in Supabase Storage |
 | `course-content-quality/` | Content-quality improvements for generated courses |
 | `visual-intelligence/` | Visual learning objects pipeline |
+| `school-courses/` | Schools: tenants, student accounts, classes, PDF/Word → AI courses, updates, analytics. `TRACKER.md` (tickets/decisions/risks), `TESTING.md` (testing model + release gates) |
 
 ---
 

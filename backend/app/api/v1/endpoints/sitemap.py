@@ -27,7 +27,8 @@ async def sitemap():
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT id FROM journeys WHERE is_curated = FALSE ORDER BY created_at DESC LIMIT 500"
+                    "SELECT id FROM journeys WHERE is_curated = FALSE AND school_id IS NULL "
+                    "ORDER BY created_at DESC LIMIT 500"
                 )
                 for row in cur.fetchall():
                     urls.append((f"{BASE}/journey/{row['id']}", "0.6", "monthly"))

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react'
-import { useAuth } from './AuthContext'
+import { useAuth, isStudentUid } from './AuthContext'
 import { authHeaders } from './api'
 
 export interface PlanConfig {
@@ -69,7 +69,8 @@ export function SubscriptionProvider({ children }: { children: React.ReactNode }
   }, [])
 
   const fetch = useCallback(async () => {
-    if (!user) {
+    // School students have no subscription — their school's budget pays.
+    if (!user || isStudentUid(user.uid)) {
       setState({ ...DEFAULT, loading: false })
       return
     }

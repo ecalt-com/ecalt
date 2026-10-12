@@ -26,6 +26,13 @@ from app.services.provider_service import get_config
 from app.services.image_service import generate_and_attach_hero
 from app.services.suggestion_service import generate_next_level, pick_suggestions
 from app.services.interest_profile_service import get_interest_profile, invalidate as invalidate_profile
+from app.services.journey_access import (
+    assert_can_read_journey,
+    journey_not_found,
+    journey_school_id,
+    student_assigned_journey_ids,
+)
+from app.core.school_auth import is_school_student_uid
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -198,6 +205,8 @@ def _db_journey(journey_id: str, viewer_uid: Optional[str] = None) -> Optional[J
 async def list_journeys(response: Response, uid: Optional[str] = Depends(get_optional_acting_uid)):
     user_journeys: list[Journey] = []
     in_progress: list[JourneyWithProgress] = []
+    if is_school_student_uid(uid):
+        return _student_journeys(response, uid)
 
     if uid:
         response.headers["Cache-Control"] = "private, max-age=0"
@@ -207,7 +216,7 @@ async def list_journeys(response: Response, uid: Optional[str] = Depends(get_opt
                     cur.execute(
                         """
                         SELECT * FROM journeys
-                        WHERE uid = %s AND is_curated = FALSE
+                        WHERE uid = %s AND is_curated = FALSE AND school_id IS NULL
                         ORDER BY created_at DESC
                         """,
                         (uid,),
@@ -254,6 +263,43 @@ async def list_journeys(response: Response, uid: Optional[str] = Depends(get_opt
 
     all_journeys = user_journeys + SAMPLE_JOURNEYS
     return JourneysResponse(journeys=all_journeys, in_progress=in_progress, total=len(all_journeys))
+
+
+def _student_journeys(response: Response, uid: str) -> JourneysResponse:
+    """A school student sees only the published courses assigned to their
+    active classes — no curated or community journeys (decision D5)."""
+    response.headers["Cache-Control"] = "private, max-age=0"
+    journey_ids = student_assigned_journey_ids(uid)
+    journeys: list[Journey] = []
+    in_progress: list[JourneyWithProgress] = []
+    if journey_ids:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT * FROM journeys WHERE id = ANY(%s) ORDER BY title",
+                    (journey_ids,),
+                )
+                journeys = [_row_to_journey(dict(r)) for r in cur.fetchall()]
+                cur.execute(
+                    """
+                    SELECT journey_id, COUNT(DISTINCT step_id) AS steps_done,
+                           MAX(completed_at)::text AS last_active_at
+                      FROM user_progress
+                     WHERE uid = %s AND journey_id = ANY(%s)
+                     GROUP BY journey_id
+                    """,
+                    (uid, journey_ids),
+                )
+                progress_rows = {r["journey_id"]: r for r in cur.fetchall()}
+        for j in journeys:
+            p = progress_rows.get(j.id)
+            if p and 0 < int(p["steps_done"]) < len(j.steps):
+                in_progress.append(JourneyWithProgress(
+                    **j.model_dump(), steps_done=int(p["steps_done"]),
+                    last_active_at=p.get("last_active_at"),
+                ))
+        in_progress.sort(key=lambda x: x.last_active_at or "", reverse=True)
+    return JourneysResponse(journeys=journeys, in_progress=in_progress, total=len(journeys))
 
 
 _RECOMMENDATION_TTL_HOURS = 24
@@ -351,7 +397,7 @@ async def journey_recommendations(background_tasks: BackgroundTasks, ctx: tuple 
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT * FROM journeys WHERE uid != %s OR uid IS NULL",
+                    "SELECT * FROM journeys WHERE (uid != %s OR uid IS NULL) AND school_id IS NULL",
                     (uid,),
                 )
                 for r in cur.fetchall():
@@ -514,7 +560,7 @@ async def marketplace_journeys(
     `_marketplace_popularity_scan` and `/admin/marketplace-queue`."""
     response.headers["Cache-Control"] = "public, max-age=60, s-maxage=300"
 
-    filters = ["marketplace_status = 'published'"]
+    filters = ["marketplace_status = 'published'", "school_id IS NULL"]
     params: list = []
     if uid:
         filters.append("uid IS DISTINCT FROM %s")
@@ -564,6 +610,9 @@ class LikeResponse(BaseModel):
 )
 async def toggle_journey_like(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
     uid, _ = ctx
+    # Likes feed the marketplace; school courses never enter it (D11).
+    if assert_can_read_journey(uid, journey_id):
+        raise journey_not_found()
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -617,7 +666,8 @@ async def fork_journey(journey_id: str, ctx: tuple = Depends(get_active_acting_u
         with get_db() as conn:
             with conn.cursor() as cur:
                 cur.execute(
-                    "SELECT * FROM journeys WHERE id = %s AND marketplace_status = 'published'",
+                    "SELECT * FROM journeys WHERE id = %s AND marketplace_status = 'published' "
+                    "AND school_id IS NULL",
                     (journey_id,),
                 )
                 row = cur.fetchone()
@@ -688,6 +738,8 @@ async def submit_to_marketplace(journey_id: str, ctx: tuple = Depends(get_active
     before it's publicly listed — this only requests review, it never
     publishes directly. A no-op if already pending/published."""
     uid, _ = ctx
+    if assert_can_read_journey(uid, journey_id):
+        raise journey_not_found()
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -723,6 +775,7 @@ async def submit_to_marketplace(journey_id: str, ctx: tuple = Depends(get_active
 
 @router.get("/{journey_id}", response_model=Journey, summary="Get a journey by ID")
 async def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional_user)):
+    assert_can_read_journey(uid, journey_id)
     journey = _db_journey(journey_id, uid) or _journey_map.get(journey_id)
     if not journey:
         raise HTTPException(status_code=404, detail="Journey not found")
@@ -743,17 +796,18 @@ class SuggestionsResponse(BaseModel):
 )
 async def journey_suggestions(journey_id: str, background_tasks: BackgroundTasks, ctx: tuple = Depends(get_active_acting_uid)):
     uid, _ = ctx
+    assert_can_read_journey(uid, journey_id)
     source = _db_journey(journey_id) or _journey_map.get(journey_id)
     if not source:
         raise HTTPException(status_code=404, detail="Journey not found")
 
-    # Candidate pool: every stored journey + the curated catalogue.
+    # Candidate pool: every stored non-school journey + the curated catalogue.
     pool: list[Journey] = []
     authored_ids: set[str] = set()
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
-                cur.execute("SELECT * FROM journeys")
+                cur.execute("SELECT * FROM journeys WHERE school_id IS NULL")
                 for r in cur.fetchall():
                     row = dict(r)
                     try:
@@ -923,8 +977,11 @@ async def _regenerate_step_task(
     uid: str,
     refinement_note: Optional[str] = None,
 ) -> None:
-    """Background: regenerate a cached step at current quality. Never raises."""
+    """Background: regenerate a cached step at current quality. Never raises.
+    Never runs for a school course (its content is the teacher's publish)."""
     try:
+        if journey_school_id(journey_id):
+            return
         allowed, _ = check_budget(uid)
         if not allowed:
             return
@@ -963,6 +1020,7 @@ async def get_step_content(
     journeys without blocking the reader.
     """
     uid, _ = ctx
+    school_id = assert_can_read_journey(uid, journey_id)
     # Check cache
     try:
         with get_db() as conn:
@@ -974,7 +1032,8 @@ async def get_step_content(
                 )
                 cached = cur.fetchone()
                 if cached:
-                    if (cached.get("prompt_version") or 1) < CONTENT_PROMPT_VERSION:
+                    # School courses show exactly what the teacher published.
+                    if not school_id and (cached.get("prompt_version") or 1) < CONTENT_PROMPT_VERSION:
                         background_tasks.add_task(
                             _regenerate_step_task, journey_id, step_id, uid, None
                         )
@@ -984,6 +1043,13 @@ async def get_step_content(
                     )
     except Exception:
         pass
+
+    if school_id:
+        # Never generate for a school course: students only see published content.
+        raise HTTPException(status_code=409, detail={
+            "error": "content_not_published",
+            "message": "This step hasn't been published yet.",
+        })
 
     # Cache miss — check budget before spending tokens
     allowed, reason = check_budget(uid)
@@ -1039,6 +1105,7 @@ async def get_step_visual(journey_id: str, step_id: str, ctx: tuple = Depends(ge
     "pending" means content generation hasn't reached this step yet;
     "unavailable" means it was planned and no visual applies (NONE/TEXT_ONLY).
     """
+    assert_can_read_journey(ctx[0], journey_id)
     row = get_step_visual_row(journey_id, step_id)
     if row is None:
         return StepVisualResponse(journey_id=journey_id, step_id=step_id, status="pending")
@@ -1068,9 +1135,10 @@ async def post_step_visual_event(
     """Best-effort — a telemetry write failure must never surface to the
     learner (spec section 22 has no notion of a required event)."""
     from app.core.config import settings
+    uid, _ = ctx
+    assert_can_read_journey(uid, journey_id)
     if not settings.VISUAL_TELEMETRY_ENABLED:
         return {"status": "disabled"}
-    uid, _ = ctx
     event = VisualEvent(
         eventType=body.eventType, userId=uid, courseId=journey_id, lessonId=step_id,
         vloId=body.vloId, sessionId=body.sessionId, eventData=body.eventData,
@@ -1096,6 +1164,11 @@ async def regenerate_step_content(
 ):
     """Force-regenerates a step's content, overwriting the cache."""
     uid, _ = ctx
+    if assert_can_read_journey(uid, journey_id):
+        raise HTTPException(status_code=409, detail={
+            "error": "content_locked",
+            "message": "School course content is edited by the teacher in the course builder.",
+        })
     allowed, reason = check_budget(uid)
     if not allowed:
         raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
@@ -1155,7 +1228,7 @@ class StepFeedbackRequest(BaseModel):
 
 @router.post(
     "/{journey_id}/steps/{step_id}/feedback",
-    summary="Rate step content; negative tags trigger a background regeneration",
+    summary="Rate step content; negative tags trigger a background regeneration (never for school courses)",
 )
 async def step_feedback(
     journey_id: str,
@@ -1165,6 +1238,7 @@ async def step_feedback(
     ctx: tuple = Depends(get_active_acting_uid),
 ):
     uid, _ = ctx
+    school_id = assert_can_read_journey(uid, journey_id)
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -1185,7 +1259,8 @@ async def step_feedback(
         raise HTTPException(status_code=500, detail="Failed to save feedback")
 
     regenerating = False
-    note = _REGEN_FEEDBACK_NOTES.get(body.tag or "")
+    # Feedback on a school course is kept for the teacher; it never regenerates.
+    note = None if school_id else _REGEN_FEEDBACK_NOTES.get(body.tag or "")
     if note:
         background_tasks.add_task(_regenerate_step_task, journey_id, step_id, uid, note)
         regenerating = True

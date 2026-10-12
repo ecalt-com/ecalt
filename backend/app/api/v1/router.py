@@ -1,9 +1,10 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from app.api.v1.endpoints import (
     health, spark, explore, journeys, session, users, progress, passport, sitemap,
     chat, knowledge, subscriptions, admin, mind_signature, coupons, notifications, geo, quiz,
-    family,
+    family, schools, admin_schools, school_roster, school_login,
 )
+from app.core.school_auth import require_schools_enabled
 
 api_router = APIRouter()
 
@@ -26,3 +27,11 @@ api_router.include_router(notifications.router, prefix="/notifications",  tags=[
 api_router.include_router(geo.router,           prefix="/geo",            tags=["geo"])
 api_router.include_router(quiz.router,          prefix="/quiz",           tags=["quiz"])
 api_router.include_router(family.router,        prefix="/family",         tags=["family"])
+
+# Schools (plans/school-courses) — 404 while SCHOOLS_ENABLED is off.
+_schools_flag = [Depends(require_schools_enabled)]
+api_router.include_router(schools.router,         prefix="/schools",        tags=["schools"], dependencies=_schools_flag)
+api_router.include_router(school_roster.router,   prefix="/schools",        tags=["schools"], dependencies=_schools_flag)
+api_router.include_router(school_login.router,    prefix="/school-login",   tags=["schools"], dependencies=_schools_flag)
+api_router.include_router(schools.invites_router, prefix="/school-invites", tags=["schools"], dependencies=_schools_flag)
+api_router.include_router(admin_schools.router,   prefix="/admin/schools",  tags=["schools"], dependencies=_schools_flag)

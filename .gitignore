@@ -52,3 +52,6 @@ Thumbs.db
 
 .vercel
 .env*
+
+# Production data dump (real user data) — never commit (backend/plans/school-courses/TESTING.md)
+supbase/data.sql
