@@ -2,7 +2,7 @@
 
 > This is the frontend contract for the backend plan in `README.md`. Ticket ids refer to `TRACKER.md`. Build each section alongside its backend milestone. Everything stays invisible until the backend's `SCHOOLS_ENABLED=true` and a school exists.
 >
-> **Status (2026-10-12):** M1 is **implemented** on both sides (uncommitted on `feature/dev`; migration 014 applied to the Supabase project): `account_kind` in `AuthContext` (§1), `SchoolContext` + nav entry + staff area `/school` with dashboard, staff and settings (§2–3), DPA modal, `/school-invite` (§3), admin **Schools** tab (§11), `lib/schoolApi.ts` (§13), error messages (§14). Sections marked *(as built)* describe the real API. Everything else (students, classes, class sign-in, documents, course builder, assignments, analytics) is still the plan and waits for M2+.
+> **Status (2026-10-12):** M1 and M2 are **implemented** on both sides and pushed to `feature/dev` (migration 014 applied to the Supabase project). M1: `account_kind` in `AuthContext` (§1), `SchoolContext` + nav entry + staff area `/school` (§2–3), DPA modal, `/school-invite`, admin **Schools** tab (§11), `lib/schoolApi.ts` (§13), error messages (§14). M2: students + CSV import (§4), classes + printable login cards (§5), `/class` sign-in, `/class/badge`, student shell `/my-classes` (§6) — QR codes on cards wait for the `qrcode` dependency (§15). Sections marked *(as built)* describe the real API. Documents, the course builder, assignments and analytics (M3+) are still the plan.
 
 ## 0. Ground rules
 
@@ -57,11 +57,18 @@
   3. Report: row-level errors, duplicates (matched on `external_ref`), seat-limit overflow. The user can't continue while there are errors.
   4. Commit → summary + "Print login cards for N students".
 - Seat meter: `active / seat_limit`. A 409 `seat_limit_reached` explains how to raise the limit (contact ECALT).
+- *(as built — `pages/school/SchoolStudents.tsx`, `components/school/StudentImportWizard.tsx`)*:
+  - `GET …/students?q=&class_id=&status=&limit=&offset=` → `{students, total, seat_limit, seats_used, can_manage}`; each student has `has_secret`, `has_badge`, `locked_until`, `classes`. "Show more" pages by 50.
+  - Row actions: new sign-in (`POST …/students/{uid}/reset-secret` → secret shown once in `SecretReveal`; also clears a lockout), export (admins, downloads JSON), archive/restore, delete (inline confirmation). Status chips: Pictures / PIN / "No sign-in yet" / Locked.
+  - Add student: default secret is a picture password up to **grade 4** (PIN after); teachers can only pick classes they teach. `POST …/students` returns `secret` (3 icon indices or a 6-digit string) and `badge_token` once.
+  - Import: `POST …/students/import?dry_run=true|false` with JSON `{csv}` (the file is read in the browser; 1 MB / 2,000 rows). Header aliases: name; grade/std (KG/LKG/UKG = 0); roll number/admission no; class/section; sign-in (picture|pin). The report lists per-line errors and warnings; commit is blocked while any exist (422 `import_has_errors` carries the report). **Imported students get no secret yet** — the import summary tells staff to print each class's login cards.
 
 ## 5. Classes and login cards (SC-203, SC-206, SC-210a)
 
 - **List + create (`/school/classes`)**: name, grade, subject, academic year.
 - **Class page (`/school/classes/:classId`)** tabs: **Students** (enroll from roster with multi-select, remove), **Courses** (assignments, §9), **Progress** (§10), **Sign-in** (the join code shown large, "rotate code", co-teachers).
+- *(as built — `pages/school/SchoolClasses.tsx`, `SchoolClassDetail.tsx`)*: class list split into "My classes" / "Other classes"; create (you become lead teacher); one detail page instead of tabs (Courses and Progress arrive with M5): join code shown large with "New code", edit name/subject/year, teachers (add co-teacher from staff, remove), students (search the roster to add, remove), "Print login cards", archive. Read access for all staff; changes for the class's teachers and admins (`can_manage`).
+- *(as built — `pages/school/LoginCardsPrint.tsx` at `/school/print/cards/:classId`, outside the staff shell)*: secrets are stored hashed, so cards come from `POST …/classes/{cid}/login-cards {reset}`: "Cards for students without a sign-in" (`reset:false`) or "New sign-ins for the whole class" (`reset:true`, old cards stop working). Cards show school, class, `<host>/class`, the class code, avatar + name and the picture password (icons with names) or PIN; print via `window.print()` with `print:` styles. **No QR yet:** badge tokens are issued but not printed until the `qrcode` package is approved (§15).
 - **Login cards (`/school/print/login-cards?classId=`)**: a print stylesheet with 8 cards per A4 page. Each card has the class code, the student's name, their picture password (icons) or PIN, a QR badge, and the URL `ecalt.app/class`. Secrets come from `GET …/classes/{cid}/login-cards`, which returns **only** freshly reset secrets; the page warns "Printing resets PINs for students who don't have one yet" when relevant. QR generation needs the **`qrcode`** npm package (new dependency, approval needed).
 
 ## 6. Student sign-in and student shell (SC-205..208, SC-210b)
@@ -76,15 +83,19 @@
 
 Errors: `invalid_student_secret` ("That's not quite right — try again"), `423 student_locked` ("Ask your teacher to help you sign in", with the unlock time for the teacher), `school_access_suspended`.
 
+*(as built — `pages/ClassSignIn.tsx`)*: the last class code is remembered on the device (localStorage, convenience only). Roster names arrive as "First L.". When the roster is hidden the student types their **roll number** (`external_ref`) and can switch between PIN and pictures. Picture icons (`lib/pictureIcons.ts`, order is fixed — the backend stores indices): sun, moon, star, heart, tree, flower, fish, bird, cat, dog, apple, car, rocket, boat, house, umbrella; three taps submit automatically, with undo. Wrong secret → shake (motion-safe) + message. Also handled: `class_code_throttled` (429), `login_unavailable` (503, no Firebase service account), a signed-in adult on the device ("Sign out first"), `?expired=1`. `AuthContext.signInWithClassToken` sets `browserSessionPersistence` then `signInWithCustomToken`.
+
 ### 6.2 Student shell
 - Minimal nav: **My classes**, the current course, the student's name, a prominent **Sign out**.
 - Hidden for students: Home spark, Explore, Learn chat hub, Journeys browse, Marketplace, Passport, Mind signature, Pricing, Profile/privacy pages, Family, Admin. A **route guard** redirects any other route to `/my-classes`; the backend allowlist enforces this anyway.
 - Show a "You're signed in on a shared device — sign out when you're done" hint on first load of a session.
 - If transcripts are visible to teachers (D4), the tutor panel shows "Your teacher can see this chat".
+- *(as built)*: `Navigation` renders a student variant (logo, My classes, theme, Sign out → `/class`) for `stu_` uids; `StudentGuard` (in `ProfileRouting.tsx`) redirects everything except `/my-classes`, `/journey/:id`, `/class*` and the legal pages. Profile, subscription, reconsent and school-staff lookups are skipped for students (no 403 noise). `pages/StudentHome.tsx` (`/my-classes`) lists assigned courses from `GET /journeys` with step progress; due dates and per-class grouping come with `GET /school-student/home` (SC-502). A 401 `school_session_expired` from any `request()` signs out and opens `/class?expired=1`. **Not yet:** the shared-device hint and the student variant of the Journey page (hide marketplace actions, quiz skip, regenerate) — M5 (SC-507).
 
 ### 6.3 QR badge `/class/badge`
 - Uses the camera via the native `BarcodeDetector` (Chrome/ChromeOS/Android), falling back to **`jsqr`** (new dependency, approval needed) on other browsers. Needs the `Permissions-Policy` change in §0.
 - `POST /school-login/badge {token}` → the same sign-in path as §6.1.
+- *(as built — `pages/BadgeSignIn.tsx`)*: `/class/badge#<token>` signs in from the URL fragment (never sent to a server, removed from the address bar). The printed QR will encode that URL, so a phone or tablet camera app opens it directly — **no in-app scanner, no camera permission** needed, which drops `jsqr` and the `Permissions-Policy` change for now.
 
 ## 7. Documents (SC-301, SC-305, SC-307)
 
@@ -208,8 +219,8 @@ A shared `usePollJob(jobId)` hook polls every 2 s with backoff up to 10 s and st
 
 | Package | Why | Fallback without it |
 |---|---|---|
-| `qrcode` | QR badges on login cards | ship cards without QR; badge login waits |
-| `jsqr` | QR scanning where `BarcodeDetector` isn't available | badge login only on Chrome-based devices |
+| `qrcode` | QR badges on login cards (encode `<host>/class/badge#<token>`) | **current state:** cards ship without QR; badge sign-in works but has nothing to scan |
+| `jsqr` | QR scanning where `BarcodeDetector` isn't available | not needed while badges open `/class/badge#…` from the device's camera app |
 | `@playwright/test` (dev) | E2E smoke (D10) | manual QA checklist (`TESTING.md` §10) |
 
 No editor library: the step editor is a `<textarea>` with the existing `MarkdownContent` preview. Reconsider a rich editor only if pilot teachers struggle with markdown.

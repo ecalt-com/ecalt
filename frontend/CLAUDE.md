@@ -122,7 +122,10 @@ All pages are `React.lazy` + `Suspense` (`PageSkeleton` spinner) and wrapped in 
 | `/family/child/:uid` | FamilyChild | Per-child overview, activity, transcripts, settings, consent, export/delete |
 | `/profiles` | Profiles | "Who's learning?" picker for accounts with child profiles |
 | `/claim` | Claim | Teen (13+) attaches their own Google login to their profile with a parent's code; sign-up gates skipped here |
-| `/school`, `/school/staff`, `/school/settings` | school/SchoolLayout + Dashboard / Staff / Settings | School staff only (nested routes). Parent-only for `KidModeGuard` |
+| `/school`, `/school/classes[/:classId]`, `/school/students`, `/school/staff`, `/school/settings` | school/SchoolLayout + Dashboard / Classes / ClassDetail / Students / Staff / Settings | School staff only (nested routes). Parent-only for `KidModeGuard` |
+| `/school/print/cards/:classId` | school/LoginCardsPrint | Printable student login cards (issues new sign-ins); outside the staff shell |
+| `/class`, `/class/badge` | ClassSignIn, BadgeSignIn | **Student** sign-in: class code → name/roll → picture password or PIN; badge token in the URL fragment |
+| `/my-classes` | StudentHome | School student home (assigned courses) |
 | `/school-invite` | SchoolInviteAccept | Staff invite link (`?token=`, moved to sessionStorage at once); exempt from the profile picker |
 | `/kids-login` | → `/` | Redirect — child email/password logins were removed |
 | `/sign-in`, `/get-started`, `*` | ComingSoon | Placeholder / 404 |
@@ -260,7 +263,9 @@ Admin starts a session from the Users tab → `ImpersonationContext` stores it, 
 - Staff are ordinary adult accounts. `SchoolContext` loads `GET /schools/mine` once per session (never in kid mode or for school students); the nav shows **School** when it's non-empty. A 404 (backend flag off) just means no school UI.
 - `/school` routes are nested under `SchoolLayout`, which loads the active school and passes `{school, setSchool, reload}` to child pages via `useSchoolPage()`. 403 `school_access_suspended` → full-page notice; 404 `school_not_found` → refresh the school list.
 - Staff calls (everything under `/schools/{id}`) need the parent PIN unlock when the account has family profiles — `request()` prompts for it automatically.
-- `AuthContext.accountKind` (`'account' | 'profile' | 'school_student'`) comes from `POST /users`; school students skip every sign-up gate. Student sign-in (class code / picture password / QR) arrives with backend M2 — the full contract is `../backend/plans/school-courses/frontend-changes.md`.
+- `AuthContext.accountKind` (`'account' | 'profile' | 'school_student'`) comes from `POST /users`; school students skip every sign-up gate. `isStudentUid(uid)` (`stu_` prefix) is available immediately after Firebase restores a session — use it to skip parent/staff-only lookups (profiles, subscription, reconsent, schools) and to pick the student `Navigation` variant.
+- **Students:** `signInWithClassToken(customToken)` uses `browserSessionPersistence` (shared classroom devices). `StudentGuard` (`ProfileRouting.tsx`) keeps students on `/my-classes`, `/journey/:id`, `/class*` and legal pages. `request()` turns a 401 `school_session_expired` into sign-out + `/class?expired=1`. Picture-password icons live in `lib/pictureIcons.ts` — **never reorder** (the backend stores indices).
+- Full contract and what's built vs planned: `../backend/plans/school-courses/frontend-changes.md`.
 
 ### Family profiles
 Children use ECALT as **profiles on the parent's Google login** — no child email or password. Contract: `../backend/plans/family-profiles/`.

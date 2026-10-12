@@ -2,7 +2,7 @@
 
 **Goal:** Schools use ECALT to teach their own curriculum. A school gets a tenant; its admins and teachers create **student accounts** and **classes**, upload **PDF or Word documents** and turn them into ECALT courses with AI help. Teachers review and edit every course before students see it, assign courses to classes, update courses when the source material changes, and track each student's progress.
 
-**Status:** Drafted 2026-10-11. Implementation started 2026-10-12 (M0 test harness/CI, M1 backend: tenancy, staff, student allowlist, journey access, leak and regeneration fixes) — see `TRACKER.md`. Decisions in §0 are still open; the code assumes the recommendations.
+**Status:** Drafted 2026-10-11. M0 harness/CI, M1 (tenancy, staff, student allowlist, journey access, leak and regeneration fixes) and M2 (students, classes, roster import, student sign-in) implemented on `feature/dev` on 2026-10-12, backend and frontend — see `TRACKER.md`. Decisions in §0 are still open; the code assumes the recommendations.
 
 **Companion docs (this folder):**
 | File | Purpose |
@@ -327,16 +327,18 @@ All routes are under `/api/v1`. `{sid}` = school id. **Bold** = ECALT admin only
 |---|---|
 | Admin (built) | **`POST/GET /admin/schools`, `GET/PATCH /admin/schools/{sid}`** (name, status, seats, budget), **`POST /admin/schools/{sid}/owner-invite`** |
 | Membership (built) | `GET /schools/mine`, `POST /school-invites/preview`, `POST /school-invites/accept`, `GET/PATCH /schools/{sid}`, `POST /schools/{sid}/dpa/accept` (owner), `GET /schools/{sid}/staff`, `POST /schools/{sid}/staff/invites`, `DELETE /schools/{sid}/staff/invites/{invite_id}`, `PATCH/DELETE /schools/{sid}/staff/{uid}` (DELETE on yourself = leave) |
-| Students | `GET/POST /schools/{sid}/students` (paged, `?q=&class_id=&status=`), `POST …/students/import?dry_run=`, `PATCH/DELETE …/students/{uid}`, `POST …/students/{uid}/reset-secret`, `POST …/students/{uid}/archive` + `/restore`, `POST …/students/{uid}/rotate-badge`, `GET …/students/{uid}/export` |
-| Classes | `GET/POST /schools/{sid}/classes`, `GET/PATCH/DELETE …/classes/{cid}`, `POST/DELETE …/classes/{cid}/teachers[/{uid}]`, `POST/DELETE …/classes/{cid}/students[/{uid}]`, `POST …/classes/{cid}/rotate-code`, `GET …/classes/{cid}/login-cards` |
+| Students (built) | `GET/POST /schools/{sid}/students` (paged, `?q=&class_id=&status=`), `POST …/students/import?dry_run=` (JSON `{csv}`), `POST …/students/archive` (bulk), `GET/PATCH/DELETE …/students/{uid}`, `POST …/students/{uid}/reset-secret`, `POST …/students/{uid}/archive` + `/restore`, `POST …/students/{uid}/rotate-badge`, `GET …/students/{uid}/export` |
+| Classes (built) | `GET/POST /schools/{sid}/classes`, `GET/PATCH/DELETE …/classes/{cid}` (DELETE archives), `POST/DELETE …/classes/{cid}/teachers[/{uid}]`, `POST/DELETE …/classes/{cid}/students[/{uid}]`, `POST …/classes/{cid}/rotate-code`, **`POST`** `…/classes/{cid}/login-cards {student_uids?, reset}` (POST because it issues new secrets — they're stored hashed) |
 | Documents | `POST /schools/{sid}/documents/upload-url`, `POST …/documents/{did}/complete`, `GET …/documents[/{did}]`, `DELETE …/documents/{did}` |
 | Courses | `GET/POST /schools/{sid}/courses`, `GET …/courses/{jid}`, `GET/PATCH …/courses/{jid}/draft`, `POST …/draft/steps`, `PATCH/DELETE …/draft/steps/{step_id}`, `POST …/draft/reorder`, `POST …/draft/steps/{step_id}/regenerate`, `POST …/courses/{jid}/outline/approve`, `POST …/courses/{jid}/publish`, `GET …/courses/{jid}/versions`, `POST …/versions/{v}/restore`, `POST …/courses/{jid}/duplicate`, `POST …/courses/{jid}/archive`, `POST …/courses/{jid}/estimate` |
 | Updates | `POST /schools/{sid}/courses/{jid}/updates` (`mode`, `document_ids`), `GET …/updates/{job_id}/proposals`, `POST …/proposals/{pid}/accept` / `reject`, `POST …/proposals/accept-all` |
 | Jobs | `GET /schools/{sid}/jobs/{job_id}`, `POST …/jobs/{job_id}/cancel` |
 | Assignments | `GET/POST /schools/{sid}/classes/{cid}/assignments`, `PATCH/DELETE …/assignments/{aid}` |
 | Analytics | `GET /schools/{sid}/classes/{cid}/progress`, `GET …/classes/{cid}/students/{uid}`, `GET …/classes/{cid}/progress.csv`, `GET /schools/{sid}/usage` |
-| Student login | `GET /school-login/classes/{code}`, `POST /school-login/sessions`, `POST /school-login/badge` (all public, keyed rate limits) |
+| Student login (built) | `GET /school-login/classes/{code}`, `POST /school-login/sessions {class_code, student_uid | external_ref, secret: {kind, value}}`, `POST /school-login/badge {token}` (all public; limits keyed on class code / student, never IP) |
 | Student | `GET /school-student/home` + the allowlisted learner routes (§3.4) |
+
+Added in M2: `student_not_found`, `class_not_found`, `class_archived`, `external_ref_taken`, `invalid_secret_kind`, `import_has_errors` (422, carries the report), `student_required`, `class_code_throttled` (429), `invalid_badge`, `login_unavailable` (503).
 
 New error codes (structured `detail.error`): `school_role_required`, `school_access_suspended`, `school_student_not_allowed`, `school_session_expired`, `class_code_invalid`, `invalid_student_secret`, `student_locked`, `seat_limit_reached`, `dpa_required`, `document_rejected` (+ `reason`), `draft_conflict`, `content_not_published`, `course_not_published`, `school_budget_exhausted`. Added in M1: `school_not_found`, `content_locked` (regenerate on a school course), `invite_invalid`, `invite_expired` (410), `invite_email_mismatch`, `invite_not_found`, `member_not_found`, `staff_must_be_adult`, `account_setup_required`, `already_member`, `last_owner`, `invalid_role`, `invalid_email`, `invalid_settings`, `dpa_version_mismatch`, `school_terminated`.
 

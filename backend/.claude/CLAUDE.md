@@ -108,7 +108,8 @@ backend/
 1. Bearer Firebase ID token → Firebase uid.
 2. `_map_identity` maps it to `users.uid` via `auth_identities` (identical except for a *claimed* family profile, whose data stays under its `prof_…` uid). Cached 60 s, fails closed (503).
 3. If the request carries `X-Profile-Id` naming one of the account's family profiles, the **acting uid becomes that profile** (verified via an active `family_links` row + `users.profile_type='profile'`, cached 60 s). Otherwise it's the signed-in account. `X-Profile-Id` + `X-Impersonate-Session` together → 400.
-4. **School students** (`stu_…` uids, `profile_type='school_student'`) may only call the routes in `core/school_auth.py` `STUDENT_ALLOWED_ROUTES`; `get_signed_in_uid` enforces it, so every other route — including any you add — is 403 `school_student_not_allowed` for them. `tests/api/schools/test_student_allowlist.py` enumerates `app.routes` and fails on a route that neither resolves the caller nor is listed as public.
+4. **School students** (`stu_…` uids, `profile_type='school_student'`, signed in with a Firebase custom token from `/school-login`) may only call the routes in `core/school_auth.py` `STUDENT_ALLOWED_ROUTES`; `get_signed_in_uid` enforces it (matching the endpoint function, not the path) along with a 12-hour session limit, so every other route — including any you add — is 403 `school_student_not_allowed` for them. `tests/api/schools/test_student_allowlist.py` enumerates the routes and fails on a route that neither resolves the caller nor is listed as public.
+   - **FastAPI ≥ 0.14x keeps included routers nested**: `app.routes` no longer lists full `/api/v1/...` paths and `scope["route"]` holds the router-relative route. Enumerate routes with `core.school_auth.api_routes(app)` (uses `fastapi.routing.iter_route_contexts` when present). `requirements.txt` pins no FastAPI version, so CI and Railway install the latest.
 
 ### Dependencies
 
@@ -198,7 +199,7 @@ record_usage(uid, ..., input_tokens, output_tokens, ...)   # or record_image_usa
 | Visual intelligence | `visual_orchestrator/planner/router/recipe/registry/retrieval/image/video/telemetry_service`, `wikimedia_retrieval_adapter` — all gated by `VISUAL_*` flags |
 | Money | `subscription_service`, `stripe_service`, `razorpay_service`, `coupon_service` |
 | Accounts & compliance | `account_service` (deletion, export), `consent_service` (parental consent, policy version), `profile_service` (parent PIN, unlock tokens), `firebase_admin` (delete/purge Firebase logins), `content_filter` |
-| Schools (`plans/school-courses/`) | `school_service` (schools, staff, invites, settings, DPA, `school_audit`), `journey_access` (who may read a journey) + `core/school_auth.py` (student allowlist, `school_member`) |
+| Schools (`plans/school-courses/`) | `school_service` (schools, staff, invites, settings, DPA, `school_audit`), `school_student_service` (students, secrets, CSV import), `school_class_service` (classes, join codes, login cards), `school_login_service` (class-code / badge sign-in → Firebase custom token), `journey_access` (who may read a journey) + `core/school_auth.py` (student allowlist, `school_member`, `load_class`) |
 | Notifications | `notification_service` (queue, prefs, caps, signed unsubscribe), `email_service` (Brevo), `whatsapp_service` (Twilio), `copy_generator`, `scheduler` |
 | Config | `provider_service` (AI config, prompts, notification templates, costs) |
 
@@ -270,6 +271,7 @@ Jobs must catch and log their own exceptions.
 | `GEO_DEFAULT_COUNTRY` | `IN` | Fallback for `/geo/country` (drives Razorpay vs Stripe) |
 | `SCHOOLS_ENABLED` | `False` | `/schools`, `/school-invites`, `/admin/schools` 404 while off. Journey queries reference `journeys.school_id` regardless of the flag, so any database this code runs against needs migration `014_schools.sql` (applied to the Supabase project on 2026-10-12) |
 | `SCHOOL_DPA_VERSION` / `SCHOOL_INVITE_TTL_DAYS` | `2026-10` / `7` | Bump the DPA version when its text changes — owners must accept again |
+| `SCHOOL_STUDENT_SESSION_HOURS` | `12` | School students' sessions end this long after sign-in (`auth_time`) → 401 `school_session_expired`. Student sign-in also needs `FIREBASE_SERVICE_ACCOUNT_JSON` (custom tokens) — 503 `login_unavailable` without it |
 | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | empty | Required for image storage; endpoints return 503 without them |
 
 Other env vars (see `.env.example`): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FIREBASE_PROJECT_ID`, `DATABASE_URL` (or `DB_*`), `ALLOWED_ORIGINS`, `FRONTEND_URL` (used in email links), Stripe/Razorpay keys + webhook secrets, Brevo/SMTP, Twilio, `NOTIFICATION_SIGNING_SECRET`, `SENTRY_DSN`, `LOG_LEVEL`.
