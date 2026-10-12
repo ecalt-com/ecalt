@@ -62,6 +62,8 @@ frontend/src/
 │   ├── ImpersonationContext.tsx # Admin "view as user" sessions (start/stop, expiry timer)
 │   ├── impersonationStore.ts    # Module-level session id so api.ts can read it without React
 │   ├── ProfileContext.tsx       # Family profiles: picker state, switchTo(), PIN prompt (useProfiles())
+│   ├── SchoolContext.tsx        # Schools the account is staff at, active school, can(action) (useSchool())
+│   ├── schoolApi.ts             # Schools endpoint wrappers + types, canDo(), schoolErrorMessage()
 │   ├── profileStore.ts          # Module-level active profile + parent unlock token for api.ts
 │   ├── avatars.ts               # Avatar choices for child profiles
 │   ├── razorpay.ts              # loadRazorpayScript() + order/subscription response types
@@ -70,9 +72,11 @@ frontend/src/
 │   ├── firebase.ts              # Firebase app/auth/GoogleAuthProvider singletons
 │   ├── usePageTitle.ts, useReducedMotion.ts
 ├── pages/                       # One file per route (see Routes)
-│   └── admin/                   # Admin page split: tabs/, components/, hooks/, types, utils, constants
+│   ├── admin/                   # Admin page split: tabs/, components/, hooks/, types, utils, constants
+│   └── school/                  # School staff area: SchoolLayout (shell + outlet), Dashboard, Staff, Settings
 └── components/
     ├── auth/                    # BirthYearGate, Under13Block, ParentalConsentForm (+ ConsentSentScreen)
+    ├── school/DpaModal.tsx      # Data processing agreement acceptance (school owner)
     ├── family/                  # AddChildWizard, PinPad, PinPrompt, ProfileAvatar,
     │                            # ProfileRouting (picker redirect, KidModeGuard, KidModeNotice)
     ├── journey/JourneyTutor.tsx # In-journey AI tutor chat
@@ -118,6 +122,8 @@ All pages are `React.lazy` + `Suspense` (`PageSkeleton` spinner) and wrapped in 
 | `/family/child/:uid` | FamilyChild | Per-child overview, activity, transcripts, settings, consent, export/delete |
 | `/profiles` | Profiles | "Who's learning?" picker for accounts with child profiles |
 | `/claim` | Claim | Teen (13+) attaches their own Google login to their profile with a parent's code; sign-up gates skipped here |
+| `/school`, `/school/staff`, `/school/settings` | school/SchoolLayout + Dashboard / Staff / Settings | School staff only (nested routes). Parent-only for `KidModeGuard` |
+| `/school-invite` | SchoolInviteAccept | Staff invite link (`?token=`, moved to sessionStorage at once); exempt from the profile picker |
 | `/kids-login` | → `/` | Redirect — child email/password logins were removed |
 | `/sign-in`, `/get-started`, `*` | ComingSoon | Placeholder / 404 |
 
@@ -130,6 +136,7 @@ HelmetProvider
   ThemeProvider
     AuthProvider
       ProfileProvider           ← family profiles + PIN prompt (needs useAuth)
+      SchoolProvider            ← GET /schools/mine (needs useAuth + useProfiles; skipped in kid mode)
       ImpersonationProvider     ← needs getToken from AuthProvider
         GeoProvider             ← GET /api/v1/geo/country (unauth)
           PaymentConfigProvider ← GET /api/v1/subscriptions/config (unauth)
@@ -198,6 +205,9 @@ Never redirect before `loading === false` — a hard refresh would kick the user
 - Users / notifications: `getUserProfile`, `completeOnboarding`, `saveProfession`, `get/saveNotificationPrefs`, `optInWhatsApp`, `confirmWhatsApp`, `optOutWhatsApp`
 - Chat / knowledge: `getConversations`, `getConversation`, `deleteConversation`, `getKnowledgeNodes`, `getDailySpark`
 
+### `schoolApi.ts`
+Schools (backend `plans/school-courses/`): `getMySchools`, `getSchool`, `updateSchool`, `acceptDpa`, staff (`listStaff`, `inviteStaff`, `revokeInvite`, `changeStaffRole`, `removeStaff` — on yourself it means "leave"), invite links (`previewSchoolInvite` without sign-in, `acceptSchoolInvite`), ECALT admin (`adminListSchools`, `adminCreateSchool`, `adminUpdateSchool`, `adminInviteOwner`). `canDo(role, action)` mirrors the backend permission matrix for hiding controls (the API stays the authority); `schoolErrorMessage(code)` maps school error codes to copy. Budgets are cents in the API, dollars in the admin UI.
+
 ### `familyApi.ts`
 Children CRUD, link-request approve/decline, card verification (start/confirm), child overview/activity/transcript, `getMyFamily`, consent record, `patchChildSettings`, revoke/cancel-revoke/reconsent, `exportChildData`, self consent (`getMyConsent`, `reconsentSelf`), and token-based parent consent (`getConsentStatus`, `decideConsent`, `resendConsentEmail`, `reportConsent`).
 
@@ -233,7 +243,7 @@ Custom renderer (no markdown lib). First peels out one ` ```mermaid ` fence or o
 Backend returns 402 with `detail = { error, upgrade_url: '/pricing' }`. Chat → `UpgradePrompt`; step content → `StepUpgradePanel`; Explore → error block.
 
 ### Admin (`pages/Admin.tsx` + `pages/admin/`)
-Tabs: Overview, Plans, AI Providers, Prompts, Notification Templates, Users (with `UserDetailPanel` + impersonation), Coupons, Revenue, Retention, Funnel, Content, Marketplace Queue, Impersonation Log. Data loading lives in `admin/hooks/useAdminData.ts`. Edits are local until "Save". Add a new tab as `admin/tabs/XTab.tsx` and register it in `Admin.tsx`.
+Tabs: Overview, Plans, AI Providers, Prompts, Notification Templates, Users (with `UserDetailPanel` + impersonation), Coupons, Revenue, Retention, Funnel, Content, Marketplace Queue, Schools (create/suspend/terminate schools, seats, AI budget, owner invites; says so when the backend's `SCHOOLS_ENABLED` is off), Impersonation Log. Data loading lives in `admin/hooks/useAdminData.ts`. Edits are local until "Save". Add a new tab as `admin/tabs/XTab.tsx` and register it in `Admin.tsx`.
 
 **AI prompts edited in the Prompts tab live in the DB (`ai_provider_config`) — they override code defaults in the backend.**
 
@@ -245,6 +255,12 @@ Admin starts a session from the Users tab → `ImpersonationContext` stores it, 
 - **Verification** (backend `plans/family-profiles/parental-consent-verification.md`): under-13s everywhere and all minors in India need the parent verified. A parent with a **paid subscription** is verified automatically — `createChild` returns `verification_required: false` and the profile is active. Otherwise "Verify with card" calls `startCardVerification` and redirects to Stripe. For a paying parent with an already-pending profile, `startCardVerification` returns `status: 'verified'` and a `checkout_url` pointing at `/family`, so the existing redirect just reloads the dashboard. Don't assume `checkout_url` is always a Stripe URL.
 - Teens: consent flow via the phase machine above; `ReconsentBanner` prompts re-acceptance after a policy-version bump.
 - Parents approve consent via emailed `/consent/confirm?token=…` links.
+
+### Schools (`../backend/plans/school-courses/`)
+- Staff are ordinary adult accounts. `SchoolContext` loads `GET /schools/mine` once per session (never in kid mode or for school students); the nav shows **School** when it's non-empty. A 404 (backend flag off) just means no school UI.
+- `/school` routes are nested under `SchoolLayout`, which loads the active school and passes `{school, setSchool, reload}` to child pages via `useSchoolPage()`. 403 `school_access_suspended` → full-page notice; 404 `school_not_found` → refresh the school list.
+- Staff calls (everything under `/schools/{id}`) need the parent PIN unlock when the account has family profiles — `request()` prompts for it automatically.
+- `AuthContext.accountKind` (`'account' | 'profile' | 'school_student'`) comes from `POST /users`; school students skip every sign-up gate. Student sign-in (class code / picture password / QR) arrives with backend M2 — the full contract is `../backend/plans/school-courses/frontend-changes.md`.
 
 ### Family profiles
 Children use ECALT as **profiles on the parent's Google login** — no child email or password. Contract: `../backend/plans/family-profiles/`.
