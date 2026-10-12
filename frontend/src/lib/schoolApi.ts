@@ -186,6 +186,246 @@ export function schoolErrorMessage(code: string | null, fallback = 'Something we
     case 'staff_must_be_adult': return 'School staff accounts must belong to an adult.'
     case 'account_setup_required': return 'Finish setting up your ECALT account, then open the invite again.'
     case 'school_terminated': return "A terminated school can't be reopened."
+    case 'seat_limit_reached': return 'The school has no seats left. Archive students who have left, or ask ECALT for more seats.'
+    case 'dpa_required': return "The school's owner must accept the data processing agreement before students can be added."
+    case 'external_ref_taken': return 'Another student already has this roll number.'
+    case 'student_not_found': return 'Student not found.'
+    case 'class_not_found': return 'Class not found.'
+    case 'class_archived': return 'This class is archived.'
+    case 'member_not_found': return "That person isn't on this school's staff."
+    case 'import_has_errors': return 'Fix the errors in the file, then import again.'
+    case 'class_code_invalid': return "We couldn't find that class code. Check it with your teacher."
+    case 'invalid_student_secret': return "That's not right. Try again, or ask your teacher."
+    case 'student_locked': return 'Too many tries. Ask your teacher, or wait a few minutes.'
+    case 'class_code_throttled': return 'Too many wrong tries in this class. Wait a few minutes, or ask your teacher.'
+    case 'invalid_badge': return "This badge doesn't work any more. Ask your teacher for a new card."
+    case 'login_unavailable': return "Class sign-in isn't available right now. Ask your teacher."
+    case 'school_session_expired': return 'Your session has ended. Sign in again with your class code.'
     default: return fallback
   }
 }
+
+// ── Students (M2) ────────────────────────────────────────────────────────────
+
+export type SecretKind = 'picture' | 'pin'
+// A picture password is 3 icon indices (0–15, order matters); a PIN is 6 digits.
+export type StudentSecret = number[] | string
+
+export interface ClassRef { id: string; name: string }
+
+export interface Student {
+  uid: string
+  display_name: string
+  grade: number | null
+  external_ref: string | null
+  avatar: string | null
+  status: 'active' | 'archived'
+  secret_kind: SecretKind
+  has_secret: boolean
+  has_badge: boolean
+  locked_until: string | null
+  created_at: string
+  archived_at: string | null
+  classes: ClassRef[]
+}
+
+export interface StudentList {
+  students: Student[]
+  total: number
+  seat_limit: number
+  seats_used: number
+  can_manage: boolean
+}
+
+export interface CreatedStudent extends Student {
+  secret: StudentSecret
+  badge_token: string
+}
+
+export interface ImportRow {
+  line: number
+  display_name: string
+  grade: number | null
+  external_ref: string | null
+  class_name: string | null
+  secret_kind: SecretKind | null
+  action: 'create' | 'update'
+  errors: string[]
+  warnings: string[]
+}
+
+export interface ImportReport {
+  dry_run: boolean
+  rows: ImportRow[]
+  errors: string[]
+  summary: {
+    rows: number
+    create: number
+    update: number
+    rows_with_errors: number
+    new_classes: string[]
+    seats_available: number
+    created_classes?: number
+  }
+}
+
+export const listStudents = (
+  schoolId: string,
+  params: { q?: string; class_id?: string; status?: 'active' | 'archived'; limit?: number; offset?: number },
+  token: string,
+): Promise<StudentList> => {
+  const qs = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => { if (v !== undefined && v !== '') qs.set(k, String(v)) })
+  return request(`/api/v1/schools/${enc(schoolId)}/students${qs.toString() ? `?${qs}` : ''}`, undefined, token)
+}
+
+export const createStudent = (
+  schoolId: string,
+  body: { display_name: string; grade?: number | null; external_ref?: string | null; secret_kind?: SecretKind; class_ids?: string[] },
+  token: string,
+): Promise<CreatedStudent> =>
+  request(`/api/v1/schools/${enc(schoolId)}/students`, json('POST', body), token)
+
+export const updateStudent = (
+  schoolId: string, uid: string,
+  body: { display_name?: string; grade?: number | null; external_ref?: string | null; avatar?: string },
+  token: string,
+): Promise<Student> =>
+  request(`/api/v1/schools/${enc(schoolId)}/students/${enc(uid)}`, json('PATCH', body), token)
+
+export const deleteStudent = (schoolId: string, uid: string, token: string): Promise<void> =>
+  request(`/api/v1/schools/${enc(schoolId)}/students/${enc(uid)}`, json('DELETE'), token)
+
+export const resetStudentSecret = (schoolId: string, uid: string, secretKind: SecretKind | undefined, token: string):
+  Promise<{ uid: string; secret_kind: SecretKind; secret: StudentSecret }> =>
+  request(`/api/v1/schools/${enc(schoolId)}/students/${enc(uid)}/reset-secret`,
+    json('POST', secretKind ? { secret_kind: secretKind } : {}), token)
+
+export const archiveStudents = (schoolId: string, uids: string[], token: string): Promise<{ changed: number }> =>
+  request(`/api/v1/schools/${enc(schoolId)}/students/archive`, json('POST', { student_uids: uids }), token)
+
+export const restoreStudent = (schoolId: string, uid: string, token: string): Promise<{ changed: number }> =>
+  request(`/api/v1/schools/${enc(schoolId)}/students/${enc(uid)}/restore`, json('POST'), token)
+
+export const exportStudent = (schoolId: string, uid: string, token: string): Promise<unknown> =>
+  request(`/api/v1/schools/${enc(schoolId)}/students/${enc(uid)}/export`, undefined, token)
+
+export const importStudents = (schoolId: string, csv: string, dryRun: boolean, token: string): Promise<ImportReport> =>
+  request(`/api/v1/schools/${enc(schoolId)}/students/import?dry_run=${dryRun}`, json('POST', { csv }), token)
+
+// ── Classes (M2) ─────────────────────────────────────────────────────────────
+
+export interface ClassTeacher { uid: string; role: 'lead' | 'co'; display_name: string | null }
+
+export interface SchoolClass {
+  id: string
+  name: string
+  grade: number | null
+  subject: string | null
+  academic_year: string | null
+  join_code: string
+  archived: boolean
+  created_at: string
+  is_mine: boolean
+  student_count: number
+  teachers: ClassTeacher[]
+}
+
+export interface ClassStudent {
+  uid: string
+  display_name: string
+  grade: number | null
+  external_ref: string | null
+  avatar: string | null
+  status: 'active' | 'archived'
+  secret_kind: SecretKind
+  has_secret: boolean
+  has_badge: boolean
+  locked_until: string | null
+  enrolled_at: string
+}
+
+export interface ClassDetail extends SchoolClass {
+  students: ClassStudent[]
+  can_manage: boolean
+}
+
+export interface LoginCard {
+  uid: string
+  display_name: string
+  avatar: string | null
+  secret_kind: SecretKind
+  secret: StudentSecret | null
+  badge_token: string | null
+}
+
+export interface LoginCards {
+  school_name: string
+  class: { id: string; name: string; join_code: string }
+  cards: LoginCard[]
+}
+
+type ClassFields = { name?: string; grade?: number | null; subject?: string | null; academic_year?: string | null }
+
+export const listClasses = (schoolId: string, token: string, includeArchived = false): Promise<{ classes: SchoolClass[] }> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes${includeArchived ? '?include_archived=true' : ''}`, undefined, token)
+
+export const createClass = (schoolId: string, body: ClassFields & { name: string }, token: string): Promise<ClassDetail> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes`, json('POST', body), token)
+
+export const getClass = (schoolId: string, classId: string, token: string): Promise<ClassDetail> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}`, undefined, token)
+
+export const updateClass = (schoolId: string, classId: string, body: ClassFields, token: string): Promise<ClassDetail> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}`, json('PATCH', body), token)
+
+export const archiveClass = (schoolId: string, classId: string, token: string): Promise<void> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}`, json('DELETE'), token)
+
+export const addClassTeacher = (schoolId: string, classId: string, uid: string, role: 'lead' | 'co', token: string): Promise<ClassDetail> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/teachers`, json('POST', { uid, role }), token)
+
+export const removeClassTeacher = (schoolId: string, classId: string, uid: string, token: string): Promise<void> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/teachers/${enc(uid)}`, json('DELETE'), token)
+
+export const enrollStudents = (schoolId: string, classId: string, uids: string[], token: string): Promise<ClassDetail> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/students`, json('POST', { student_uids: uids }), token)
+
+export const unenrollStudent = (schoolId: string, classId: string, uid: string, token: string): Promise<void> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/students/${enc(uid)}`, json('DELETE'), token)
+
+export const rotateClassCode = (schoolId: string, classId: string, token: string): Promise<{ join_code: string }> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/rotate-code`, json('POST'), token)
+
+export const getLoginCards = (
+  schoolId: string, classId: string, body: { student_uids?: string[]; reset: boolean }, token: string,
+): Promise<LoginCards> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/login-cards`, json('POST', body), token)
+
+// ── Student sign-in (public) ─────────────────────────────────────────────────
+
+export interface ClassLookup {
+  class: { name: string; grade: number | null }
+  school: { name: string }
+  roster_visible: boolean
+  students: { uid: string; display_name: string; avatar: string | null; secret_kind: SecretKind }[]
+}
+
+export interface ClassSession {
+  custom_token: string
+  expires_in: number
+  student: { uid: string; display_name: string }
+}
+
+export const formatJoinCode = (code: string) => (code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code)
+
+export const lookupClass = (code: string): Promise<ClassLookup> =>
+  request(`/api/v1/school-login/classes/${enc(code.replace(/[\s-]/g, '').toUpperCase())}`)
+
+export const classSignIn = (body: {
+  class_code: string; student_uid?: string; external_ref?: string; secret: { kind: SecretKind; value: StudentSecret }
+}): Promise<ClassSession> =>
+  request('/api/v1/school-login/sessions', json('POST', body))
+
+export const badgeSignIn = (token: string): Promise<ClassSession> =>
+  request('/api/v1/school-login/badge', json('POST', { token }))

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { Lock, X } from 'lucide-react'
+import { isStudentUid, useAuth } from '../../lib/AuthContext'
 import { useProfiles } from '../../lib/ProfileContext'
 import ProfileAvatar from './ProfileAvatar'
 
@@ -11,6 +12,17 @@ const PICKER_EXEMPT = ['/profiles', '/claim', '/consent/', '/privacy-policy', '/
 
 const matches = (pathname: string, prefixes: string[]) =>
   prefixes.some(p => pathname === p || pathname.startsWith(p.endsWith('/') ? p : `${p}/`))
+
+// School students (class-code sign-in) may only reach their classes, the
+// course pages and the legal pages; everything else sends them home.
+const STUDENT_PAGES = ['/my-classes', '/journey/', '/class', '/privacy-policy', '/terms', '/contact']
+
+export function StudentGuard({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation()
+  const { user } = useAuth()
+  if (isStudentUid(user?.uid) && !matches(pathname, STUDENT_PAGES)) return <Navigate to="/my-classes" replace />
+  return <>{children}</>
+}
 
 // Sends accounts with child profiles to the picker until this device has
 // chosen one. Returns true when it rendered a redirect.

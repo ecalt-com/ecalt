@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Menu, X, LogOut, Users } from 'lucide-react'
 import clsx from 'clsx'
 import ThemeToggle from './ThemeToggle'
-import { useAuth } from '../lib/AuthContext'
+import { isStudentUid, useAuth } from '../lib/AuthContext'
 import { useSubscription } from '../lib/SubscriptionContext'
 import { useProfiles } from '../lib/ProfileContext'
 import { useSchool } from '../lib/SchoolContext'
@@ -27,7 +27,41 @@ const AUTH_LINKS = [
 // Exact match, or a sub-page of the link (e.g. /school/staff under /school).
 const isActivePath = (pathname: string, to: string) => pathname === to || pathname.startsWith(`${to}/`)
 
+// School students (signed in with a class code) only have their classes.
+function StudentNavigation() {
+  const navigate = useNavigate()
+  const { signOut } = useAuth()
+  const leave = async () => { await signOut(); navigate('/class', { replace: true }) }
+  return (
+    <nav className="fixed top-0 left-0 right-0 z-50 px-4 md:px-8 pb-4 safe-top">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <Link to="/my-classes" className="flex items-center">
+          <img src="/logo.png" alt="ECALT" className="h-14 w-auto object-contain dark:brightness-0 dark:invert" />
+        </Link>
+        <div className="glass rounded-xl px-2 py-1.5 flex items-center gap-1">
+          <Link to="/my-classes" className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/50">
+            My classes
+          </Link>
+          <ThemeToggle />
+          <button
+            onClick={leave}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-all"
+          >
+            <LogOut size={13} /> Sign out
+          </button>
+        </div>
+      </div>
+    </nav>
+  )
+}
+
 export default function Navigation() {
+  const { user } = useAuth()
+  if (isStudentUid(user?.uid)) return <StudentNavigation />
+  return <AccountNavigation />
+}
+
+function AccountNavigation() {
   const { pathname } = useLocation()
   const { user, loading, role, signIn, signOut } = useAuth()
   const { isAdmin } = useSubscription()

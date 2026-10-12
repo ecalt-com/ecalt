@@ -2,6 +2,8 @@ import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResp
 export type { LearnerPurpose, TopicExpertise, QuizVerdict } from './types'
 import { getImpersonationSessionId } from './impersonationStore'
 import { getParentUnlock, getProfileHeaderValue, requestParentUnlock } from './profileStore'
+import { signOut as firebaseSignOut } from 'firebase/auth'
+import { firebaseAuth } from './firebase'
 
 // In production, Vercel rewrites /api/* → Railway (no env var needed, no mixed-content).
 // In local dev, the Vite proxy forwards /api/* → localhost:8000.
@@ -63,6 +65,12 @@ export async function request<T>(path: string, init?: RequestInit, token?: strin
       res = await send()
       if (res.ok) return res.status === 204 ? (undefined as T) : res.json()
       err = await toApiError(res)
+    }
+    // A school student's session reached its maximum age (shared classroom
+    // devices): sign out and send them back to the class sign-in page.
+    if (res.status === 401 && apiErrorCode(err) === 'school_session_expired') {
+      await firebaseSignOut(firebaseAuth).catch(() => {})
+      window.location.assign('/class?expired=1')
     }
     throw err
   }

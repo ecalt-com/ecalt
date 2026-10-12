@@ -1,6 +1,9 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react'
 import {
+  browserSessionPersistence,
   onAuthStateChanged,
+  setPersistence,
+  signInWithCustomToken,
   signInWithPopup,
   signOut as firebaseSignOut,
   getAdditionalUserInfo,
@@ -19,6 +22,10 @@ export type UserRole = 'learner' | 'parent'
 // no birth-year, consent or onboarding gates.
 export type AccountKind = 'account' | 'profile' | 'school_student'
 
+// School students' Firebase uids are minted by the backend as 'stu_…', so the
+// kind is known the moment Firebase restores the session.
+export const isStudentUid = (uid: string | null | undefined) => !!uid && uid.startsWith('stu_')
+
 interface AuthContextValue {
   user: User | null
   loading: boolean
@@ -28,6 +35,9 @@ interface AuthContextValue {
   role: UserRole | null
   accountKind: AccountKind | null
   signIn: () => Promise<void>
+  // Class-code / badge sign-in: exchange the backend's custom token. Session
+  // persistence — classroom devices are shared, closing the tab signs out.
+  signInWithClassToken: (customToken: string) => Promise<void>
   signOut: () => Promise<void>
   getToken: () => Promise<string | null>
   refreshRole: () => Promise<void>
@@ -48,6 +58,7 @@ const AuthContext = createContext<AuthContextValue>({
   role: null,
   accountKind: null,
   signIn: async () => {},
+  signInWithClassToken: async () => {},
   signOut: async () => {},
   getToken: async () => null,
   refreshRole: async () => {},
@@ -191,6 +202,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       }
     } catch { /* non-critical */ }
+  }
+
+  const signInWithClassToken = async (customToken: string) => {
+    await setPersistence(firebaseAuth, browserSessionPersistence)
+    // onAuthStateChanged then runs the usual POST /users check, which returns
+    // account_kind 'school_student' and skips every sign-up gate.
+    await signInWithCustomToken(firebaseAuth, customToken)
+    setAccountKind('school_student')
   }
 
   const completeBirthYear = async (birthYear: number, birthMonth?: number, country?: string) => {
@@ -341,7 +360,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, loading, needsOnboarding, postSignInPhase, parentEmail, role, accountKind,
-      signIn, signOut, getToken, refreshRole,
+      signIn, signInWithClassToken, signOut, getToken, refreshRole,
       dismissOnboarding, requireOnboarding, completeBirthYear, submitParentalConsent, markConsentSent, dismissPostSignIn,
     }}>
       {children}

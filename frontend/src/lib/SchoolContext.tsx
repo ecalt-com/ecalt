@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { useAuth } from './AuthContext'
+import { isStudentUid, useAuth } from './AuthContext'
 import { useProfiles } from './ProfileContext'
 import { canDo, getMySchools, type MySchool, type SchoolAction, type StaffRole } from './schoolApi'
 
@@ -49,7 +49,7 @@ export function SchoolProvider({ children }: { children: React.ReactNode }) {
   // Staff act as their own account: never inside a child profile, never as a
   // school student, and not before the sign-up gates have finished.
   const eligible = !!user && postSignInPhase === 'none' && profilesLoaded && !isKidMode
-    && accountKind !== 'school_student'
+    && accountKind !== 'school_student' && !isStudentUid(user?.uid)
 
   const refresh = useCallback(async () => {
     if (!eligible) return

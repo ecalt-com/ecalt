@@ -102,6 +102,8 @@ export default function SchoolLayout() {
 
   const tabs = [
     { to: '/school', label: 'Dashboard', end: true },
+    { to: '/school/classes', label: 'Classes', end: false },
+    { to: '/school/students', label: 'Students', end: false },
     { to: '/school/staff', label: 'Staff', end: false },
     { to: '/school/settings', label: 'Settings', end: false },
   ]
