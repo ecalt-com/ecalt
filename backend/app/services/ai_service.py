@@ -390,8 +390,13 @@ def upsert_step_content(
     quiz_anchors: list[dict],
     model: str,
     overwrite: bool = True,
-) -> None:
-    """Cache step content with generation metadata (model, prompt_version)."""
+) -> bool:
+    """Cache step content with generation metadata (model, prompt_version).
+
+    Never writes AI content for a school course and never overwrites a locked
+    (teacher-published) row: only the school publish path writes those
+    (plans/school-courses invariant I5). Returns False when nothing was written.
+    """
     from app.core.database import get_db
     conflict = (
         """
@@ -401,6 +406,7 @@ def upsert_step_content(
             model          = EXCLUDED.model,
             prompt_version = EXCLUDED.prompt_version,
             generated_at   = now()
+        WHERE NOT step_content.locked
         """
         if overwrite
         else "ON CONFLICT (journey_id, step_id) DO NOTHING"
@@ -411,12 +417,20 @@ def upsert_step_content(
                 f"""
                 INSERT INTO step_content
                     (journey_id, step_id, content, quiz_anchors, model, prompt_version)
-                VALUES (%s, %s, %s, %s::jsonb, %s, %s)
+                SELECT %s, %s, %s, %s::jsonb, %s, %s
+                 WHERE NOT EXISTS (
+                     SELECT 1 FROM journeys WHERE id = %s AND school_id IS NOT NULL
+                 )
                 {conflict}
                 """,
                 (journey_id, step_id, content, json.dumps(quiz_anchors), model,
-                 CONTENT_PROMPT_VERSION),
+                 CONTENT_PROMPT_VERSION, journey_id),
             )
+            written = cur.rowcount > 0
+    if not written:
+        logger.info("step content not cached (school course or locked) journey=%s step=%s",
+                    journey_id, step_id)
+    return written
 
 
 def _anchor_facts(quiz_anchors) -> list[str]:
@@ -440,10 +454,18 @@ async def warm_journey_steps(
     """Background task: pre-generate and cache content for all steps in a journey.
 
     Steps are generated in order; each step receives the facts already covered by
-    earlier steps so content builds forward instead of repeating.
+    earlier steps so content builds forward instead of repeating. School courses
+    are skipped: their content comes only from the teacher's publish.
     """
     from app.core.database import get_db
+    from app.services.journey_access import journey_school_id
     from app.services.subscription_service import record_usage
+    try:
+        if journey_school_id(journey.id):
+            return
+    except Exception:
+        logger.warning("warm_journey_steps: could not check journey=%s; skipping", journey.id)
+        return
     model = get_config("step_content")["model"]
 
     outline = [s.title for s in journey.steps]
@@ -532,7 +554,7 @@ def _build_learning_context(uid: str) -> str:
                            MAX(up.completed_at)        AS last_active
                     FROM journeys j
                     LEFT JOIN user_progress up ON up.journey_id = j.id AND up.uid = j.uid
-                    WHERE j.uid = %s AND j.is_curated = FALSE
+                    WHERE j.uid = %s AND j.is_curated = FALSE AND j.school_id IS NULL
                     GROUP BY j.id
                     HAVING COUNT(up.step_id) > 0
                        AND MAX(up.completed_at) > %s

@@ -1180,7 +1180,7 @@ async def _marketplace_popularity_scan() -> None:
                                COUNT(DISTINCT up.uid) * %s + j2.like_count * %s AS score
                         FROM journeys j2
                         LEFT JOIN user_progress up ON up.journey_id = j2.id
-                        WHERE j2.uid IS NOT NULL AND j2.is_curated = FALSE
+                        WHERE j2.uid IS NOT NULL AND j2.is_curated = FALSE AND j2.school_id IS NULL
                         GROUP BY j2.id, j2.like_count
                     ) sub
                     WHERE j.id = sub.id AND j.popularity_score IS DISTINCT FROM sub.score
@@ -1195,7 +1195,7 @@ async def _marketplace_popularity_scan() -> None:
                         SELECT j2.id, COUNT(DISTINCT up.uid) AS unique_learners
                         FROM journeys j2
                         LEFT JOIN user_progress up ON up.journey_id = j2.id
-                        WHERE j2.uid IS NOT NULL AND j2.is_curated = FALSE
+                        WHERE j2.uid IS NOT NULL AND j2.is_curated = FALSE AND j2.school_id IS NULL
                           AND j2.marketplace_status = 'private'
                         GROUP BY j2.id
                     ) sub

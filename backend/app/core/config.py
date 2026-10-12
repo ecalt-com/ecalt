@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     VISUAL_VIDEO_GENERATION_ENABLED: bool = False
     VISUAL_TELEMETRY_ENABLED: bool = False
 
+    # Schools (plans/school-courses). Off: every /schools, /school-invites and
+    # /admin/schools route returns 404. Turning it on creates nothing — schools
+    # only exist once an ECALT admin creates one.
+    SCHOOLS_ENABLED: bool = False
+    # Version of the school data processing agreement shown to school owners;
+    # bump it when the DPA text changes so owners must accept again.
+    SCHOOL_DPA_VERSION: str = "2026-10"
+    SCHOOL_INVITE_TTL_DAYS: int = 7
+
     @property
     def allowed_origins(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]

@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from app.core.auth import get_active_user
+from app.core.school_auth import is_school_student_uid, student_not_allowed
+from app.services.journey_access import assert_can_read_journey
 from app.services.quiz_service import (
     generate_quiz,
     generate_quiz_set,
@@ -41,6 +43,10 @@ async def generate_quiz_endpoint(
     body: QuizGenerateRequest,
     uid: str = Depends(get_active_user),
 ):
+    if body.journey_id:
+        assert_can_read_journey(uid, body.journey_id)
+    elif is_school_student_uid(uid):
+        raise student_not_allowed()  # students only take quizzes on assigned course steps
     allowed, reason = check_budget(uid)
     if not allowed:
         raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
@@ -91,6 +97,7 @@ async def step_status_endpoint(
     step_id: str,
     uid: str = Depends(get_active_user),
 ):
+    assert_can_read_journey(uid, journey_id)
     return step_quiz_status(uid, journey_id, step_id)
 
 
@@ -103,6 +110,7 @@ async def skip_step_quiz_endpoint(
     step_id: str,
     uid: str = Depends(get_active_user),
 ):
+    assert_can_read_journey(uid, journey_id)
     try:
         record_quiz_skip(uid, journey_id, step_id)
     except Exception:

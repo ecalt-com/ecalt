@@ -8,10 +8,13 @@ from tests.conftest import TEST_UID
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     from app.main import app
     from app.core.auth import get_required_user, get_optional_user
 
+    # Journey access (school courses) needs a real DB; it's covered in
+    # tests/integration/schools. Here every journey is a non-school journey.
+    monkeypatch.setattr("app.api.v1.endpoints.journeys.assert_can_read_journey", lambda uid, jid: None)
     saved = dict(app.dependency_overrides)
     app.dependency_overrides[get_required_user] = lambda: TEST_UID
     app.dependency_overrides[get_optional_user] = lambda: TEST_UID

@@ -6,11 +6,13 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 from app.core.auth import (
+    assert_account_active,
     get_account_holder,
     get_acting_uid,
+    get_bootstrap_uid,
     get_required_user,
     get_unlocked_account_holder,
     invalidate_identity_cache,
@@ -19,6 +21,7 @@ from app.core.auth import (
 )
 from app.core.database import get_db
 from app.core.limiter import limiter
+from app.core.school_auth import is_school_student_uid
 from app.core.jurisdiction import (
     CONSENT_POLICY_VERSION,
     age_from_birth,
@@ -65,6 +68,17 @@ class UserProfile(BaseModel):
     profile_type: str = "account"
     avatar: Optional[str] = None
     age_group_flag: Optional[str] = None
+    # School students (plans/school-courses): {id, name} and
+    # {display_name, grade, classes: [{id, name, grade, subject}]}.
+    school: Optional[dict] = None
+    student: Optional[dict] = None
+
+    @computed_field
+    @property
+    def account_kind(self) -> str:
+        """'account' | 'profile' | 'school_student' — drives the client's
+        post-sign-in flow (school students skip every sign-up gate)."""
+        return self.profile_type
 
 
 class UserUpsertRequest(BaseModel):
@@ -155,9 +169,59 @@ def _update_profile_only(uid: str, body: UserUpsertRequest) -> UserProfile:
     })
 
 
+def _school_student_profile(uid: str) -> UserProfile:
+    """Profile for a school student. Their school created the account and
+    recorded the school authorisation, so there is no age or consent gate and
+    nothing the client may update."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT u.uid, u.streak_days, u.profile_type,
+                       ss.display_name, ss.grade, ss.avatar,
+                       s.id AS school_id, s.name AS school_name
+                  FROM users u
+                  JOIN school_students ss ON ss.uid = u.uid
+                  JOIN schools s ON s.id = ss.school_id
+                 WHERE u.uid = %s
+                """,
+                (uid,),
+            )
+            row = cur.fetchone()
+            cur.execute(
+                """
+                SELECT c.id::text AS id, c.name, c.grade, c.subject
+                  FROM class_enrollments e
+                  JOIN classes c ON c.id = e.class_id AND c.archived_at IS NULL
+                 WHERE e.student_uid = %s AND e.removed_at IS NULL
+                 ORDER BY c.name
+                """,
+                (uid,),
+            )
+            classes = [dict(r) for r in cur.fetchall()]
+    if not row:
+        raise HTTPException(status_code=403, detail={
+            "error": "school_access_suspended",
+            "message": "Your school sign-in isn't active right now. Ask your teacher.",
+        })
+    return UserProfile(
+        uid=uid,
+        display_name=row["display_name"],
+        onboarding_done=True,
+        streak_days=row["streak_days"] or 0,
+        profile_type="school_student",
+        avatar=row["avatar"],
+        school={"id": str(row["school_id"]), "name": row["school_name"]},
+        student={"display_name": row["display_name"], "grade": row["grade"], "classes": classes},
+    )
+
+
 @router.post("", response_model=UserProfile, summary="Upsert user on sign-in")
-async def upsert_user(body: UserUpsertRequest, request: Request, uid: str = Depends(get_account_holder)):
+async def upsert_user(body: UserUpsertRequest, request: Request, uid: str = Depends(get_bootstrap_uid)):
     """Called once after Google sign-in. Enforces the COPPA/GDPR/DPDP age gate when birth_year is provided."""
+    if is_school_student_uid(uid):
+        assert_account_active(uid)
+        return _school_student_profile(uid)
     if body.birth_year is not None:
         existing = _load_existing_user(uid)
         if existing and existing.get("birth_year") is not None:
@@ -293,6 +357,8 @@ async def upsert_user(body: UserUpsertRequest, request: Request, uid: str = Depe
 @router.get("/me", response_model=UserProfile, summary="Get current user profile")
 def get_me(ctx: tuple = Depends(get_acting_uid)):
     uid, _ = ctx
+    if is_school_student_uid(uid):
+        return _school_student_profile(uid)
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -388,7 +454,10 @@ def claim_profile(body: ClaimRequest, request: Request):
     firebase_uid = claims and (claims.get("uid") or claims.get("sub"))
     if not firebase_uid:
         raise HTTPException(status_code=401, detail="Authentication required")
-    if firebase_uid.startswith("prof_"):
+    # Profiles have no login; a school student's login belongs to the school and
+    # must never be re-pointed at a family profile (that would escape the
+    # student route allowlist).
+    if firebase_uid.startswith("prof_") or is_school_student_uid(firebase_uid):
         raise HTTPException(status_code=400, detail={"error": "invalid_login"})
     code = body.code.strip().upper()
 

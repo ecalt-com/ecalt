@@ -427,3 +427,48 @@ async def send_link_approved_email(parent_email: str, child_name: str, parent_ui
         text_body=text_body,
         uid=parent_uid,
     )
+
+
+async def send_school_invite_email(to: str, school_name: str, role: str, token: str,
+                                   invite_id: str) -> bool:
+    """Staff invite to a school (plans/school-courses SC-112). The link carries
+    the one-time token; accepting needs a Google sign-in with this address."""
+    from html import escape
+    accept_url = f"{settings.FRONTEND_URL}/school-invite?token={token}"
+    role_label = {"owner": "an owner", "admin": "an admin", "teacher": "a teacher"}.get(role, role)
+    school = escape(school_name)
+    subject = f"You're invited to join {school_name} on ECALT"
+    html_body = f"""\
+<p style="font-family:sans-serif;font-size:16px">Hi,</p>
+<p style="font-family:sans-serif">
+  You've been invited to join <strong>{school}</strong> on <strong>ECALT</strong> as {role_label}.
+  ECALT helps teachers turn their own lesson material into guided courses for their classes.
+</p>
+<p style="font-family:sans-serif">
+  <a href="{accept_url}"
+     style="display:inline-block;padding:12px 24px;background:#4f46e5;color:#fff;
+            border-radius:6px;text-decoration:none;font-weight:bold;font-family:sans-serif">
+    Accept invite
+  </a>
+</p>
+<p style="font-family:sans-serif;color:#666;font-size:14px">
+  Sign in with the Google account for <strong>{escape(to)}</strong> to accept.
+  This link expires in {settings.SCHOOL_INVITE_TTL_DAYS} days. If you weren't expecting it, ignore this email.
+</p>
+<p style="font-family:sans-serif;font-size:12px;color:#999">
+  ECALT Privacy Policy: {settings.FRONTEND_URL}/privacy
+</p>"""
+    text_body = (
+        f"Hi,\n\nYou've been invited to join {school_name} on ECALT as {role_label}.\n\n"
+        f"Accept the invite (sign in with the Google account for {to}):\n{accept_url}\n\n"
+        f"This link expires in {settings.SCHOOL_INVITE_TTL_DAYS} days. "
+        f"If you weren't expecting it, ignore this email.\n\n"
+        f"Privacy Policy: {settings.FRONTEND_URL}/privacy"
+    )
+    return await send_email(
+        to=to,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+        uid=f"school_invite:{invite_id}",
+    )

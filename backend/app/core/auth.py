@@ -107,14 +107,23 @@ def invalidate_identity_cache(firebase_uid: str) -> None:
     _identity_cache.pop(firebase_uid, None)
 
 
-def get_signed_in_uid(authorization: Optional[str] = Header(None)) -> Optional[str]:
+def get_signed_in_uid(request: Request, authorization: Optional[str] = Header(None)) -> Optional[str]:
     """The signed-in account's uid — never a family profile. Use for account-level
-    bootstrap (POST /users) and the profile picker."""
+    bootstrap (POST /users) and the profile picker.
+
+    Every authenticated dependency builds on this, so it is also where school
+    students are confined to their route allowlist (core/school_auth.py)."""
     if not authorization or not authorization.startswith("Bearer "):
         return None
     token = authorization.split(" ", 1)[1]
     firebase_uid = _verify_firebase_token(token)
-    return _map_identity(firebase_uid) if firebase_uid else None
+    if not firebase_uid:
+        return None
+    uid = _map_identity(firebase_uid)
+    from app.core.school_auth import enforce_student_route, is_school_student_uid
+    if is_school_student_uid(uid):
+        enforce_student_route(request)
+    return uid
 
 
 _profile_access_cache: dict[tuple[str, str], tuple[bool, float]] = {}
@@ -198,13 +207,13 @@ def get_required_user(uid: Optional[str] = Depends(get_optional_user)) -> str:
 
 # ── Account-holder (parent-only) dependencies ────────────────────────────────
 
-def get_account_holder(
+def get_bootstrap_uid(
     real_uid: Optional[str] = Depends(get_signed_in_uid),
     x_profile_id: Optional[str] = Header(None),
 ) -> str:
-    """The signed-in account itself. Rejects requests made from inside a child
-    profile — family controls, billing and account deletion belong to the
-    account holder, never to a profile."""
+    """Like get_account_holder, but also lets a school student through. Only
+    for POST /users, which returns early for students (no age or consent gate:
+    the school authorised them)."""
     if not real_uid:
         raise HTTPException(status_code=401, detail="Authentication required")
     if x_profile_id and x_profile_id != real_uid:
@@ -213,6 +222,21 @@ def get_account_holder(
             "message": "Switch to the parent profile to do this.",
         })
     return real_uid
+
+
+def get_account_holder(
+    real_uid: Optional[str] = Depends(get_signed_in_uid),
+    x_profile_id: Optional[str] = Header(None),
+) -> str:
+    """The signed-in account itself. Rejects requests made from inside a child
+    profile — family controls, billing and account deletion belong to the
+    account holder, never to a profile — and school students, who have no
+    account of their own (second layer behind the student route allowlist)."""
+    uid = get_bootstrap_uid(real_uid, x_profile_id)
+    from app.core.school_auth import is_school_student_uid, student_not_allowed
+    if is_school_student_uid(uid):
+        raise student_not_allowed()
+    return uid
 
 
 def account_has_profiles(uid: str) -> bool:
@@ -279,6 +303,9 @@ def get_active_signed_in_account(real_uid: Optional[str] = Depends(get_signed_in
     leaves a child's profile, and the PIN (or a fresh Google sign-in) is the gate."""
     if not real_uid:
         raise HTTPException(status_code=401, detail="Authentication required")
+    from app.core.school_auth import is_school_student_uid, student_not_allowed
+    if is_school_student_uid(real_uid):
+        raise student_not_allowed()
     assert_account_active(real_uid)
     return real_uid
 
@@ -318,6 +345,7 @@ def assert_account_active(uid: str) -> None:
     Status is cached for 60 s per uid to keep the hot path off the DB.
     """
     from app.core.database import get_db
+    from app.core.school_auth import OPEN_SCHOOL_STATUSES, is_school_student_uid
     now = time.monotonic()
     cached = _status_cache.get(uid)
     if cached is not None and now - cached[1] < _STATUS_CACHE_TTL:
@@ -326,13 +354,32 @@ def assert_account_active(uid: str) -> None:
         try:
             with get_db() as conn:
                 with conn.cursor() as cur:
-                    cur.execute("SELECT account_status, paused FROM users WHERE uid = %s", (uid,))
-                    row = cur.fetchone()
-            # No row yet = user record mid-creation on first sign-in — allow.
-            if row and row.get("paused"):
-                status = "paused"
-            else:
-                status = (row.get("account_status") if row else None) or "active"
+                    if is_school_student_uid(uid):
+                        # Students are created by their school, never mid-sign-up:
+                        # no row (or an archived student / closed school) blocks.
+                        cur.execute(
+                            """
+                            SELECT ss.status AS student_status, s.status AS school_status
+                              FROM school_students ss
+                              JOIN schools s ON s.id = ss.school_id
+                             WHERE ss.uid = %s
+                            """,
+                            (uid,),
+                        )
+                        row = cur.fetchone()
+                        if (row and row["student_status"] == "active"
+                                and row["school_status"] in OPEN_SCHOOL_STATUSES):
+                            status = "active"
+                        else:
+                            status = "school_suspended"
+                    else:
+                        cur.execute("SELECT account_status, paused FROM users WHERE uid = %s", (uid,))
+                        row = cur.fetchone()
+                        # No row yet = user record mid-creation on first sign-in — allow.
+                        if row and row.get("paused"):
+                            status = "paused"
+                        else:
+                            status = (row.get("account_status") if row else None) or "active"
             _status_cache[uid] = (status, now)
         except Exception:
             if cached is not None:
@@ -357,6 +404,14 @@ def assert_account_active(uid: str) -> None:
             detail={
                 "error": "account_paused",
                 "message": "Your account is paused. Ask your parent to unpause it from the Family dashboard.",
+            },
+        )
+    if status == "school_suspended":
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "error": "school_access_suspended",
+                "message": "Your school sign-in isn't active right now. Ask your teacher.",
             },
         )
 
