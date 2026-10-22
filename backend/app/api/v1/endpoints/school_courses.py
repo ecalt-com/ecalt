@@ -30,6 +30,42 @@ class OutlineRequest(BaseModel):
     follow_document_order: bool = True
 
 
+class MetaPatchRequest(BaseModel):
+    expected_revision: Optional[int] = Field(None, ge=0)
+    title: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = Field(None, max_length=2000)
+    estimated_hours: Optional[float] = Field(None, ge=0, le=1000)
+
+
+class StepFields(BaseModel):
+    title: Optional[str] = Field(None, max_length=200)
+    description: Optional[str] = Field(None, max_length=1000)
+    type: Optional[str] = Field(None, max_length=20)
+    estimated_minutes: Optional[int] = Field(None, ge=1, le=600)
+    core_question: Optional[str] = Field(None, max_length=500)
+    learning_objective: Optional[str] = Field(None, max_length=500)
+    body_md: Optional[str] = Field(None, max_length=50000)
+
+
+class StepAddRequest(StepFields):
+    expected_revision: Optional[int] = Field(None, ge=0)
+    title: str = Field(..., min_length=1, max_length=200)
+    after_step_id: Optional[str] = Field(None, max_length=64)
+
+
+class StepPatchRequest(StepFields):
+    expected_revision: Optional[int] = Field(None, ge=0)
+
+
+class ReorderRequest(BaseModel):
+    expected_revision: Optional[int] = Field(None, ge=0)
+    order: list[str] = Field(..., min_length=1, max_length=200)
+
+
+_STEP_EDIT_KEYS = ("title", "description", "type", "estimated_minutes",
+                   "core_question", "learning_objective", "body_md")
+
+
 @router.get("/{school_id}/courses", summary="List the school's courses")
 def list_courses(ctx: SchoolCtx = Depends(school_member())):
     return {"courses": courses.list_courses(ctx)}
@@ -58,6 +94,40 @@ def start_outline(journey_id: str, body: OutlineRequest, ctx: SchoolCtx = Depend
 @router.post("/{school_id}/courses/{journey_id}/build", summary="Build step content from the reviewed outline (async job)")
 def start_build(journey_id: str, ctx: SchoolCtx = Depends(school_member())):
     return courses.start_build(ctx, journey_id)
+
+
+# ── Draft editing (SC-403) — optimistic lock via `expected_revision` ──────────
+
+@router.patch("/{school_id}/courses/{journey_id}/draft", summary="Edit the course's title / description / hours")
+def patch_draft_meta(journey_id: str, body: MetaPatchRequest, ctx: SchoolCtx = Depends(school_member())):
+    patch = body.model_dump(exclude_unset=True)
+    patch.pop("expected_revision", None)
+    return courses.patch_draft_meta(ctx, journey_id, body.expected_revision, patch)
+
+
+@router.post("/{school_id}/courses/{journey_id}/draft/steps", summary="Add a teacher-authored step")
+def add_step(journey_id: str, body: StepAddRequest, ctx: SchoolCtx = Depends(school_member())):
+    data = body.model_dump(exclude_unset=True)
+    data.pop("expected_revision", None)
+    after = data.pop("after_step_id", None)
+    return courses.add_step(ctx, journey_id, body.expected_revision, data, after_step_id=after)
+
+
+@router.post("/{school_id}/courses/{journey_id}/draft/steps/reorder", summary="Reorder the draft's steps")
+def reorder_steps(journey_id: str, body: ReorderRequest, ctx: SchoolCtx = Depends(school_member())):
+    return courses.reorder_steps(ctx, journey_id, body.expected_revision, body.order)
+
+
+@router.patch("/{school_id}/courses/{journey_id}/draft/steps/{step_id}", summary="Edit a step")
+def patch_step(journey_id: str, step_id: str, body: StepPatchRequest, ctx: SchoolCtx = Depends(school_member())):
+    patch = {k: v for k, v in body.model_dump(exclude_unset=True).items() if k in _STEP_EDIT_KEYS}
+    return courses.patch_step(ctx, journey_id, step_id, body.expected_revision, patch)
+
+
+@router.delete("/{school_id}/courses/{journey_id}/draft/steps/{step_id}", summary="Delete a step")
+def delete_step(journey_id: str, step_id: str, revision: Optional[int] = None,
+                ctx: SchoolCtx = Depends(school_member())):
+    return courses.delete_step(ctx, journey_id, step_id, revision)
 
 
 @router.get("/{school_id}/jobs/{job_id}", summary="Background job status + progress")

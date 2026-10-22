@@ -120,6 +120,11 @@ def test_iso_staff_routes_never_reach_another_school(client, world, db):
         ("POST", f"/api/v1/schools/{a}/courses/{course_b}/estimate", {}),
         ("POST", f"/api/v1/schools/{a}/courses/{course_b}/outline", {}),
         ("POST", f"/api/v1/schools/{a}/courses/{course_b}/build", {}),
+        ("PATCH", f"/api/v1/schools/{a}/courses/{course_b}/draft", {"title": "pwned"}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps", {"title": "pwned"}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/reorder", {"order": ["s1"]}),
+        ("PATCH", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/s1", {"title": "pwned"}),
+        ("DELETE", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/s1", None),
         ("GET", f"/api/v1/schools/{a}/jobs/{job_b}", None),
         ("POST", f"/api/v1/schools/{a}/jobs/{job_b}/cancel", {}),
     ]

@@ -211,6 +211,154 @@ def start_build(ctx: SchoolCtx, journey_id: str) -> dict:
     return {"job_id": job_id, "status": "building"}
 
 
+# ── Draft editing (SC-403) ────────────────────────────────────────────────────
+# Teachers refine the draft between generation steps. Every edit takes an
+# optimistic lock on `course_versions.revision`: a client sends the revision it
+# read, and a stale one gets 409 `draft_conflict` instead of silently clobbering
+# a concurrent editor. Edits are refused while a job is actively writing the
+# draft (outlining/building). Hand edits are tracked (`origin`/`edited_by_teacher`)
+# so step regeneration (SC-405) can protect them.
+
+_STEP_PATCH_FIELDS = ("title", "description", "type", "estimated_minutes",
+                      "core_question", "learning_objective", "body_md")
+_BUSY_STATUSES = ("outlining", "building")
+
+
+def patch_draft_meta(ctx: SchoolCtx, journey_id: str, expected_revision, patch: dict) -> dict:
+    """Edit the course's title / description / estimated hours on the draft."""
+    def mutate(cur, meta, steps):
+        if "title" in patch:
+            title = (patch["title"] or "").strip()
+            if not title:
+                raise HTTPException(status_code=422, detail={"error": "title_required", "message": "Give the course a title."})
+            meta["title"] = title
+            cur.execute("UPDATE journeys SET title = %s WHERE id = %s", (title, journey_id))
+        if "description" in patch:
+            meta["description"] = (patch["description"] or "").strip()
+        if "estimated_hours" in patch:
+            meta["estimated_hours"] = patch["estimated_hours"]
+        return meta, steps
+    return _edit_draft(ctx, journey_id, expected_revision, mutate, "course.meta_edited",
+                       {"fields": sorted(patch.keys())})
+
+
+def add_step(ctx: SchoolCtx, journey_id: str, expected_revision, step: dict, after_step_id=None) -> dict:
+    """Insert a teacher-authored step (ungrounded — no source chunks) after a
+    given step, or at the end."""
+    def mutate(cur, meta, steps):
+        new = _new_step(step)
+        idx = len(steps)
+        if after_step_id is not None:
+            idx = _step_index(steps, after_step_id) + 1
+        steps.insert(idx, new)
+        return meta, steps
+    return _edit_draft(ctx, journey_id, expected_revision, mutate, "course.step_added")
+
+
+def patch_step(ctx: SchoolCtx, journey_id: str, step_id: str, expected_revision, patch: dict) -> dict:
+    """Edit a step's fields. Marks it teacher-edited; a hand-edited body clears
+    the AI critic flags (the teacher now owns the text)."""
+    def mutate(cur, meta, steps):
+        step = steps[_step_index(steps, step_id)]
+        for field in _STEP_PATCH_FIELDS:
+            if field not in patch:
+                continue
+            if field == "type" and patch["type"] not in _STEP_TYPES:
+                raise HTTPException(status_code=422, detail={"error": "invalid_step_type", "message": "Unknown step type."})
+            step[field] = patch[field]
+        step["edited_by_teacher"] = True
+        if "body_md" in patch:
+            step["flags"] = []
+            step["build_status"] = "built" if (patch["body_md"] or "").strip() else step.get("build_status", "empty")
+        return meta, steps
+    return _edit_draft(ctx, journey_id, expected_revision, mutate, "course.step_edited", {"step_id": step_id})
+
+
+def delete_step(ctx: SchoolCtx, journey_id: str, step_id: str, expected_revision) -> dict:
+    def mutate(cur, meta, steps):
+        del steps[_step_index(steps, step_id)]
+        return meta, steps
+    return _edit_draft(ctx, journey_id, expected_revision, mutate, "course.step_deleted", {"step_id": step_id})
+
+
+def reorder_steps(ctx: SchoolCtx, journey_id: str, expected_revision, order: list) -> dict:
+    def mutate(cur, meta, steps):
+        by_id = {s["id"]: s for s in steps}
+        if sorted(order) != sorted(by_id.keys()):
+            raise HTTPException(status_code=422, detail={
+                "error": "invalid_order", "message": "Reorder must list every step exactly once."})
+        return meta, [by_id[sid] for sid in order]
+    return _edit_draft(ctx, journey_id, expected_revision, mutate, "course.steps_reordered")
+
+
+_STEP_TYPES = ("concept", "practice", "challenge", "explore")
+
+
+def _new_step(step: dict) -> dict:
+    title = (step.get("title") or "").strip()
+    if not title:
+        raise HTTPException(status_code=422, detail={"error": "title_required", "message": "Give the step a title."})
+    stype = step.get("type")
+    if stype is not None and stype not in _STEP_TYPES:
+        raise HTTPException(status_code=422, detail={"error": "invalid_step_type", "message": "Unknown step type."})
+    body = (step.get("body_md") or "").strip() or None
+    return {
+        "id": "s" + uuid.uuid4().hex[:8],
+        "title": title[:200],
+        "description": (step.get("description") or "")[:1000],
+        "type": stype if stype in _STEP_TYPES else "concept",
+        "estimated_minutes": int(step.get("estimated_minutes") or 10),
+        "core_question": (step.get("core_question") or "")[:500],
+        "learning_objective": (step.get("learning_objective") or "")[:500],
+        "chunk_ids": [], "citations": [], "key_facts": [], "quiz_anchors": [],
+        "body_md": body, "flags": [],
+        "origin": "teacher", "edited_by_teacher": True,
+        "build_status": "built" if body else "empty",
+    }
+
+
+def _step_index(steps: list, step_id: str) -> int:
+    for i, s in enumerate(steps):
+        if s.get("id") == step_id:
+            return i
+    raise HTTPException(status_code=404, detail={"error": "step_not_found", "message": "Step not found."})
+
+
+def _edit_draft(ctx: SchoolCtx, journey_id: str, expected_revision, mutate, audit_action: str,
+                audit_meta: Optional[dict] = None) -> dict:
+    """Apply `mutate(cur, meta, steps) -> (meta, steps)` to the draft under a row
+    lock + revision check, bump the revision, and audit the change."""
+    journey_id = uuid_or_404(journey_id, "course_not_found")
+    _load_course(ctx.school_id, journey_id)   # 404s cross-school / unknown courses
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT revision, meta, steps FROM course_versions "
+                "WHERE journey_id = %s AND state = 'draft' FOR UPDATE",
+                (journey_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=409, detail={
+                    "error": "no_draft", "message": "This course has no editable draft."})
+            status = (row["meta"] or {}).get("status")
+            if status in _BUSY_STATUSES:
+                raise HTTPException(status_code=409, detail={
+                    "error": "course_busy", "message": "The course is still generating. Wait for it to finish."})
+            if expected_revision is not None and row["revision"] != expected_revision:
+                raise HTTPException(status_code=409, detail={
+                    "error": "draft_conflict",
+                    "message": "Someone else changed this course. Reload and try again.",
+                    "current_revision": row["revision"]})
+            meta, steps = mutate(cur, row["meta"] or {}, list(row["steps"] or []))
+            cur.execute(
+                """UPDATE course_versions
+                      SET meta = %s::jsonb, steps = %s::jsonb, revision = revision + 1, updated_at = now()
+                    WHERE journey_id = %s AND state = 'draft'""",
+                (json.dumps(meta), json.dumps(steps), journey_id))
+            school_audit(cur, ctx.school_id, ctx.uid, audit_action, "course", journey_id, audit_meta)
+    return get_course(ctx, journey_id)
+
+
 # ── Chunk gathering (shared with the builder) ────────────────────────────────
 
 def course_chunks(school_id: str, journey_id: str) -> list:
