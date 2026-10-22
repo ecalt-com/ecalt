@@ -338,6 +338,43 @@ def make_outlined_draft(conn, school: dict, *, creator: Optional[str] = None) ->
     return journey_id
 
 
+def make_built_draft(conn, school: dict, *, creator: Optional[str] = None) -> str:
+    """A draft whose steps are built (bodies + quiz anchors), ready to publish."""
+    journey_id = make_outlined_draft(conn, school, creator=creator)
+    steps = fetch(conn, "SELECT steps FROM course_versions WHERE journey_id = %s AND state = 'draft'",
+                  (journey_id,))[0]["steps"]
+    for i, s in enumerate(steps):
+        s["body_md"] = f"## {s['title']}\n\nA grounded lesson body for step {i + 1}."
+        s["citations"] = s.get("chunk_ids", [])
+        s["key_facts"] = ["Fact A", "Fact B"]
+        s["quiz_anchors"] = [{"id": "qa1", "fact": "Fact A", "chunk_ids": s.get("chunk_ids", [])}]
+        s["flags"] = []
+        s["build_status"] = "built"
+    with _cur(conn) as cur:
+        cur.execute(
+            "UPDATE course_versions SET steps = %s::jsonb, "
+            "meta = '{\"status\":\"built\",\"title\":\"Draft Course\"}'::jsonb, revision = 2 "
+            "WHERE journey_id = %s AND state = 'draft'", (json.dumps(steps), journey_id))
+    return journey_id
+
+
+def make_published_course(conn, school: dict, *, creator: Optional[str] = None) -> str:
+    """A published course: one `published` version, no draft, student-facing
+    `journeys.steps` written — for version-history / restore tests."""
+    journey_id = make_built_draft(conn, school, creator=creator)
+    steps = fetch(conn, "SELECT steps FROM course_versions WHERE journey_id = %s AND state = 'draft'",
+                  (journey_id,))[0]["steps"]
+    public = [{k: s.get(k) for k in ("id", "title", "description", "type", "estimated_minutes", "core_question")}
+              for s in steps]
+    with _cur(conn) as cur:
+        cur.execute("UPDATE course_versions SET state = 'published', published_at = now() "
+                    "WHERE journey_id = %s AND state = 'draft'", (journey_id,))
+        cur.execute("UPDATE journeys SET steps = %s::jsonb WHERE id = %s", (json.dumps(public), journey_id))
+        cur.execute("UPDATE school_courses SET status = 'published', published_version = 1 WHERE journey_id = %s",
+                    (journey_id,))
+    return journey_id
+
+
 def enqueue_job(conn, school: dict, kind: str = "outline", status: str = "queued") -> str:
     row = fetch(conn, "INSERT INTO school_jobs (school_id, kind, status) VALUES (%s, %s, %s) RETURNING id::text",
                 (school["id"], kind, status))

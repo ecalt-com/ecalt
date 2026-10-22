@@ -167,6 +167,26 @@ def record_school_usage(school_id: str, input_tokens: int, output_tokens: int, m
         logger.warning("record_school_usage failed for %s", school_id, exc_info=True)
 
 
+def record_school_image_usage(school_id: str, model: str, count: int = 1) -> None:
+    """Accrue a staff-triggered image generation (course hero) to the school's
+    monthly pool."""
+    cost_cents = cost_for_images(model, count)
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO school_usage (school_id, period_start, cost_cents, input_tokens, output_tokens)
+                    VALUES (%s, %s, %s, 0, 0)
+                    ON CONFLICT (school_id, period_start) DO UPDATE SET
+                        cost_cents = school_usage.cost_cents + EXCLUDED.cost_cents
+                    """,
+                    (school_id, date.today().replace(day=1), cost_cents),
+                )
+    except Exception:
+        logger.warning("record_school_image_usage failed for %s", school_id, exc_info=True)
+
+
 def get_user_plan(uid: str) -> dict:
     """Return plan_configs row for user. Defaults to free_trial.
 

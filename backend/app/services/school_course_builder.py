@@ -24,7 +24,7 @@ import logging
 import re
 
 from app.core.database import get_db
-from app.services import provider_service, school_jobs, subscription_service
+from app.services import content_filter, provider_service, school_jobs, subscription_service
 from app.services.school_course_service import course_chunks
 
 logger = logging.getLogger(__name__)
@@ -43,6 +43,33 @@ class _ContentError(ValueError):
     """The model returned structurally bad content (not JSON, or citing chunks
     outside the step's sources). Distinct from a transient provider error: a
     content error fails one step softly, a transient error retries the job."""
+
+
+# ── Output hardening (SC-408) ─────────────────────────────────────────────────
+# Source documents are untrusted: a hostile PDF can try to smuggle instructions,
+# scripts or exfiltration links through the model into student-facing content.
+# Prompts already wrap the source in labelled delimiters and the schema is
+# validated; here we also strip scripts/HTML/links/images from any generated
+# text and run it through content_filter before it can be stored.
+_SCRIPT_RE = re.compile(r"<\s*script[^>]*>.*?<\s*/\s*script\s*>", re.IGNORECASE | re.DOTALL)
+_HTML_TAG_RE = re.compile(r"</?[a-zA-Z][^>]{0,200}>")
+_MD_IMAGE_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_MD_LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]*\)")
+_UNSAFE_URL_RE = re.compile(r"<?\b(?:https?|javascript|data|vbscript|file):[^\s<>)\]]+>?", re.IGNORECASE)
+
+
+def _sanitize_md(text) -> str:
+    """Strip scripts, HTML tags, links and images from model output. School
+    bodies are plain educational markdown — links and HTML are never needed and
+    are an injection/exfiltration vector, so they are removed (link text kept)."""
+    if not text:
+        return ""
+    t = _SCRIPT_RE.sub("", str(text))
+    t = _MD_IMAGE_RE.sub("", t)        # images aren't supported in v1 bodies
+    t = _MD_LINK_RE.sub(r"\1", t)      # keep the link text, drop the URL
+    t = _UNSAFE_URL_RE.sub("", t)      # drop raw/auto links and dangerous schemes
+    t = _HTML_TAG_RE.sub("", t)        # strip any remaining HTML tags
+    return t.strip()
 
 
 def _complete(interaction_type: str, system: str, user: str, max_tokens: int):
@@ -164,12 +191,12 @@ def _materialize_steps(data: dict, chunks: list) -> list:
         stype = st.get("type")
         steps.append({
             "id": f"s{i + 1}",
-            "title": str(st.get("title", "") or "")[:200],
-            "description": str(st.get("description", "") or "")[:500],
+            "title": _sanitize_md(st.get("title"))[:200],
+            "description": _sanitize_md(st.get("description"))[:500],
             "type": stype if stype in _STEP_TYPES else "concept",
             "estimated_minutes": int(st.get("estimated_minutes") or 10),
-            "core_question": str(st.get("core_question", "") or "")[:300],
-            "learning_objective": str(st.get("learning_objective", "") or "")[:300],
+            "core_question": _sanitize_md(st.get("core_question"))[:300],
+            "learning_objective": _sanitize_md(st.get("learning_objective"))[:300],
             "chunk_ids": [id_by_cite[c] for c in st["chunk_ids"] if c in id_by_cite],
             "origin": "ai",
             "body_md": None,
@@ -271,7 +298,7 @@ def build_handler(job: dict) -> dict:
 
 
 async def _build_step(step: dict, chunks_by_id: dict, school_id: str,
-                      cfg_body: dict, cfg_critic: dict) -> dict:
+                      cfg_body: dict, cfg_critic: dict, instruction: str = None) -> dict:
     cited = [chunks_by_id[cid] for cid in (step.get("chunk_ids") or []) if cid in chunks_by_id]
     if not cited:
         return _failed_step(step, "the step's source chunks are no longer available")
@@ -280,7 +307,7 @@ async def _build_step(step: dict, chunks_by_id: dict, school_id: str,
     id_by_cite = {c["cite_id"]: c["chunk_id"] for c in cited}
 
     try:
-        body = await _generate_body(step, source_block, cite_set, cfg_body, school_id)
+        body = await _generate_body(step, source_block, cite_set, cfg_body, school_id, instruction=instruction)
     except _ContentError as exc:
         return _failed_step(step, str(exc))
 
@@ -288,7 +315,8 @@ async def _build_step(step: dict, chunks_by_id: dict, school_id: str,
     if flags:
         # one grounded rewrite that names exactly what the critic rejected
         try:
-            body2 = await _generate_body(step, source_block, cite_set, cfg_body, school_id, corrections=flags)
+            body2 = await _generate_body(step, source_block, cite_set, cfg_body, school_id,
+                                         corrections=flags, instruction=instruction)
             flags2 = await _critic_pass(body2["body_md"], source_block, cfg_critic, school_id)
             if len(flags2) <= len(flags):
                 body, flags = body2, flags2
@@ -313,11 +341,12 @@ def _failed_step(step: dict, reason: str) -> dict:
 
 
 async def _generate_body(step: dict, source_block: str, cite_set: set,
-                         cfg: dict, school_id: str, corrections: list = None) -> dict:
+                         cfg: dict, school_id: str, corrections: list = None,
+                         instruction: str = None) -> dict:
     """Write one step body, grounded in the cited chunks. Re-prompts once on a
     content error, then gives up with a _ContentError. Transient provider errors
     propagate to the caller (and up to the job's retry)."""
-    user = _body_user(step, source_block, corrections)
+    user = _body_user(step, source_block, corrections, instruction)
     last_err = None
     for attempt in range(2):
         text, in_tok, out_tok, _ = await provider_service.complete_text(
@@ -327,7 +356,7 @@ async def _generate_body(step: dict, source_block: str, cite_set: set,
             return _parse_body(text, cite_set)
         except _ContentError as exc:
             last_err = str(exc)
-            user = (_body_user(step, source_block, corrections) +
+            user = (_body_user(step, source_block, corrections, instruction) +
                     f"\n\nYour previous answer was invalid: {last_err}. Return valid JSON that "
                     "cites only the listed chunk ids.")
     raise _ContentError(f"step body invalid after retry: {last_err}")
@@ -372,13 +401,16 @@ def _source_block(cited: list) -> str:
     return "\n".join(lines)
 
 
-def _body_user(step: dict, source_block: str, corrections: list = None) -> str:
+def _body_user(step: dict, source_block: str, corrections: list = None, instruction: str = None) -> str:
     lines = [f"STEP TITLE: {step.get('title', '')}", f"STEP TYPE: {step.get('type', 'concept')}"]
     for key, label in (("learning_objective", "LEARNING OBJECTIVE"),
                        ("core_question", "CORE QUESTION"), ("description", "OUTLINE NOTE")):
         if step.get(key):
             lines.append(f"{label}: {step[key]}")
     lines += ["", "Write this step's lesson body, grounded ONLY in the cited chunks below.", "", source_block]
+    if instruction:
+        # A teacher's regenerate instruction (trusted) — but it can never relax grounding.
+        lines += ["", f"TEACHER INSTRUCTION (follow it, but stay grounded in the cited chunks): {instruction}"]
     if corrections:
         joined = "; ".join(f"{c['claim']} ({c['reason']})" for c in corrections[:8])
         lines += ["", f"IMPORTANT: your previous draft made claims the sources do NOT support: {joined}. "
@@ -399,6 +431,12 @@ def _parse_body(text: str, cite_set: set) -> dict:
     body_md = data.get("body_md")
     if not isinstance(body_md, str) or not body_md.strip():
         raise _ContentError("empty body_md")
+    body_md = _sanitize_md(body_md)
+    if not body_md:
+        raise _ContentError("body empty after stripping unsafe content")
+    allowed, _ = content_filter.check_topic_scope(body_md)
+    if not allowed:
+        raise _ContentError("body failed the content filter")
     citations = data.get("citations")
     if not isinstance(citations, list) or not citations:
         raise _ContentError("body cites no source chunks")
@@ -476,5 +514,73 @@ def _mark_build_failed(journey_id: str, code: str) -> None:
                 (json.dumps(meta), journey_id))
 
 
+# ── Regenerate one step (SC-405) ──────────────────────────────────────────────
+
+def regenerate_step_handler(job: dict) -> dict:
+    journey_id = job["payload"]["journey_id"]
+    step_id = job["payload"]["step_id"]
+    instruction = job["payload"].get("instruction")
+    school_id = job["school_id"]
+    job_id = str(job["id"])
+
+    draft = _load_draft(journey_id)
+    steps = (draft["steps"] or []) if draft else []
+    step = next((s for s in steps if s.get("id") == step_id), None)
+    if step is None:
+        _set_build_status(journey_id, "built")
+        return {"status": "failed", "reason": "step_not_found"}
+    allowed, reason = subscription_service.check_school_budget(school_id)
+    if not allowed:
+        _set_build_status(journey_id, "built")
+        return {"status": "failed", "reason": reason}
+
+    chunks_by_id = {c["chunk_id"]: c for c in course_chunks(school_id, journey_id)}
+    cfg_body = provider_service.get_config("school_step_content")
+    cfg_critic = provider_service.get_config("school_faithfulness_critic")
+
+    async def _run():
+        school_jobs.raise_if_cancelled(job_id)
+        return await _build_step(step, chunks_by_id, school_id, cfg_body, cfg_critic, instruction=instruction)
+
+    try:
+        built = asyncio.run(_run())
+    except school_jobs.JobCancelled:
+        _set_build_status(journey_id, "built")
+        raise
+
+    built["origin"] = "ai"              # a fresh AI generation now owns the step
+    built["edited_by_teacher"] = False
+    _replace_step(journey_id, step_id, built)
+    logger.info("regenerated step %s of %s (%s)", step_id, journey_id, built["build_status"])
+    return {"status": "regenerated", "step_id": step_id,
+            "build_status": built["build_status"], "flagged": bool(built["flags"])}
+
+
+def _replace_step(journey_id: str, step_id: str, new_step: dict) -> None:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT meta, steps FROM course_versions WHERE journey_id = %s AND state = 'draft' FOR UPDATE",
+                        (journey_id,))
+            row = cur.fetchone()
+            if not row:
+                return
+            steps = row["steps"] or []
+            for i, s in enumerate(steps):
+                if s.get("id") == step_id:
+                    steps[i] = new_step
+                    break
+            meta = (row["meta"] or {})
+            meta["status"] = "built"
+            meta.pop("error", None)
+            meta["steps_flagged"] = sum(1 for s in steps if s.get("flags"))
+            meta["steps_failed"] = sum(1 for s in steps if s.get("build_status") == "failed")
+            cur.execute(
+                """UPDATE course_versions
+                      SET steps = %s::jsonb, meta = %s::jsonb, revision = revision + 1, updated_at = now()
+                    WHERE journey_id = %s AND state = 'draft'""",
+                (json.dumps(steps), json.dumps(meta), journey_id))
+
+
 school_jobs.register_handler("outline", outline_handler)
 school_jobs.register_handler("build", build_handler)
+school_jobs.register_handler("regenerate_step", regenerate_step_handler)

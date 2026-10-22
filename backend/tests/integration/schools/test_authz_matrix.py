@@ -125,6 +125,13 @@ def test_iso_staff_routes_never_reach_another_school(client, world, db):
         ("POST", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/reorder", {"order": ["s1"]}),
         ("PATCH", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/s1", {"title": "pwned"}),
         ("DELETE", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/s1", None),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/s1/regenerate", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/publish", {}),
+        ("GET", f"/api/v1/schools/{a}/courses/{course_b}/versions", None),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/versions/1/restore", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/duplicate", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/archive", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/hero-image", {}),
         ("GET", f"/api/v1/schools/{a}/jobs/{job_b}", None),
         ("POST", f"/api/v1/schools/{a}/jobs/{job_b}/cancel", {}),
     ]

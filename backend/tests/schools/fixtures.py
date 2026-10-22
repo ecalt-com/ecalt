@@ -24,7 +24,7 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
 __all__ = [
     "World", "clear_caches", "client", "db", "school_db_url", "sent_emails", "world", "firebase_deletes",
-    "fake_service_account", "fake_storage", "_db_tables", "_no_real_email", "_school_test_env",
+    "fake_service_account", "fake_storage", "fake_images", "_db_tables", "_no_real_email", "_school_test_env",
 ]
 
 
@@ -148,6 +148,24 @@ def fake_storage(monkeypatch):
         def disable(self) -> None:
             monkeypatch.setattr(storage, "storage_enabled", lambda: False)
     return _Fake()
+
+
+@pytest.fixture(autouse=True)
+def fake_images(monkeypatch):
+    """Stub journey hero-image generation + upload so school hero endpoints run
+    without OpenAI and the Supabase journey-images bucket."""
+    import app.services.image_service as image_service
+
+    async def _gen(journey):
+        return b"\x00fake-image", "gpt-image-1", "image/webp"
+
+    async def _upload(journey_id, data, content_type="image/webp"):
+        return f"https://fake.images.invalid/{journey_id}.webp"
+
+    monkeypatch.setattr(image_service, "images_enabled", lambda: True)
+    monkeypatch.setattr(image_service, "generate_hero_image", _gen)
+    monkeypatch.setattr(image_service, "upload_journey_image", _upload)
+    return image_service
 
 
 @pytest.fixture(scope="session")

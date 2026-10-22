@@ -62,6 +62,17 @@ class ReorderRequest(BaseModel):
     order: list[str] = Field(..., min_length=1, max_length=200)
 
 
+class RegenerateRequest(BaseModel):
+    expected_revision: Optional[int] = Field(None, ge=0)
+    instruction: Optional[str] = Field(None, max_length=500)
+    overwrite_teacher_edits: bool = False
+
+
+class PublishRequest(BaseModel):
+    expected_revision: Optional[int] = Field(None, ge=0)
+    change_summary: Optional[str] = Field(None, max_length=500)
+
+
 _STEP_EDIT_KEYS = ("title", "description", "type", "estimated_minutes",
                    "core_question", "learning_objective", "body_md")
 
@@ -128,6 +139,46 @@ def patch_step(journey_id: str, step_id: str, body: StepPatchRequest, ctx: Schoo
 def delete_step(journey_id: str, step_id: str, revision: Optional[int] = None,
                 ctx: SchoolCtx = Depends(school_member())):
     return courses.delete_step(ctx, journey_id, step_id, revision)
+
+
+@router.post("/{school_id}/courses/{journey_id}/draft/steps/{step_id}/regenerate",
+             summary="Regenerate one step's content (async job)")
+def regenerate_step(journey_id: str, step_id: str, body: RegenerateRequest,
+                    ctx: SchoolCtx = Depends(school_member())):
+    return courses.regenerate_step(ctx, journey_id, step_id, body.expected_revision,
+                                   body.instruction, body.overwrite_teacher_edits)
+
+
+# ── Publish + version history (SC-406 / SC-407) ───────────────────────────────
+
+@router.post("/{school_id}/courses/{journey_id}/publish", summary="Publish the built draft to students")
+def publish_course(journey_id: str, body: PublishRequest, ctx: SchoolCtx = Depends(school_member())):
+    return courses.publish_course(ctx, journey_id, body.expected_revision, body.change_summary)
+
+
+@router.get("/{school_id}/courses/{journey_id}/versions", summary="Version history")
+def list_versions(journey_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return {"versions": courses.list_versions(ctx, journey_id)}
+
+
+@router.post("/{school_id}/courses/{journey_id}/versions/{version}/restore", summary="Restore a version as a new draft")
+def restore_version(journey_id: str, version: int, ctx: SchoolCtx = Depends(school_member())):
+    return courses.restore_version(ctx, journey_id, version)
+
+
+@router.post("/{school_id}/courses/{journey_id}/duplicate", summary="Duplicate the course into a new draft")
+def duplicate_course(journey_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return courses.duplicate_course(ctx, journey_id)
+
+
+@router.post("/{school_id}/courses/{journey_id}/archive", summary="Archive the course (hide from students)")
+def archive_course(journey_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return courses.archive_course(ctx, journey_id)
+
+
+@router.post("/{school_id}/courses/{journey_id}/hero-image", summary="Generate a hero image (school-billed)")
+async def generate_hero(journey_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return await courses.generate_hero(ctx, journey_id)
 
 
 @router.get("/{school_id}/jobs/{job_id}", summary="Background job status + progress")

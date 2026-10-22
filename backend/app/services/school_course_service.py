@@ -19,6 +19,7 @@ from fastapi import HTTPException
 from app.core.database import get_db
 from app.core.school_auth import SchoolCtx, uuid_or_404
 from app.services import school_jobs, subscription_service
+from app.services.journey_access import invalidate_journey_access
 from app.services.provider_service import cost_for_tokens, get_config
 from app.services.school_service import school_audit
 
@@ -159,9 +160,9 @@ def start_outline(ctx: SchoolCtx, journey_id: str, inputs: dict) -> dict:
     """Budget-check, then enqueue the outline generation job."""
     journey_id = uuid_or_404(journey_id, "course_not_found")
     course = _load_course(ctx.school_id, journey_id)
-    if course["status"] != "draft":
+    if course["status"] == "archived":
         raise HTTPException(status_code=409, detail={
-            "error": "course_not_draft", "message": "This course can't be regenerated once published."})
+            "error": "course_archived", "message": "Restore the course before regenerating it."})
     if not course_chunks(ctx.school_id, journey_id):
         raise HTTPException(status_code=409, detail={
             "error": "no_source_text", "message": "The source documents have no readable text yet."})
@@ -189,9 +190,9 @@ def start_build(ctx: SchoolCtx, journey_id: str) -> dict:
     bodies + critic). Budget-checked; refuses a published or un-outlined course."""
     journey_id = uuid_or_404(journey_id, "course_not_found")
     course = _load_course(ctx.school_id, journey_id)
-    if course["status"] != "draft":
+    if course["status"] == "archived":
         raise HTTPException(status_code=409, detail={
-            "error": "course_not_draft", "message": "This course can't be rebuilt once published."})
+            "error": "course_archived", "message": "Restore the course before rebuilding it."})
     draft = _draft_version(journey_id)
     status = (draft["meta"] or {}).get("status") if draft else None
     steps = (draft["steps"] or []) if draft else []
@@ -357,6 +358,280 @@ def _edit_draft(ctx: SchoolCtx, journey_id: str, expected_revision, mutate, audi
                 (json.dumps(meta), json.dumps(steps), journey_id))
             school_audit(cur, ctx.school_id, ctx.uid, audit_action, "course", journey_id, audit_meta)
     return get_course(ctx, journey_id)
+
+
+# ── Regenerate one step (SC-405) ──────────────────────────────────────────────
+
+def regenerate_step(ctx: SchoolCtx, journey_id: str, step_id: str, expected_revision=None,
+                    instruction=None, overwrite_teacher_edits: bool = False) -> dict:
+    """Re-generate a single step's body from its cited chunks, optionally with a
+    teacher instruction. Refuses to clobber a teacher-edited step unless
+    `overwrite_teacher_edits` is set. Runs as an async job."""
+    journey_id = uuid_or_404(journey_id, "course_not_found")
+    course = _load_course(ctx.school_id, journey_id)
+    if course["status"] == "archived":
+        raise HTTPException(status_code=409, detail={
+            "error": "course_archived", "message": "Restore the course before regenerating it."})
+    # Budget check first, with its own connection, so we never nest get_db under
+    # the draft row lock below.
+    allowed, reason = subscription_service.check_school_budget(ctx.school_id)
+    if not allowed:
+        raise HTTPException(status_code=402, detail=subscription_service.budget_error_detail(reason))
+
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT revision, meta, steps FROM course_versions "
+                        "WHERE journey_id = %s AND state = 'draft' FOR UPDATE", (journey_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=409, detail={"error": "no_draft", "message": "This course has no editable draft."})
+            if (row["meta"] or {}).get("status") in _BUSY_STATUSES:
+                raise HTTPException(status_code=409, detail={"error": "course_busy", "message": "The course is still generating. Wait for it to finish."})
+            if expected_revision is not None and row["revision"] != expected_revision:
+                raise HTTPException(status_code=409, detail={
+                    "error": "draft_conflict", "message": "Someone else changed this course. Reload and try again.",
+                    "current_revision": row["revision"]})
+            step = next((s for s in (row["steps"] or []) if s.get("id") == step_id), None)
+            if step is None:
+                raise HTTPException(status_code=404, detail={"error": "step_not_found", "message": "Step not found."})
+            if not step.get("chunk_ids"):
+                raise HTTPException(status_code=409, detail={
+                    "error": "step_not_grounded",
+                    "message": "This step has no source material to regenerate from. Edit it by hand instead."})
+            if step.get("edited_by_teacher") and not overwrite_teacher_edits:
+                raise HTTPException(status_code=409, detail={
+                    "error": "teacher_edits_protected",
+                    "message": "This step has your edits. Regenerate anyway to replace them with a fresh AI draft."})
+            cur.execute("UPDATE course_versions SET meta = %s::jsonb, updated_at = now() "
+                        "WHERE journey_id = %s AND state = 'draft'",
+                        (json.dumps({**(row["meta"] or {}), "status": "building"}), journey_id))
+            school_audit(cur, ctx.school_id, ctx.uid, "course.step_regenerate_started", "course", journey_id,
+                         {"step_id": step_id})
+    job_id = school_jobs.enqueue(ctx.school_id, "regenerate_step",
+                                 {"journey_id": journey_id, "step_id": step_id, "instruction": instruction},
+                                 created_by=ctx.uid)
+    return {"job_id": job_id, "status": "regenerating", "step_id": step_id}
+
+
+# ── Publish + version history (SC-406 / SC-407) ───────────────────────────────
+# Students only ever see the published version: `journeys.steps` + locked
+# `step_content` are written in the publish transaction, nothing else writes
+# them (invariant I5). Drafts live in `course_versions`; publishing promotes the
+# draft to `published` and supersedes the previous one.
+
+# Only these fields reach students — never body flags, citations or chunk ids.
+_PUBLIC_STEP_FIELDS = ("id", "title", "description", "type", "estimated_minutes", "core_question")
+
+
+def publish_course(ctx: SchoolCtx, journey_id: str, expected_revision=None, change_summary=None) -> dict:
+    """Publish the built draft: write the student-facing journey + locked step
+    content, promote the version, supersede the prior one — all in one txn."""
+    journey_id = uuid_or_404(journey_id, "course_not_found")
+    course = _load_course(ctx.school_id, journey_id)
+    if course["status"] == "archived":
+        raise HTTPException(status_code=409, detail={
+            "error": "course_archived", "message": "Restore the course before publishing."})
+    model = get_config("school_step_content")["model"]
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, version, meta, steps, revision FROM course_versions "
+                "WHERE journey_id = %s AND state = 'draft' FOR UPDATE", (journey_id,))
+            draft = cur.fetchone()
+            if not draft:
+                raise HTTPException(status_code=409, detail={
+                    "error": "no_draft", "message": "There's nothing to publish — the course has no draft."})
+            meta = draft["meta"] or {}
+            steps = draft["steps"] or []
+            if meta.get("status") in _BUSY_STATUSES:
+                raise HTTPException(status_code=409, detail={
+                    "error": "course_busy", "message": "The course is still generating. Wait for it to finish."})
+            if expected_revision is not None and draft["revision"] != expected_revision:
+                raise HTTPException(status_code=409, detail={
+                    "error": "draft_conflict",
+                    "message": "Someone else changed this course. Reload and try again.",
+                    "current_revision": draft["revision"]})
+            if not steps:
+                raise HTTPException(status_code=409, detail={
+                    "error": "empty_course", "message": "Add at least one step before publishing."})
+            incomplete = [s["id"] for s in steps if not (s.get("body_md") or "").strip()]
+            if incomplete:
+                raise HTTPException(status_code=409, detail={
+                    "error": "steps_incomplete",
+                    "message": "Every step needs content before you can publish. Build or write the remaining steps.",
+                    "steps": incomplete[:20]})
+
+            version = draft["version"]
+            cur.execute("UPDATE course_versions SET state = 'superseded', updated_at = now() "
+                        "WHERE journey_id = %s AND state = 'published'", (journey_id,))
+            cur.execute(
+                """UPDATE course_versions
+                      SET state = 'published', revision = revision + 1, meta = %s::jsonb,
+                          published_by = %s, published_at = now(), change_summary = %s, updated_at = now()
+                    WHERE id = %s""",
+                (json.dumps({**meta, "status": "published"}), ctx.uid, change_summary, draft["id"]))
+
+            public_steps = [{k: s.get(k) for k in _PUBLIC_STEP_FIELDS} for s in steps]
+            cur.execute(
+                """UPDATE journeys
+                      SET title = %s, description = %s, estimated_hours = %s, steps = %s::jsonb,
+                          hero_image_url = COALESCE(%s, hero_image_url)
+                    WHERE id = %s AND school_id = %s""",
+                (meta.get("title") or course["title"], meta.get("description") or "",
+                 float(meta.get("estimated_hours") or 0), json.dumps(public_steps),
+                 meta.get("hero_image_url"), journey_id, ctx.school_id))
+
+            # Locked published content; drop content for steps that no longer exist.
+            step_ids = [s["id"] for s in steps]
+            cur.execute("DELETE FROM step_content WHERE journey_id = %s AND NOT (step_id = ANY(%s))",
+                        (journey_id, step_ids))
+            for s in steps:
+                cur.execute(
+                    """INSERT INTO step_content
+                           (journey_id, step_id, content, quiz_anchors, model, source, locked)
+                       VALUES (%s, %s, %s, %s::jsonb, %s, 'school_published', true)
+                       ON CONFLICT (journey_id, step_id) DO UPDATE SET
+                           content = EXCLUDED.content, quiz_anchors = EXCLUDED.quiz_anchors,
+                           model = EXCLUDED.model, source = 'school_published', locked = true,
+                           generated_at = now()""",
+                    (journey_id, s["id"], s.get("body_md") or "", json.dumps(s.get("quiz_anchors") or []), model))
+
+            cur.execute("UPDATE school_courses SET status = 'published', published_version = %s, updated_at = now() "
+                        "WHERE journey_id = %s AND school_id = %s", (version, journey_id, ctx.school_id))
+            school_audit(cur, ctx.school_id, ctx.uid, "course.published", "course", journey_id,
+                         {"version": version, "steps": len(steps)})
+    invalidate_journey_access(journey_id=journey_id)
+    return get_course(ctx, journey_id)
+
+
+def list_versions(ctx: SchoolCtx, journey_id: str) -> list:
+    journey_id = uuid_or_404(journey_id, "course_not_found")
+    _load_course(ctx.school_id, journey_id)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT version, state, revision, change_summary, created_by, created_at,
+                          published_by, published_at, base_version,
+                          jsonb_array_length(COALESCE(steps, '[]'::jsonb)) AS step_count
+                     FROM course_versions WHERE journey_id = %s ORDER BY version DESC""",
+                (journey_id,))
+            return [{
+                "version": r["version"], "state": r["state"], "revision": r["revision"],
+                "change_summary": r["change_summary"], "step_count": r["step_count"] or 0,
+                "base_version": r["base_version"],
+                "created_at": _iso(r["created_at"]), "published_at": _iso(r["published_at"]),
+            } for r in cur.fetchall()]
+
+
+def restore_version(ctx: SchoolCtx, journey_id: str, version: int) -> dict:
+    """Copy an old version's steps + meta into a NEW draft (history is never
+    rewritten). Refuses while an editable draft already exists."""
+    journey_id = uuid_or_404(journey_id, "course_not_found")
+    course = _load_course(ctx.school_id, journey_id)
+    if course["status"] == "archived":
+        raise HTTPException(status_code=409, detail={
+            "error": "course_archived", "message": "Restore the course from the archive first."})
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM course_versions WHERE journey_id = %s AND state = 'draft' FOR UPDATE", (journey_id,))
+            if cur.fetchone():
+                raise HTTPException(status_code=409, detail={
+                    "error": "draft_exists", "message": "You already have a working draft. Edit or publish it first."})
+            cur.execute("SELECT meta, steps FROM course_versions WHERE journey_id = %s AND version = %s",
+                        (journey_id, version))
+            src = cur.fetchone()
+            if not src:
+                raise HTTPException(status_code=404, detail={"error": "version_not_found", "message": "Version not found."})
+            cur.execute("SELECT COALESCE(MAX(version), 0) + 1 AS v FROM course_versions WHERE journey_id = %s", (journey_id,))
+            new_version = cur.fetchone()["v"]
+            meta = {**(src["meta"] or {}), "status": "built"}
+            meta.pop("error", None)
+            cur.execute(
+                """INSERT INTO course_versions (journey_id, version, state, revision, meta, steps, base_version, created_by)
+                   VALUES (%s, %s, 'draft', 0, %s::jsonb, %s::jsonb, %s, %s)""",
+                (journey_id, new_version, json.dumps(meta), json.dumps(src["steps"] or []), version, ctx.uid))
+            school_audit(cur, ctx.school_id, ctx.uid, "course.version_restored", "course", journey_id,
+                         {"from_version": version, "new_version": new_version})
+    return get_course(ctx, journey_id)
+
+
+def duplicate_course(ctx: SchoolCtx, journey_id: str) -> dict:
+    """A fresh draft course copying this course's latest steps + source links."""
+    journey_id = uuid_or_404(journey_id, "course_not_found")
+    src = _load_course(ctx.school_id, journey_id)
+    new_jid = str(uuid.uuid4())
+    title = ((src["title"] or "Course") + " (copy)")[:200]
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT meta, steps FROM course_versions WHERE journey_id = %s ORDER BY version DESC LIMIT 1",
+                        (journey_id,))
+            v = cur.fetchone() or {"meta": {}, "steps": []}
+            cur.execute(
+                "INSERT INTO journeys (id, uid, school_id, question, title, description, estimated_hours, steps) "
+                "VALUES (%s, NULL, %s, %s, %s, '', 0, '[]'::jsonb)",
+                (new_jid, ctx.school_id, title, title))
+            cur.execute(
+                "INSERT INTO school_courses (journey_id, school_id, status, created_by) VALUES (%s, %s, 'draft', %s)",
+                (new_jid, ctx.school_id, ctx.uid))
+            meta = {**(v["meta"] or {}), "status": "built", "title": title}
+            meta.pop("error", None)
+            cur.execute(
+                "INSERT INTO course_versions (journey_id, version, state, revision, meta, steps, created_by) "
+                "VALUES (%s, 1, 'draft', 0, %s::jsonb, %s::jsonb, %s)",
+                (new_jid, json.dumps(meta), json.dumps(v["steps"] or []), ctx.uid))
+            cur.execute(
+                "INSERT INTO course_sources (journey_id, document_id, school_id) "
+                "SELECT %s, document_id, school_id FROM course_sources WHERE journey_id = %s",
+                (new_jid, journey_id))
+            school_audit(cur, ctx.school_id, ctx.uid, "course.duplicated", "course", new_jid,
+                         {"from": journey_id})
+    return get_course(ctx, new_jid)
+
+
+async def generate_hero(ctx: SchoolCtx, journey_id: str) -> dict:
+    """Generate an optional hero image for the course via `image_service`, billed
+    to the school. Stored on the draft meta (publish copies it to the journey)
+    and on the live journey when already published (SC-409)."""
+    from types import SimpleNamespace
+    from app.services import image_service
+    journey_id = uuid_or_404(journey_id, "course_not_found")
+    course = _load_course(ctx.school_id, journey_id)
+    if not image_service.images_enabled():
+        raise HTTPException(status_code=503, detail={
+            "error": "image_unavailable", "message": "Image generation isn't configured."})
+    allowed, reason = subscription_service.check_school_budget(ctx.school_id)
+    if not allowed:
+        raise HTTPException(status_code=402, detail=subscription_service.budget_error_detail(reason))
+
+    draft = _draft_version(journey_id)
+    meta = (draft["meta"] if draft else {}) or {}
+    j = SimpleNamespace(id=journey_id, title=meta.get("title") or course["title"],
+                        description=meta.get("description") or "", tags=[], age_group="all")
+    data, model, content_type = await image_service.generate_hero_image(j)
+    url = await image_service.upload_journey_image(journey_id, data, content_type)
+    subscription_service.record_school_image_usage(ctx.school_id, model)
+
+    if draft:
+        _set_meta(journey_id, {**meta, "hero_image_url": url})
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE journeys SET hero_image_url = %s WHERE id = %s AND school_id = %s",
+                        (url, journey_id, ctx.school_id))
+            school_audit(cur, ctx.school_id, ctx.uid, "course.hero_generated", "course", journey_id)
+    return {"hero_image_url": url}
+
+
+def archive_course(ctx: SchoolCtx, journey_id: str) -> dict:
+    """Hide a course from students (progress is kept). Reversible via restore."""
+    journey_id = uuid_or_404(journey_id, "course_not_found")
+    _load_course(ctx.school_id, journey_id)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE school_courses SET status = 'archived', archived_at = now(), updated_at = now() "
+                        "WHERE journey_id = %s AND school_id = %s", (journey_id, ctx.school_id))
+            school_audit(cur, ctx.school_id, ctx.uid, "course.archived", "course", journey_id)
+    invalidate_journey_access(journey_id=journey_id)
+    return {"journey_id": journey_id, "status": "archived"}
 
 
 # ── Chunk gathering (shared with the builder) ────────────────────────────────
