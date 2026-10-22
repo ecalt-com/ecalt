@@ -54,6 +54,7 @@ const SchoolSettings  = lazy(() => import('./pages/school/SchoolSettings'))
 const SchoolStudents  = lazy(() => import('./pages/school/SchoolStudents'))
 const SchoolClasses   = lazy(() => import('./pages/school/SchoolClasses'))
 const SchoolClassDetail = lazy(() => import('./pages/school/SchoolClassDetail'))
+const SchoolDocuments = lazy(() => import('./pages/school/SchoolDocuments'))
 const LoginCardsPrint = lazy(() => import('./pages/school/LoginCardsPrint'))
 const ClassSignIn     = lazy(() => import('./pages/ClassSignIn'))
 const BadgeSignIn     = lazy(() => import('./pages/BadgeSignIn'))
@@ -113,6 +114,7 @@ function AppShell() {
             <Route path="classes" element={<SchoolClasses />} />
             <Route path="classes/:classId" element={<SchoolClassDetail />} />
             <Route path="students" element={<SchoolStudents />} />
+            <Route path="materials" element={<SchoolDocuments />} />
             <Route path="staff" element={<SchoolStaff />} />
             <Route path="settings" element={<SchoolSettings />} />
           </Route>

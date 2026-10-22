@@ -204,6 +204,14 @@ export function schoolErrorMessage(code: string | null, fallback = 'Something we
     case 'picture_secret_too_old': return 'Picture passwords are only for younger grades. Use a PIN instead.'
     case 'school_budget_exhausted': return 'Your class has used up its AI help for now. Ask your teacher.'
     case 'school_daily_limit_reached': return "You've used all your AI help for today. Try again tomorrow."
+    case 'storage_unavailable': return "Document storage isn't set up yet. Contact ECALT support."
+    case 'legacy_word': return 'Please save this as a .docx file or a PDF, then upload again.'
+    case 'unsupported_type': return 'Only PDF and Word (.docx) files are supported.'
+    case 'too_large': return 'That file is too large. Try a smaller PDF or Word file.'
+    case 'empty_file': return 'That file looks empty.'
+    case 'macro': return "Macro-enabled documents aren't allowed. Remove macros and re-upload."
+    case 'corrupt': return "That file didn't look like a valid PDF or Word document."
+    case 'upload_missing': return "We couldn't find the uploaded file. Please try again."
     default: return fallback
   }
 }
@@ -432,3 +440,63 @@ export const classSignIn = (body: {
 
 export const badgeSignIn = (token: string): Promise<ClassSession> =>
   request('/api/v1/school-login/badge', json('POST', { token }))
+
+// ── Documents (M3: source material for AI courses) ───────────────────────────
+
+export type DocumentStatus =
+  | 'pending_upload' | 'uploaded' | 'extracting' | 'ready' | 'needs_ocr' | 'failed' | 'deleted'
+
+export interface SchoolDocument {
+  id: string
+  filename: string
+  mime: string
+  size_bytes: number
+  page_count: number | null
+  language: string | null
+  status: DocumentStatus
+  error_code: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+interface UploadTicket {
+  document_id: string
+  upload_url: string
+  token: string
+  storage_path: string
+  max_bytes: number
+}
+
+export const listDocuments = (schoolId: string, token: string): Promise<{ documents: SchoolDocument[] }> =>
+  request(`/api/v1/schools/${enc(schoolId)}/documents`, undefined, token)
+
+export const requestDocumentUpload = (
+  schoolId: string, body: { filename: string; size_bytes: number; mime: string }, token: string,
+): Promise<UploadTicket> =>
+  request(`/api/v1/schools/${enc(schoolId)}/documents/upload-url`, json('POST', body), token)
+
+export const completeDocument = (schoolId: string, documentId: string, token: string): Promise<SchoolDocument> =>
+  request(`/api/v1/schools/${enc(schoolId)}/documents/${enc(documentId)}/complete`, json('POST', {}), token)
+
+export const deleteDocument = (schoolId: string, documentId: string, token: string): Promise<void> =>
+  request(`/api/v1/schools/${enc(schoolId)}/documents/${enc(documentId)}`, json('DELETE'), token)
+
+// Upload the file straight to Supabase Storage via the signed URL (bypasses the
+// Vercel→Railway request ceiling). XHR gives us a progress callback.
+export const uploadToStorage = (
+  uploadUrl: string, file: File, onProgress?: (fraction: number) => void,
+): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest()
+    xhr.open('PUT', uploadUrl)
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream')
+    xhr.setRequestHeader('x-upsert', 'true')
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total) }
+    }
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300
+      ? resolve()
+      : reject(new Error(`upload failed (${xhr.status})`)))
+    xhr.onerror = () => reject(new Error('upload failed'))
+    xhr.send(file)
+  })

@@ -20,7 +20,7 @@ Last updated: 2026-10-12
 | M0 | Foundations: decisions, legal track, test harness, CI, spikes | 🟦 | 3 / 9 | G0 |
 | M1 | Tenancy + security hardening | ✅ | 14 / 14 | G1 |
 | M2 | Students, classes, login | 🟦 | 8 / 10 | G2 |
-| M3 | Document ingestion (+ M3b OCR) | ⬜ | 0 / 7 | G3 |
+| M3 | Document ingestion (+ M3b OCR) | 🟦 | 6 / 7 | G3 |
 | M4 | AI course builder + publish | ⬜ | 0 / 11 | G4 |
 | M5 | Classroom delivery — pilot-ready MVP | ⬜ | 0 / 8 | G5 |
 | M6 | Course updates from documents | ⬜ | 0 / 7 | G6 |
@@ -87,7 +87,7 @@ Last updated: 2026-10-12
 | SC-304 | Structure + chunking (heading paths, page ranges, header/footer strip, tables → markdown); scanned + garbled detection → `needs_ocr` | BE | M | SC-303 | UNIT-CHUNK-* | ✅ | Done 2026-10-22. `doc_parsing.py`: PDF per-page blocks, DOCX heading-stack → `heading_path` + tables → markdown, `_strip_repeated_lines` (running headers/footers), `chunk_blocks` (section boundaries + ~2k-token target + char cap). Scanned (>30% near-empty pages) and garbled (low sensible-char ratio) → `needs_ocr`. Tests: `tests/unit/test_doc_parsing.py` (11) + `tests/integration/schools/test_extraction.py` (5, real subprocess) |
 | SC-305 | Document list/status/delete (storage + chunks), retention setting | BE | S | SC-301 | API-DOC-* | 🟦 | Done 2026-10-22: list/get/soft-delete (removes storage object + chunks, keeps the row so published courses are unaffected). Retention-N-days setting deferred to a later pass |
 | SC-306 | **M3b** OCR via `document_ocr` interaction type behind `SCHOOL_DOC_OCR_ENABLED`; school-billed | AI/BE | L | SC-304, SC-504 | EV-OCR | ⏭️ | Per D7 |
-| SC-307 | FE: uploader with direct-to-storage progress, document status list (`frontend-changes.md` §7) | FE | M | SC-301 | E2E-04 | ⬜ | |
+| SC-307 | FE: uploader with direct-to-storage progress, document status list (`frontend-changes.md` §7) | FE | M | SC-301 | E2E-04 | ✅ | Done 2026-10-22. `pages/school/SchoolDocuments.tsx` (Materials tab): upload PDF/Word → signed URL → direct-to-Supabase PUT with progress → complete; status list polls while extracting (uploaded/extracting/ready/needs_ocr/failed). `schoolApi.ts` document wrappers + `uploadToStorage` (XHR) + friendly `document_rejected`/`storage_unavailable` messages. CSP `connect-src` += `https://*.supabase.co` (vercel.json). `npm run build` clean. **Live upload still needs the Supabase bucket + service-role key on Railway (503 `storage_unavailable` until then).** |
 
 ## M4 — AI course builder + publish
 
