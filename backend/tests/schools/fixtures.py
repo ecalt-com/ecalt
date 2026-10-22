@@ -24,7 +24,7 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
 __all__ = [
     "World", "clear_caches", "client", "db", "school_db_url", "sent_emails", "world", "firebase_deletes",
-    "fake_service_account", "_db_tables", "_no_real_email", "_school_test_env",
+    "fake_service_account", "fake_storage", "_db_tables", "_no_real_email", "_school_test_env",
 ]
 
 
@@ -94,6 +94,60 @@ def firebase_deletes(monkeypatch):
     mock = AsyncMock(return_value=True)
     monkeypatch.setattr("app.services.firebase_admin.delete_firebase_user", mock)
     return mock
+
+
+def _minimal_docx(body_text: str = "Hello") -> bytes:
+    """Smallest zip that passes the .docx magic-byte check (a ZIP containing
+    word/document.xml, no macros). Enough for upload verification; extraction
+    tests build richer documents with python-docx."""
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    doc_xml = (
+        '<?xml version="1.0"?><w:document '
+        'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f'<w:body><w:p><w:r><w:t>{body_text}</w:t></w:r></w:p></w:body></w:document>'
+    )
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types/>')
+        zf.writestr("_rels/.rels", '<?xml version="1.0"?><Relationships/>')
+        zf.writestr("word/document.xml", doc_xml)
+    return buf.getvalue()
+
+
+@pytest.fixture(autouse=True)
+def fake_storage(monkeypatch):
+    """In-memory stand-in for the Supabase `school-materials` bucket so document
+    endpoints run without a real bucket. `put(path, data)` seeds the bytes a
+    `complete` call downloads; by default download returns a minimal valid
+    PDF (or .docx for a .docx path)."""
+    import app.services.school_storage_service as storage
+    store: dict[str, bytes] = {}
+    canned_pdf = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
+
+    def _signed(object_path, *, upsert=True):
+        return {"upload_url": f"https://fake.storage.invalid/{object_path}",
+                "token": "fake-token", "path": object_path}
+
+    def _download(object_path):
+        if object_path in store:
+            return store[object_path]
+        return _minimal_docx() if object_path.endswith(".docx") else canned_pdf
+
+    monkeypatch.setattr(storage, "storage_enabled", lambda: True)
+    monkeypatch.setattr(storage, "signed_upload_url", _signed)
+    monkeypatch.setattr(storage, "download", _download)
+    monkeypatch.setattr(storage, "delete", lambda object_path: store.pop(object_path, None))
+
+    class _Fake:
+        def __init__(self):
+            self.store = store
+            self.minimal_docx = staticmethod(_minimal_docx)
+        def put(self, path: str, data: bytes) -> None:
+            store[path] = data
+        def disable(self) -> None:
+            monkeypatch.setattr(storage, "storage_enabled", lambda: False)
+    return _Fake()
 
 
 @pytest.fixture(scope="session")

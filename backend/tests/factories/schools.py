@@ -233,6 +233,42 @@ def make_family_profile(conn, parent_uid: str) -> str:
     return uid
 
 
+def make_document(conn, school: dict, *, uploaded_by: Optional[str] = None,
+                  filename: str = "notes.pdf", status: str = "uploaded",
+                  sha256: Optional[str] = None, size_bytes: int = 2048) -> dict:
+    """A source_documents row with a storage_path derived from its id."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
+    mime = ("application/pdf" if ext == "pdf"
+            else "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    with _cur(conn) as cur:
+        cur.execute(
+            """
+            INSERT INTO source_documents (school_id, uploaded_by, filename, mime, size_bytes, sha256, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+            """,
+            (school["id"], uploaded_by, filename, mime, size_bytes, sha256, status),
+        )
+        row = dict(cur.fetchone())
+        doc_id = str(row["id"])
+        path = f"{school['id']}/{doc_id}.{ext}"
+        cur.execute("UPDATE source_documents SET storage_path = %s WHERE id = %s", (path, doc_id))
+    row["id"] = doc_id
+    row["storage_path"] = path
+    return row
+
+
+def add_chunks(conn, document_id: str, texts: list[str]) -> None:
+    """Attach ordered document_chunks to a document (for builder/update tests)."""
+    with _cur(conn) as cur:
+        for i, text in enumerate(texts):
+            cur.execute(
+                """INSERT INTO document_chunks (document_id, ordinal, heading_path, text, char_count)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (document_id, i, [], text, len(text)),
+            )
+
+
 def step_ids(conn, journey_id: str) -> list[str]:
     with _cur(conn) as cur:
         cur.execute("SELECT steps FROM journeys WHERE id = %s", (journey_id,))

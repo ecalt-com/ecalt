@@ -100,6 +100,39 @@ class Settings(BaseSettings):
     # throttle only needs the last few minutes). Other audit events are kept.
     SCHOOL_SIGNIN_FAIL_RETENTION_DAYS: int = 30
 
+    # ── Document ingestion + course builder (M3/M4, README §3.6–3.14) ──────────
+    # The in-process background-job worker (document extraction, course
+    # generation). Independent of SCHEDULER_ENABLED so dev can process jobs, but
+    # like the scheduler it must point at the right DB — keep it OFF locally
+    # unless pointed at a local DB. Turn on for Railway dev + prod.
+    SCHOOL_JOBS_WORKER_ENABLED: bool = False
+    # Global cap on jobs running at once across the process, plus a per-school
+    # cap so one school can't starve the queue.
+    SCHOOL_JOBS_MAX_CONCURRENCY: int = 4
+    SCHOOL_JOBS_PER_SCHOOL_CONCURRENCY: int = 2
+    # A 'running' job whose lock is older than this is assumed dead (lost to a
+    # redeploy) and re-queued.
+    SCHOOL_JOBS_STALE_LOCK_MINUTES: int = 10
+    # Seconds the worker sleeps when the queue is empty before polling again.
+    SCHOOL_JOBS_POLL_SECONDS: float = 5.0
+    # Parallel step-content builds inside a single build job.
+    SCHOOL_GENERATION_CONCURRENCY: int = 4
+    # Uploaded source material: size, page and character caps.
+    SCHOOL_DOC_MAX_MB: int = 25
+    SCHOOL_DOC_MAX_PAGES: int = 300
+    SCHOOL_DOC_MAX_CHARS: int = 400_000
+    # OCR for scanned/garbled documents (M3b). Off in v1 — such documents are
+    # detected and marked needs_ocr instead.
+    SCHOOL_DOC_OCR_ENABLED: bool = False
+    # Private Supabase Storage bucket holding uploaded originals. Needs
+    # SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY; document endpoints return 503
+    # without them.
+    SCHOOL_MATERIALS_BUCKET: str = "school-materials"
+    # Wall-clock and memory caps for the sandboxed extraction subprocess, so a
+    # hostile document can't hang or OOM the worker.
+    SCHOOL_DOC_EXTRACT_TIMEOUT_SECONDS: int = 120
+    SCHOOL_DOC_EXTRACT_MEMORY_MB: int = 1024
+
     @property
     def allowed_origins(self) -> list[str]:
         return [o.strip() for o in self.ALLOWED_ORIGINS.split(",") if o.strip()]

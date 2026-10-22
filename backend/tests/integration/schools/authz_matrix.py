@@ -166,6 +166,18 @@ MATRIX: list[Case] = [
          lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/rotate-code"),
     Case("POST", "/api/v1/schools/{school_id}/classes/{class_id}/login-cards", "class_staff",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/login-cards", body=lambda w, db: {}),
+    # ── M3: documents (any staff member) ──
+    Case("POST", "/api/v1/schools/{school_id}/documents/upload-url", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/upload-url",
+         body=lambda w, db: {"filename": "notes.pdf", "size_bytes": 2048, "mime": "application/pdf"}),
+    Case("POST", "/api/v1/schools/{school_id}/documents/{document_id}/complete", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/{f.make_document(db, w.school_a, status='pending_upload')['id']}/complete"),
+    Case("GET", "/api/v1/schools/{school_id}/documents", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/documents"),
+    Case("GET", "/api/v1/schools/{school_id}/documents/{document_id}", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/{f.make_document(db, w.school_a)['id']}"),
+    Case("DELETE", "/api/v1/schools/{school_id}/documents/{document_id}", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/{f.make_document(db, w.school_a)['id']}"),
     # ── M2: student sign-in (public) ──
     Case("GET", "/api/v1/school-login/classes/{code}", "public",
          lambda w, db: f"/api/v1/school-login/classes/{w.A1['join_code']}"),
