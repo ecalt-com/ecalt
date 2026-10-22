@@ -1,7 +1,8 @@
-"""AI course builder endpoints (M4 SC-402/403): create a course from uploaded
-documents, estimate the cost, and kick off / track the outline generation job.
-All staff-only (students are blocked by the route allowlist). Build, editing,
-publish and versions land in later increments.
+"""AI course builder endpoints (M4 SC-402/404): create a course from uploaded
+documents, estimate the cost, kick off / track the outline generation job, and
+approve the reviewed outline into a build job (grounded step bodies + critic).
+All staff-only (students are blocked by the route allowlist). Editing, publish
+and versions land in later increments.
 """
 from typing import Optional
 
@@ -52,6 +53,11 @@ def estimate(journey_id: str, ctx: SchoolCtx = Depends(school_member())):
 @router.post("/{school_id}/courses/{journey_id}/outline", summary="Generate the course outline (async job)")
 def start_outline(journey_id: str, body: OutlineRequest, ctx: SchoolCtx = Depends(school_member())):
     return courses.start_outline(ctx, journey_id, body.model_dump(exclude_none=True))
+
+
+@router.post("/{school_id}/courses/{journey_id}/build", summary="Build step content from the reviewed outline (async job)")
+def start_build(journey_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return courses.start_build(ctx, journey_id)
 
 
 @router.get("/{school_id}/jobs/{job_id}", summary="Background job status + progress")

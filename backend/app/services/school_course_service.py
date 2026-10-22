@@ -179,6 +179,38 @@ def start_outline(ctx: SchoolCtx, journey_id: str, inputs: dict) -> dict:
     return {"job_id": job_id, "status": "outlining"}
 
 
+# States from which a build may (re)start: a reviewed outline, or a prior build
+# to redo. Not 'empty'/'outlining' (no outline yet) nor a mid-flight 'building'.
+_BUILDABLE_STATUSES = ("outline_ready", "built", "build_failed")
+
+
+def start_build(ctx: SchoolCtx, journey_id: str) -> dict:
+    """Approve the reviewed outline and enqueue the build job (grounded step
+    bodies + critic). Budget-checked; refuses a published or un-outlined course."""
+    journey_id = uuid_or_404(journey_id, "course_not_found")
+    course = _load_course(ctx.school_id, journey_id)
+    if course["status"] != "draft":
+        raise HTTPException(status_code=409, detail={
+            "error": "course_not_draft", "message": "This course can't be rebuilt once published."})
+    draft = _draft_version(journey_id)
+    status = (draft["meta"] or {}).get("status") if draft else None
+    steps = (draft["steps"] or []) if draft else []
+    if not steps or status not in _BUILDABLE_STATUSES:
+        raise HTTPException(status_code=409, detail={
+            "error": "no_outline",
+            "message": "Generate and review an outline before building the course."})
+    allowed, reason = subscription_service.check_school_budget(ctx.school_id)
+    if not allowed:
+        raise HTTPException(status_code=402, detail=subscription_service.budget_error_detail(reason))
+
+    _set_meta(journey_id, {**(draft["meta"] or {}), "status": "building"})
+    job_id = school_jobs.enqueue(ctx.school_id, "build", {"journey_id": journey_id}, created_by=ctx.uid)
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            school_audit(cur, ctx.school_id, ctx.uid, "course.build_started", "course", journey_id)
+    return {"job_id": job_id, "status": "building"}
+
+
 # ── Chunk gathering (shared with the builder) ────────────────────────────────
 
 def course_chunks(school_id: str, journey_id: str) -> list:

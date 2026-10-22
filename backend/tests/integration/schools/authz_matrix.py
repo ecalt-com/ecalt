@@ -190,6 +190,8 @@ MATRIX: list[Case] = [
          lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_course_draft(db, w.school_a)}/estimate"),
     Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/outline", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_course_draft(db, w.school_a)}/outline", body=lambda w, db: {}),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/build", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/build", body=lambda w, db: {}),
     Case("GET", "/api/v1/schools/{school_id}/jobs/{job_id}", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/jobs/{f.enqueue_job(db, w.school_a)}"),
     Case("POST", "/api/v1/schools/{school_id}/jobs/{job_id}/cancel", "member",

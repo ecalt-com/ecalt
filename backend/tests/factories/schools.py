@@ -309,6 +309,35 @@ def make_course_draft(conn, school: dict, *, creator: Optional[str] = None,
     return journey_id
 
 
+def make_outlined_draft(conn, school: dict, *, creator: Optional[str] = None) -> str:
+    """A draft course whose outline is reviewed and ready to build: two AI steps
+    grounded in the source document's chunk UUIDs (for build/regenerate tests)."""
+    journey_id = make_course_draft(conn, school, creator=creator)
+    rows = fetch(conn, """
+        SELECT dc.id::text AS id FROM course_sources cs
+          JOIN document_chunks dc ON dc.document_id = cs.document_id
+         WHERE cs.journey_id = %s ORDER BY dc.ordinal
+    """, (journey_id,))
+    cids = [r["id"] for r in rows]  # 3 chunk uuids, cite_ids 0..2
+    steps = [
+        {"id": "s1", "title": "Introduction", "description": "", "type": "concept",
+         "estimated_minutes": 10, "core_question": "What is topic 1?",
+         "learning_objective": "Understand topic 1", "chunk_ids": [cids[0], cids[1]],
+         "origin": "ai", "body_md": None, "flags": []},
+        {"id": "s2", "title": "Going deeper", "description": "", "type": "practice",
+         "estimated_minutes": 10, "core_question": "How does topic 3 work?",
+         "learning_objective": "Apply topic 3", "chunk_ids": [cids[2]],
+         "origin": "ai", "body_md": None, "flags": []},
+    ]
+    with _cur(conn) as cur:
+        cur.execute(
+            "UPDATE course_versions SET steps = %s::jsonb, "
+            "meta = '{\"status\":\"outline_ready\"}'::jsonb, revision = 1 "
+            "WHERE journey_id = %s AND state = 'draft'",
+            (json.dumps(steps), journey_id))
+    return journey_id
+
+
 def enqueue_job(conn, school: dict, kind: str = "outline", status: str = "queued") -> str:
     row = fetch(conn, "INSERT INTO school_jobs (school_id, kind, status) VALUES (%s, %s, %s) RETURNING id::text",
                 (school["id"], kind, status))

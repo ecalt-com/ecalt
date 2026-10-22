@@ -119,6 +119,7 @@ def test_iso_staff_routes_never_reach_another_school(client, world, db):
         ("GET", f"/api/v1/schools/{a}/courses/{course_b}", None),
         ("POST", f"/api/v1/schools/{a}/courses/{course_b}/estimate", {}),
         ("POST", f"/api/v1/schools/{a}/courses/{course_b}/outline", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/build", {}),
         ("GET", f"/api/v1/schools/{a}/jobs/{job_b}", None),
         ("POST", f"/api/v1/schools/{a}/jobs/{job_b}/cancel", {}),
     ]
