@@ -61,6 +61,8 @@ def _digest(db, school_id) -> str:
         f.fetch(db, "SELECT * FROM class_teachers WHERE school_id = %s ORDER BY class_id, uid", (school_id,)),
         f.fetch(db, "SELECT * FROM class_enrollments WHERE school_id = %s ORDER BY class_id, student_uid", (school_id,)),
         f.fetch(db, "SELECT * FROM source_documents WHERE school_id = %s ORDER BY id", (school_id,)),
+        f.fetch(db, "SELECT * FROM school_courses WHERE school_id = %s ORDER BY journey_id", (school_id,)),
+        f.fetch(db, "SELECT id, status, kind, cancel_requested FROM school_jobs WHERE school_id = %s ORDER BY id", (school_id,)),
     ]
     return hashlib.sha256(repr(rows).encode()).hexdigest()
 
@@ -72,6 +74,8 @@ def test_iso_staff_routes_never_reach_another_school(client, world, db):
         VALUES (%s, 'b@b.example', 'teacher', 'hash-b', now() + interval '1 day') RETURNING id::text
     """, (b,))[0]["id"]
     doc_b = f.make_document(db, world.school_b)["id"]
+    course_b = f.make_course_draft(db, world.school_b)
+    job_b = f.enqueue_job(db, world.school_b)
     before = _digest(db, b)
     h = world.headers("SA")
 
@@ -111,6 +115,12 @@ def test_iso_staff_routes_never_reach_another_school(client, world, db):
         ("GET", f"/api/v1/schools/{a}/documents/{doc_b}", None),
         ("POST", f"/api/v1/schools/{a}/documents/{doc_b}/complete", None),
         ("DELETE", f"/api/v1/schools/{a}/documents/{doc_b}", None),
+        # M4: school B's course + job through school A's routes
+        ("GET", f"/api/v1/schools/{a}/courses/{course_b}", None),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/estimate", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/outline", {}),
+        ("GET", f"/api/v1/schools/{a}/jobs/{job_b}", None),
+        ("POST", f"/api/v1/schools/{a}/jobs/{job_b}/cancel", {}),
     ]
     for method, path, body in calls:
         r = client.request(method, path, json=body, headers=h)

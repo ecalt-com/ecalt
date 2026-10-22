@@ -67,8 +67,9 @@ def _load_handlers() -> None:
     load) to avoid a circular import with the services that enqueue jobs."""
     try:  # handlers land with M3/M4; tolerate their absence so the queue still runs
         import app.services.school_ingest_service  # noqa: F401  (registers 'extract')
-    except Exception:  # pragma: no cover - defensive until M3 lands
-        logger.debug("no ingest handler to load yet", exc_info=True)
+        import app.services.school_course_builder   # noqa: F401  (registers 'outline')
+    except Exception:  # pragma: no cover - defensive until M3/M4 lands
+        logger.debug("some school job handlers not available yet", exc_info=True)
 
 
 # ── Enqueue / read / cancel ──────────────────────────────────────────────────

@@ -121,6 +121,52 @@ def budget_error_detail(reason: str) -> dict:
     return {"error": reason, "upgrade_url": "/pricing"}
 
 
+def check_school_budget(school_id: str) -> tuple[bool, str]:
+    """Staff-triggered AI (course generation) bills the school's monthly pool,
+    not any individual's plan. Blocks when the school has no allowance or the
+    month's pool is spent. Fails closed on a DB error."""
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT monthly_ai_budget_cents FROM schools WHERE id = %s", (school_id,))
+                row = cur.fetchone()
+                budget = float(row["monthly_ai_budget_cents"]) if row and row["monthly_ai_budget_cents"] else 0.0
+                if budget <= 0:
+                    return False, "school_budget_exhausted"
+                cur.execute(
+                    "SELECT cost_cents FROM school_usage WHERE school_id = %s AND period_start = %s",
+                    (school_id, date.today().replace(day=1)),
+                )
+                used = cur.fetchone()
+    except Exception:
+        logger.exception("check_school_budget failed for %s", school_id)
+        return False, "school_budget_exhausted"
+    if used and float(used["cost_cents"]) >= budget:
+        return False, "school_budget_exhausted"
+    return True, "ok"
+
+
+def record_school_usage(school_id: str, input_tokens: int, output_tokens: int, model: str) -> None:
+    """Accrue a staff-triggered model call to the school's monthly pool."""
+    cost_cents = cost_for_tokens(model, input_tokens, output_tokens)
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO school_usage (school_id, period_start, cost_cents, input_tokens, output_tokens)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (school_id, period_start) DO UPDATE SET
+                        cost_cents    = school_usage.cost_cents + EXCLUDED.cost_cents,
+                        input_tokens  = school_usage.input_tokens + EXCLUDED.input_tokens,
+                        output_tokens = school_usage.output_tokens + EXCLUDED.output_tokens
+                    """,
+                    (school_id, date.today().replace(day=1), cost_cents, input_tokens, output_tokens),
+                )
+    except Exception:
+        logger.warning("record_school_usage failed for %s", school_id, exc_info=True)
+
+
 def get_user_plan(uid: str) -> dict:
     """Return plan_configs row for user. Defaults to free_trial.
 

@@ -269,6 +269,52 @@ def add_chunks(conn, document_id: str, texts: list[str]) -> None:
             )
 
 
+def make_course_draft(conn, school: dict, *, creator: Optional[str] = None,
+                      title: str = "Draft Course", with_source: bool = True) -> str:
+    """A draft school course: journey (uid NULL) + school_courses('draft') +
+    course_versions('draft'), optionally with a ready source document + chunks."""
+    journey_id = str(uuid.uuid4())
+    with _cur(conn) as cur:
+        cur.execute(
+            "INSERT INTO journeys (id, uid, school_id, question, title, description, estimated_hours, steps) "
+            "VALUES (%s, NULL, %s, %s, %s, '', 0, '[]'::jsonb)",
+            (journey_id, school["id"], title, title),
+        )
+        cur.execute(
+            "INSERT INTO school_courses (journey_id, school_id, status, created_by) VALUES (%s, %s, 'draft', %s)",
+            (journey_id, school["id"], creator),
+        )
+        cur.execute(
+            "INSERT INTO course_versions (journey_id, version, state, revision, meta, steps) "
+            "VALUES (%s, 1, 'draft', 0, '{\"status\":\"empty\"}'::jsonb, '[]'::jsonb)",
+            (journey_id,),
+        )
+        if with_source:
+            cur.execute(
+                "INSERT INTO source_documents (school_id, filename, mime, size_bytes, status) "
+                "VALUES (%s, 'notes.pdf', 'application/pdf', 4096, 'ready') RETURNING id",
+                (school["id"],),
+            )
+            doc_id = cur.fetchone()["id"]
+            for i in range(3):
+                cur.execute(
+                    "INSERT INTO document_chunks (document_id, ordinal, heading_path, text, char_count) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (doc_id, i, [f"Section {i + 1}"], f"Lesson content about topic {i + 1}. " * 12, 300),
+                )
+            cur.execute(
+                "INSERT INTO course_sources (journey_id, document_id, school_id) VALUES (%s, %s, %s)",
+                (journey_id, doc_id, school["id"]),
+            )
+    return journey_id
+
+
+def enqueue_job(conn, school: dict, kind: str = "outline", status: str = "queued") -> str:
+    row = fetch(conn, "INSERT INTO school_jobs (school_id, kind, status) VALUES (%s, %s, %s) RETURNING id::text",
+                (school["id"], kind, status))
+    return row[0]["id"]
+
+
 def step_ids(conn, journey_id: str) -> list[str]:
     with _cur(conn) as cur:
         cur.execute("SELECT steps FROM journeys WHERE id = %s", (journey_id,))
