@@ -500,3 +500,189 @@ export const uploadToStorage = (
     xhr.onerror = () => reject(new Error('upload failed'))
     xhr.send(file)
   })
+
+// ── Courses (M4: AI course builder, frontend-changes.md §8 + §8.7) ───────────
+
+export type CourseStatus = 'draft' | 'published' | 'archived'
+export type DraftStatus =
+  | 'empty' | 'outlining' | 'outline_ready' | 'building' | 'built'
+  | 'outline_failed' | 'build_failed' | 'published'
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+
+export const DRAFT_BUSY: DraftStatus[] = ['outlining', 'building']
+
+export interface CourseListItem {
+  journey_id: string
+  title: string
+  status: CourseStatus
+  published_version: number | null
+  draft_status: DraftStatus | null
+  created_at: string
+  updated_at: string
+  is_mine?: boolean
+}
+
+export interface StepFlag { kind: 'unsupported' | 'build_error'; claim?: string; reason?: string }
+
+export interface QuizAnchor { id: string; fact: string; chunk_ids: string[] }
+
+export interface CourseStep {
+  id: string
+  title: string
+  description: string | null
+  type: string | null
+  estimated_minutes: number | null
+  core_question: string | null
+  learning_objective: string | null
+  chunk_ids: string[]
+  citations: string[]
+  key_facts: string[]
+  quiz_anchors: QuizAnchor[]
+  body_md: string | null
+  flags: StepFlag[]
+  origin: 'ai' | 'teacher'
+  edited_by_teacher: boolean
+  build_status: 'built' | 'failed' | 'empty'
+}
+
+export interface SkippedSection { title?: string; reason?: string; chunk_ids?: string[] }
+
+export interface CourseDraft {
+  version: number
+  revision: number
+  status: DraftStatus
+  meta: {
+    status?: DraftStatus
+    title?: string
+    description?: string
+    estimated_hours?: number
+    inputs?: OutlineInputs
+    skipped_sections?: SkippedSection[]
+    [k: string]: unknown
+  }
+  steps: CourseStep[]
+}
+
+export interface CourseDoc { id: string; filename: string; status: DocumentStatus; page_count: number | null }
+
+export interface Course {
+  journey_id: string
+  title: string
+  status: CourseStatus
+  published_version: number | null
+  documents: CourseDoc[]
+  draft: CourseDraft | null
+}
+
+export interface CourseEstimate {
+  document_count: number
+  chunk_count: number
+  input_tokens: number
+  estimated_cost_cents: number
+}
+
+export interface SchoolJob {
+  status: JobStatus
+  progress: { steps_done?: number; steps_total?: number } | null
+  result?: Record<string, unknown> | null
+  error?: string | null
+}
+
+export interface JobHandle { job_id: string; status: DraftStatus }
+
+export interface OutlineInputs {
+  grade?: number
+  subject?: string
+  goal?: string
+  target_steps?: number
+  session_minutes?: number
+  language?: string
+  follow_document_order?: boolean
+}
+
+export interface CourseVersion {
+  version: number
+  created_at: string
+  created_by_name: string | null
+  change_summary: string | null
+}
+
+const courses = (schoolId: string) => `/api/v1/schools/${enc(schoolId)}/courses`
+
+export const listCourses = (schoolId: string, token: string): Promise<{ courses: CourseListItem[] }> =>
+  request(courses(schoolId), undefined, token)
+
+export const createCourse = (schoolId: string, body: { title: string; document_ids: string[] }, token: string): Promise<Course> =>
+  request(courses(schoolId), json('POST', body), token)
+
+export const getCourse = (schoolId: string, jid: string, token: string): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}`, undefined, token)
+
+export const estimateCourse = (schoolId: string, jid: string, token: string): Promise<CourseEstimate> =>
+  request(`${courses(schoolId)}/${enc(jid)}/estimate`, json('POST'), token)
+
+export const generateOutline = (schoolId: string, jid: string, inputs: OutlineInputs, token: string): Promise<JobHandle> =>
+  request(`${courses(schoolId)}/${enc(jid)}/outline`, json('POST', inputs), token)
+
+// "Approve outline" IS the build call (§8.7).
+export const approveOutline = (schoolId: string, jid: string, token: string): Promise<JobHandle> =>
+  request(`${courses(schoolId)}/${enc(jid)}/build`, json('POST'), token)
+
+export const getSchoolJob = (schoolId: string, jobId: string, token: string): Promise<SchoolJob> =>
+  request(`/api/v1/schools/${enc(schoolId)}/jobs/${enc(jobId)}`, undefined, token)
+
+export const cancelSchoolJob = (schoolId: string, jobId: string, token: string): Promise<{ status: string }> =>
+  request(`/api/v1/schools/${enc(schoolId)}/jobs/${enc(jobId)}/cancel`, json('POST'), token)
+
+export const patchCourseMeta = (
+  schoolId: string, jid: string,
+  body: { title?: string; description?: string; estimated_hours?: number; expected_revision?: number },
+  token: string,
+): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/draft`, json('PATCH', body), token)
+
+export const addCourseStep = (
+  schoolId: string, jid: string,
+  body: { title: string; description?: string; after_step_id?: string; expected_revision?: number },
+  token: string,
+): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/draft/steps`, json('POST', body), token)
+
+export const reorderCourseSteps = (
+  schoolId: string, jid: string, order: string[], expectedRevision: number | undefined, token: string,
+): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/draft/steps/reorder`, json('POST', { order, expected_revision: expectedRevision }), token)
+
+export const patchCourseStep = (
+  schoolId: string, jid: string, stepId: string,
+  body: { title?: string; description?: string; body_md?: string; estimated_minutes?: number; core_question?: string; learning_objective?: string; expected_revision?: number },
+  token: string,
+): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/draft/steps/${enc(stepId)}`, json('PATCH', body), token)
+
+export const deleteCourseStep = (schoolId: string, jid: string, stepId: string, revision: number | undefined, token: string): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/draft/steps/${enc(stepId)}${revision !== undefined ? `?revision=${revision}` : ''}`, json('DELETE'), token)
+
+export const regenerateCourseStep = (
+  schoolId: string, jid: string, stepId: string,
+  body: { instruction?: string; overwrite_teacher_edits?: boolean; expected_revision?: number },
+  token: string,
+): Promise<JobHandle> =>
+  request(`${courses(schoolId)}/${enc(jid)}/draft/steps/${enc(stepId)}/regenerate`, json('POST', body), token)
+
+export const publishCourse = (
+  schoolId: string, jid: string, body: { change_summary?: string; expected_revision?: number }, token: string,
+): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/publish`, json('POST', body), token)
+
+export const listCourseVersions = (schoolId: string, jid: string, token: string): Promise<{ versions: CourseVersion[] }> =>
+  request(`${courses(schoolId)}/${enc(jid)}/versions`, undefined, token)
+
+export const restoreCourseVersion = (schoolId: string, jid: string, version: number, token: string): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/versions/${version}/restore`, json('POST'), token)
+
+export const duplicateCourse = (schoolId: string, jid: string, token: string): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/duplicate`, json('POST'), token)
+
+export const archiveCourse = (schoolId: string, jid: string, token: string): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/archive`, json('POST'), token)
