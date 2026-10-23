@@ -50,7 +50,11 @@ def _bucket() -> str:
 
 
 def _auth() -> dict:
-    return {"Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}"}
+    # Both headers: the new `sb_secret_...` keys authenticate via `apikey` (the
+    # Storage gateway rejects them as a Bearer JWT otherwise), while legacy
+    # service-role JWTs accept either — so sending both works for any key format.
+    key = settings.SUPABASE_SERVICE_ROLE_KEY
+    return {"Authorization": f"Bearer {key}", "apikey": key}
 
 
 def signed_upload_url(object_path: str, *, upsert: bool = True) -> dict:
