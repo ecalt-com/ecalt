@@ -686,3 +686,73 @@ export const duplicateCourse = (schoolId: string, jid: string, token: string): P
 
 export const archiveCourse = (schoolId: string, jid: string, token: string): Promise<Course> =>
   request(`${courses(schoolId)}/${enc(jid)}/archive`, json('POST'), token)
+
+// ── Assignments (M5 §9, SC-501..502) ─────────────────────────────────────────
+
+export interface AssignmentSettings { tutor_enabled: boolean; quiz_required: boolean }
+
+export interface AssignmentProgress { enrolled: number; started: number; completed: number; avg_percent: number }
+
+export interface Assignment {
+  id: string
+  journey_id: string
+  title: string
+  icon: string
+  total_steps: number
+  due_at: string | null
+  settings: AssignmentSettings
+  assigned_at: string | null
+  assigned_by_name: string | null
+  progress: AssignmentProgress
+}
+
+const classCourses = (schoolId: string, classId: string) =>
+  `/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/courses`
+
+export const listAssignments = (schoolId: string, classId: string, token: string): Promise<{ assignments: Assignment[] }> =>
+  request(classCourses(schoolId, classId), undefined, token)
+
+export const assignCourse = (
+  schoolId: string, classId: string,
+  body: { journey_id: string; due_at?: string | null; tutor_enabled?: boolean; quiz_required?: boolean },
+  token: string,
+): Promise<Assignment> =>
+  request(classCourses(schoolId, classId), json('POST', body), token)
+
+export const updateAssignment = (
+  schoolId: string, classId: string, assignmentId: string,
+  body: { due_at?: string | null; tutor_enabled?: boolean; quiz_required?: boolean },
+  token: string,
+): Promise<Assignment> =>
+  request(`${classCourses(schoolId, classId)}/${enc(assignmentId)}`, json('PATCH', body), token)
+
+export const unassignCourse = (schoolId: string, classId: string, assignmentId: string, token: string): Promise<void> =>
+  request(`${classCourses(schoolId, classId)}/${enc(assignmentId)}`, json('DELETE'), token)
+
+// ── Student home (M5 §9, SC-502) ──────────────────────────────────────────────
+
+export interface StudentCourse {
+  assignment_id: string
+  journey_id: string
+  title: string
+  icon: string
+  description: string | null
+  hero_image_url: string | null
+  total_steps: number
+  done_steps: number
+  percent: number
+  completed: boolean
+  due_at: string | null
+  tutor_enabled: boolean
+}
+
+export interface StudentClass {
+  class_id: string
+  class_name: string
+  grade: number | null
+  teacher_name: string | null
+  courses: StudentCourse[]
+}
+
+export const getStudentHome = (token: string): Promise<{ classes: StudentClass[] }> =>
+  request('/api/v1/school-student/home', undefined, token)

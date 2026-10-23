@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Archive, Loader2, Lock, Printer, RefreshCw, UserMinus, UserPlus } from 'lucide-react'
 import clsx from 'clsx'
 import ProfileAvatar from '../../components/family/ProfileAvatar'
+import ClassCourses from '../../components/school/ClassCourses'
 import { useAuth } from '../../lib/AuthContext'
 import { useToast } from '../../lib/ToastContext'
 import { apiErrorCode } from '../../lib/api'
@@ -243,6 +244,8 @@ export default function SchoolClassDetail() {
           </div>
         )}
       </div>
+
+      <ClassCourses schoolId={school.id} classId={cls.id} canManage={manage} />
 
       {manage && (
         <div className="flex justify-end">

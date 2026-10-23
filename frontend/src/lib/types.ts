@@ -32,6 +32,9 @@ export interface Journey {
   like_count: number
   forked_from_id?: string | null
   is_owner: boolean
+  // For a school student viewing an assigned course: whether the teacher left
+  // the in-course tutor on. null/undefined for everyone else.
+  tutor_enabled?: boolean | null
 }
 
 export type LearnerPurpose = 'research_paper' | 'professional_growth' | 'personal_curiosity' | 'teaching_others' | 'fun'
