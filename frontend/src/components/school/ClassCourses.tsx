@@ -87,7 +87,9 @@ export default function ClassCourses({ schoolId, classId, canManage }: {
 
   const patch = async (a: Assignment, body: { due_at?: string | null; tutor_enabled?: boolean; quiz_required?: boolean }) => {
     const r = await act(a.id, t => updateAssignment(schoolId, classId, a.id, body, t))
-    if (r) setAssignments(list => (list ?? []).map(x => (x.id === a.id ? r : x)))
+    // PATCH returns only the changed fields (due_at, settings, …) — merge them so
+    // the course meta and progress summary already in state are preserved.
+    if (r) setAssignments(list => (list ?? []).map(x => (x.id === a.id ? { ...x, ...r } : x)))
   }
 
   return (
