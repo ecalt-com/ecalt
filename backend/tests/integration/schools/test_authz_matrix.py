@@ -62,6 +62,7 @@ def _digest(db, school_id) -> str:
         f.fetch(db, "SELECT * FROM class_enrollments WHERE school_id = %s ORDER BY class_id, student_uid", (school_id,)),
         f.fetch(db, "SELECT * FROM source_documents WHERE school_id = %s ORDER BY id", (school_id,)),
         f.fetch(db, "SELECT * FROM school_courses WHERE school_id = %s ORDER BY journey_id", (school_id,)),
+        f.fetch(db, "SELECT id, class_id, journey_id, status, due_at, settings FROM course_assignments WHERE school_id = %s ORDER BY id", (school_id,)),
         f.fetch(db, "SELECT id, status, kind, cancel_requested FROM school_jobs WHERE school_id = %s ORDER BY id", (school_id,)),
     ]
     return hashlib.sha256(repr(rows).encode()).hexdigest()
@@ -76,6 +77,9 @@ def test_iso_staff_routes_never_reach_another_school(client, world, db):
     doc_b = f.make_document(db, world.school_b)["id"]
     course_b = f.make_course_draft(db, world.school_b)
     job_b = f.enqueue_job(db, world.school_b)
+    assignment_b = f.fetch(db, "SELECT id::text AS id FROM course_assignments "
+                               "WHERE class_id = %s AND journey_id = %s",
+                           (world.B1["id"], world.CB))[0]["id"]
     before = _digest(db, b)
     h = world.headers("SA")
 
@@ -134,6 +138,13 @@ def test_iso_staff_routes_never_reach_another_school(client, world, db):
         ("POST", f"/api/v1/schools/{a}/courses/{course_b}/hero-image", {}),
         ("GET", f"/api/v1/schools/{a}/jobs/{job_b}", None),
         ("POST", f"/api/v1/schools/{a}/jobs/{job_b}/cancel", {}),
+        # M5: school B's class assignments through school A's routes
+        ("GET", f"/api/v1/schools/{a}/classes/{world.B1['id']}/courses", None),
+        ("POST", f"/api/v1/schools/{a}/classes/{world.B1['id']}/courses", {"journey_id": world.CB}),
+        ("PATCH", f"/api/v1/schools/{a}/classes/{world.B1['id']}/courses/{assignment_b}", {"tutor_enabled": False}),
+        ("DELETE", f"/api/v1/schools/{a}/classes/{world.B1['id']}/courses/{assignment_b}", None),
+        # school A's own class, but school B's course in the body
+        ("POST", f"/api/v1/schools/{a}/classes/{world.A1['id']}/courses", {"journey_id": course_b}),
     ]
     for method, path, body in calls:
         r = client.request(method, path, json=body, headers=h)

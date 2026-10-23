@@ -56,6 +56,7 @@ class Journey(BaseModel):
     like_count: int = Field(0, description="Number of users who liked this journey")
     forked_from_id: Optional[str] = Field(None, description="Source journey id if this was forked from the marketplace")
     is_owner: bool = Field(False, description="Whether the requesting user owns this journey (per-request, not cached)")
+    tutor_enabled: Optional[bool] = Field(None, description="For a school student viewing an assigned course: whether the teacher left the in-course tutor on (null for everyone else)")
 
     model_config = {
         "json_schema_extra": {

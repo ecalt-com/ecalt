@@ -35,6 +35,14 @@ async def chat_stream(request: Request, body: ChatRequest, uid: str = Depends(ge
         raise student_not_allowed()  # students only get the in-course tutor (D5)
     if body.journey_id:
         assert_can_read_journey(uid, body.journey_id)
+    # The teacher can switch the tutor off for a class's assignment (SC-503).
+    if is_school_student_uid(uid):
+        from app.services.school_assignment_service import student_tutor_allowed
+        if not student_tutor_allowed(uid, body.journey_id):
+            raise HTTPException(status_code=403, detail={
+                "error": "tutor_disabled",
+                "message": "Your teacher has turned off the tutor for this course.",
+            })
     ensure_chat_allowed(uid)  # parental control (covers daily chat + journey tutor)
     allowed, reason = check_budget(uid, context="chat")
     if not allowed:

@@ -183,6 +183,13 @@ Endpoints as shipped:
 - On `/journey/:id` for students: hide like/fork/share/marketplace actions and suggestions. Show the tutor only when the assignment allows it.
 - 402 `school_budget_exhausted` → a friendly inline card: "Your class has used up its AI helpers for this month — tell your teacher". It never links to pricing.
 
+### 9.1 As built (SC-501..503 + SC-507, 2026-10-23)
+
+- **API contract:** `GET/POST /schools/{id}/classes/{cid}/courses`, `PATCH/DELETE …/courses/{aid}`. POST body `{journey_id, due_at?, tutor_enabled=true, quiz_required=false}`; POST is published-courses-only (409 `course_not_published`, 404 `course_not_found`, 409 `already_assigned`). GET returns `{assignments: [{id, journey_id, title, icon, total_steps, due_at, settings:{tutor_enabled,quiz_required}, assigned_at, assigned_by_name, progress:{enrolled,started,completed,avg_percent}}]}`. PATCH takes any of `due_at`/`tutor_enabled`/`quiz_required` (sent keys only; `due_at:null` clears). DELETE archives (204; progress kept). `GET /school-student/home` → `{classes:[{class_id,class_name,grade,teacher_name,courses:[{assignment_id,journey_id,title,icon,description,hero_image_url,total_steps,done_steps,percent,completed,due_at,tutor_enabled}]}]}` (lists every active class, even with no courses).
+- **Settings enforcement:** tutor on/off → `chat/stream` 403 `tutor_disabled`; quiz-required → `progress` step-complete 412 `quiz_not_passed` only when required (default optional for school courses). `GET /journeys/{id}` carries `tutor_enabled` for a student so the UI hides the tutor rather than offering one that 403s.
+- **Frontend:** `components/school/ClassCourses.tsx` (in the class page), `StudentHome.tsx` (on `getStudentHome`), student `Journey` adjustments. `lib/schoolApi.ts`: `listAssignments`, `assignCourse`, `updateAssignment`, `unassignCourse`, `getStudentHome` + types. The budget card reuses `UpgradePrompt` (already maps `school_budget_exhausted`/`school_daily_limit_reached` to no-upsell copy).
+- **Deferred:** §10 class progress page (needs the SC-505 matrix endpoint); drag-and-drop/reorder of assignments; grade→age-band (SC-503).
+
 ## 10. Progress and analytics (SC-505, SC-701..707)
 
 - Class → **Progress**: a matrix of students (rows) × assigned courses (columns). Cells show steps done/total with colour; overdue is outlined. Click → student drill-down.
