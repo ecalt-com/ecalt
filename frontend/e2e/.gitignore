@@ -1,0 +1,10 @@
+# Secrets & minted session — never commit
+.env.e2e
+.auth/
+service-account*.json
+
+# Playwright artifacts
+.output/
+.report/
+
+recordings/
