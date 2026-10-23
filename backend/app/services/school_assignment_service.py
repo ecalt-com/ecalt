@@ -12,7 +12,7 @@ assignments and reads them back for staff (the Courses tab) and for students
 (the home screen). Settings are enforced in the chat and progress endpoints via
 ``student_assignment_settings`` (SC-503).
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import HTTPException
@@ -238,6 +238,96 @@ def unassign(ctx: SchoolCtx, class_id: str, assignment_id: str) -> None:
     if not row:
         raise _assignment_not_found()
     invalidate_journey_access(journey_id=row["journey_id"])
+
+
+# ── Staff: class progress matrix (SC-505, §10) ───────────────────────────────
+
+def class_progress_matrix(ctx: SchoolCtx, class_id: str) -> dict:
+    """A matrix of the class's active students (rows) × its active course
+    assignments (columns). Each cell is that student's progress in that course
+    (steps done/total, percent, completed, overdue). Read access = any staff
+    member of the school (the services decide who may change things)."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cls = load_class(ctx, class_id, cur=cur)
+            cur.execute(
+                """
+                SELECT s.uid, s.display_name, s.avatar, s.grade
+                  FROM class_enrollments e
+                  JOIN school_students s ON s.uid = e.student_uid AND s.status = 'active'
+                 WHERE e.class_id = %s AND e.removed_at IS NULL
+                 ORDER BY lower(s.display_name)
+                """,
+                (cls["id"],),
+            )
+            students = cur.fetchall()
+            cur.execute(
+                """
+                SELECT a.id, a.journey_id, a.due_at,
+                       j.title, j.icon,
+                       jsonb_array_length(COALESCE(j.steps, '[]'::jsonb)) AS total_steps
+                  FROM course_assignments a
+                  JOIN journeys j ON j.id = a.journey_id
+                 WHERE a.class_id = %s AND a.school_id = %s AND a.status = 'active'
+                 ORDER BY a.assigned_at DESC
+                """,
+                (cls["id"], ctx.school_id),
+            )
+            assignments = cur.fetchall()
+            cur.execute(
+                """
+                SELECT e.student_uid, a.journey_id, COUNT(up.step_id) AS done
+                  FROM course_assignments a
+                  JOIN class_enrollments e
+                    ON e.class_id = a.class_id AND e.removed_at IS NULL
+                  JOIN school_students s ON s.uid = e.student_uid AND s.status = 'active'
+                  LEFT JOIN user_progress up
+                    ON up.uid = e.student_uid AND up.journey_id = a.journey_id
+                 WHERE a.class_id = %s AND a.school_id = %s AND a.status = 'active'
+                 GROUP BY e.student_uid, a.journey_id
+                """,
+                (cls["id"], ctx.school_id),
+            )
+            done_rows = cur.fetchall()
+
+    done = {(r["student_uid"], r["journey_id"]): int(r["done"]) for r in done_rows}
+    now = datetime.now(timezone.utc)
+
+    courses = [{
+        "assignment_id": str(a["id"]),
+        "journey_id": a["journey_id"],
+        "title": a["title"],
+        "icon": a["icon"],
+        "total_steps": a["total_steps"] or 0,
+        "due_at": _iso(a["due_at"]),
+    } for a in assignments]
+
+    rows = []
+    for s in students:
+        cells = {}
+        for a in assignments:
+            total = a["total_steps"] or 0
+            d = done.get((s["uid"], a["journey_id"]), 0)
+            if total:
+                d = min(d, total)
+            completed = bool(total and d >= total)
+            overdue = bool(a["due_at"] and not completed and a["due_at"] < now)
+            cells[a["journey_id"]] = {
+                "done": d,
+                "total": total,
+                "percent": round(d / total * 100) if total else 0,
+                "completed": completed,
+                "overdue": overdue,
+            }
+        rows.append({
+            "uid": s["uid"],
+            "display_name": s["display_name"],
+            "avatar": s["avatar"],
+            "grade": s["grade"],
+            "cells": cells,
+        })
+
+    return {"students": rows, "courses": courses}
 
 
 def _assignment_row(row) -> dict:

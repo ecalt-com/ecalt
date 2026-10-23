@@ -249,3 +249,9 @@ def update_assignment(class_id: str, assignment_id: str, body: UpdateAssignmentR
                summary="Unassign a course (students lose access; progress is kept)")
 def unassign_course(class_id: str, assignment_id: str, ctx: SchoolCtx = Depends(school_member())):
     assignments.unassign(ctx, class_id, assignment_id)
+
+
+@router.get("/{school_id}/classes/{class_id}/progress",
+            summary="Class progress matrix (students × assigned courses)")
+def class_progress(class_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return assignments.class_progress_matrix(ctx, class_id)

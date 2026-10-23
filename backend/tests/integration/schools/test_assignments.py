@@ -214,3 +214,45 @@ def test_quiz_required_gates_step_completion(client, world, db):
     r = client.post(f"/api/v1/progress/{world.C1}/{step}", headers=world.headers("S"))
     assert r.status_code == 412
     assert r.json()["detail"]["message"] == "quiz_not_passed"
+
+
+# ── SC-505: class progress matrix (§10) ──────────────────────────────────────
+
+def _progress_url(w, class_id):
+    return f"/api/v1/schools/{w.school_a['id']}/classes/{class_id}/progress"
+
+
+def test_progress_matrix_shape_and_empty_cells(client, world):
+    r = client.get(_progress_url(world, world.A1["id"]), headers=world.headers("T"))
+    assert r.status_code == 200
+    data = r.json()
+    # one assigned course (C1) column; one active student (S) row — SX was removed.
+    assert [c["journey_id"] for c in data["courses"]] == [world.C1]
+    assert data["courses"][0]["title"] == "Photosynthesis" and data["courses"][0]["total_steps"] == 2
+    assert [s["uid"] for s in data["students"]] == [world.S]
+    s_row = data["students"][0]
+    assert s_row["display_name"] == "Asha K"
+    assert s_row["cells"][world.C1] == {
+        "done": 0, "total": 2, "percent": 0, "completed": False, "overdue": False}
+
+
+def test_progress_matrix_reflects_completion(client, world, db):
+    for step in f.step_ids(db, world.C1):
+        assert client.post(f"/api/v1/progress/{world.C1}/{step}", headers=world.headers("S")).status_code == 200
+    data = client.get(_progress_url(world, world.A1["id"]), headers=world.headers("T")).json()
+    assert data["students"][0]["cells"][world.C1] == {
+        "done": 2, "total": 2, "percent": 100, "completed": True, "overdue": False}
+
+
+def test_progress_matrix_flags_overdue_when_not_done(client, world, db):
+    journey_id = f.make_published_course(db, world.school_a)
+    assert client.post(_courses_url(world, world.A1["id"]),
+                       json={"journey_id": journey_id, "due_at": "2020-01-01T00:00:00Z"},
+                       headers=world.headers("T")).status_code == 201
+    data = client.get(_progress_url(world, world.A1["id"]), headers=world.headers("T")).json()
+    cell = data["students"][0]["cells"][journey_id]
+    assert cell["overdue"] is True and cell["completed"] is False
+
+
+def test_progress_matrix_forbidden_for_students(client, world):
+    assert client.get(_progress_url(world, world.A1["id"]), headers=world.headers("S")).status_code == 403

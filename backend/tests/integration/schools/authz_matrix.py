@@ -189,6 +189,8 @@ MATRIX: list[Case] = [
          body=lambda w, db: {"tutor_enabled": False}),
     Case("DELETE", "/api/v1/schools/{school_id}/classes/{class_id}/courses/{assignment_id}", "class_staff",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/courses/{_a1_c1_assignment(w, db)}"),
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/progress", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/progress"),
     # ── M3: documents (any staff member) ──
     Case("POST", "/api/v1/schools/{school_id}/documents/upload-url", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/upload-url",
