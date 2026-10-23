@@ -4,6 +4,7 @@ import { ArrowLeft, Archive, Loader2, Lock, Printer, RefreshCw, UserMinus, UserP
 import clsx from 'clsx'
 import ProfileAvatar from '../../components/family/ProfileAvatar'
 import ClassCourses from '../../components/school/ClassCourses'
+import ProgressMatrix from '../../components/school/ProgressMatrix'
 import { useAuth } from '../../lib/AuthContext'
 import { useToast } from '../../lib/ToastContext'
 import { apiErrorCode } from '../../lib/api'
@@ -246,6 +247,8 @@ export default function SchoolClassDetail() {
       </div>
 
       <ClassCourses schoolId={school.id} classId={cls.id} canManage={manage} />
+
+      <ProgressMatrix schoolId={school.id} classId={cls.id} />
 
       {manage && (
         <div className="flex justify-end">

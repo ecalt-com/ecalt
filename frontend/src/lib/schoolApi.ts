@@ -756,3 +756,35 @@ export interface StudentClass {
 
 export const getStudentHome = (token: string): Promise<{ classes: StudentClass[] }> =>
   request('/api/v1/school-student/home', undefined, token)
+
+// ── Class progress matrix (M5 §10, SC-505) ───────────────────────────────────
+
+export interface ProgressCell {
+  done: number
+  total: number
+  percent: number
+  completed: boolean
+  overdue: boolean
+}
+
+export interface ProgressCourseCol {
+  assignment_id: string
+  journey_id: string
+  title: string
+  icon: string
+  total_steps: number
+  due_at: string | null
+}
+
+export interface ProgressStudentRow {
+  uid: string
+  display_name: string
+  avatar: string | null
+  grade: number | null
+  cells: Record<string, ProgressCell>
+}
+
+export const getClassProgress = (
+  schoolId: string, classId: string, token: string,
+): Promise<{ students: ProgressStudentRow[]; courses: ProgressCourseCol[] }> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/progress`, undefined, token)
