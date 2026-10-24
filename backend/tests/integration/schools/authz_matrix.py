@@ -191,6 +191,13 @@ MATRIX: list[Case] = [
          lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/courses/{_a1_c1_assignment(w, db)}"),
     Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/progress", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/progress"),
+    # ── M7: teacher analytics ──
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/students/{student_uid}/progress", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/progress"),
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/progress/export", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/progress/export"),
+    Case("GET", "/api/v1/schools/{school_id}/usage", "school_admin",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/usage"),
     # ── M3: documents (any staff member) ──
     Case("POST", "/api/v1/schools/{school_id}/documents/upload-url", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/upload-url",

@@ -8,10 +8,11 @@ school lets them manage students — decision D9).
 from datetime import datetime
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
-from app.core.school_auth import SchoolCtx, school_member
+from app.core.school_auth import ADMIN_ROLES, SchoolCtx, school_member
+from app.services import school_analytics_service as analytics
 from app.services import school_assignment_service as assignments
 from app.services import school_class_service as classes
 from app.services import school_student_service as students
@@ -255,3 +256,24 @@ def unassign_course(class_id: str, assignment_id: str, ctx: SchoolCtx = Depends(
             summary="Class progress matrix (students × assigned courses)")
 def class_progress(class_id: str, ctx: SchoolCtx = Depends(school_member())):
     return assignments.class_progress_matrix(ctx, class_id)
+
+
+# ── M7: teacher analytics (SC-701/704/706) ────────────────────────────────────
+
+@router.get("/{school_id}/classes/{class_id}/students/{student_uid}/progress",
+            summary="One student's drill-down across the class's courses")
+def student_progress(class_id: str, student_uid: str, ctx: SchoolCtx = Depends(school_member())):
+    return analytics.student_drilldown(ctx, class_id, student_uid)
+
+
+@router.get("/{school_id}/classes/{class_id}/progress/export",
+            summary="Class progress matrix as a CSV download")
+def export_class_progress(class_id: str, ctx: SchoolCtx = Depends(school_member())):
+    csv = analytics.class_progress_csv(ctx, class_id)
+    return Response(content=csv, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="class-progress.csv"'})
+
+
+@router.get("/{school_id}/usage", summary="School AI budget + usage overview (admins)")
+def school_usage(ctx: SchoolCtx = Depends(school_member(*ADMIN_ROLES))):
+    return analytics.school_usage_overview(ctx)
