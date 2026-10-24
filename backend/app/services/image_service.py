@@ -92,6 +92,7 @@ async def upload_journey_image(journey_id: str, data: bytes, content_type: str =
             content=data,
             headers={
                 "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+                "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
                 "Content-Type": content_type,
                 "x-upsert": "true",
                 "cache-control": "max-age=31536000",

@@ -435,9 +435,56 @@ LAW 3 — Never redirect to a topic they did not raise. Follow their lead entire
 If they seem uncertain: respond with "Uncertainty is exactly the right place to start." then ask the next exchange question.
 If they give a very short answer: reflect it back with genuine curiosity before asking the next question."""
 
+# School course builder (M4) — grounded generation from a teacher's own
+# documents. The hard rule across all three: teach only what the cited source
+# says; never introduce outside facts.
+_SCHOOL_OUTLINE_STYLE_DEFAULT = """\
+You design a short course for a school class, grounded ENTIRELY in the teacher's \
+uploaded document. You are given numbered source chunks (each with its heading \
+and a preview) and the teacher's inputs (grade, subject, goal, step count, \
+language). Produce a course outline whose every step is built only from the \
+provided chunks.
+
+Hard rules:
+- Every step MUST cite at least one real chunk id from the list (chunk_ids).
+- Cover the material: every top-level section should be used by a step OR listed \
+in skipped_sections with a short reason.
+- Do not invent facts, topics, or sections that aren't in the chunks.
+- Pitch the wording for the given grade and language of instruction.
+
+Return ONLY JSON:
+{"meta": {"title": str, "description": str, "estimated_hours": number},
+ "steps": [{"title": str, "description": str, "type": "concept|practice|challenge|explore",
+            "estimated_minutes": int, "core_question": str, "learning_objective": str,
+            "chunk_ids": [int]}],
+ "skipped_sections": [{"heading": str, "reason": str}]}"""
+
+_SCHOOL_STEP_STYLE_DEFAULT = """\
+You write the body of one course step for a school class, grounded ONLY in the \
+cited source chunks provided. Teach what the source says, in clear age-appropriate \
+language; analogies and worked explanations are welcome, but introduce NO new \
+factual claims beyond the source. If you add a piece of common background \
+knowledge to aid understanding, keep it clearly general (no specific facts/figures).
+
+Return ONLY JSON:
+{"body_md": str,  // the lesson, in the project's markdown dialect
+ "citations": [int],  // chunk ids this body draws on
+ "key_facts": [str]}  // source-grounded facts a quiz could check"""
+
+_SCHOOL_CRITIC_STYLE_DEFAULT = """\
+You check a drafted course step against its cited source chunks for faithfulness. \
+List any claim in the body that is NOT supported by the cited chunks. Be precise; \
+age-appropriate simplification and analogies are fine and are NOT violations.
+
+Return ONLY JSON:
+{"supported": bool, "flags": [{"claim": str, "reason": str}]}"""
+
 # Fallback style prompts — NULL in DB means "use these".
 # Keys must match interaction_type values in DEFAULT_CONFIG.
 DEFAULT_STYLE_PROMPTS: dict[str, str] = {
+    "school_course_outline":      _SCHOOL_OUTLINE_STYLE_DEFAULT,
+    "school_step_content":        _SCHOOL_STEP_STYLE_DEFAULT,
+    "school_faithfulness_critic": _SCHOOL_CRITIC_STYLE_DEFAULT,
     "daily_chat":           _CHAT_STYLE_DEFAULT,
     "nudge":                _NUDGE_STYLE_DEFAULT,
     "onboarding":           _ONBOARDING_STYLE_DEFAULT,
@@ -464,7 +511,6 @@ AVAILABLE_MODELS: dict[str, list[dict]] = {
         {"id": "claude-opus-4-7",            "label": "Claude Opus 4.7 (powerful)"},
     ],
     "openai": [
-        {"id": "gpt-4.1-nano", "label": "GPT-4.1 Nano (fastest, cheapest)"},
         {"id": "gpt-4o-mini",  "label": "GPT-4o Mini (fast, cheap)"},
         {"id": "gpt-4.1-mini", "label": "GPT-4.1 Mini (balanced, efficient)"},
         {"id": "gpt-4o",       "label": "GPT-4o (capable)"},
@@ -475,23 +521,27 @@ AVAILABLE_MODELS: dict[str, list[dict]] = {
 
 # Default config used when DB has no row for an interaction type
 DEFAULT_CONFIG: dict[str, dict] = {
-    "daily_chat":           {"provider": "openai", "model": "gpt-4.1-nano"},
-    "nudge":                {"provider": "openai", "model": "gpt-4.1-nano"},
+    "daily_chat":           {"provider": "openai", "model": "gpt-4o-mini"},
+    "nudge":                {"provider": "openai", "model": "gpt-4o-mini"},
     "onboarding":           {"provider": "openai", "model": "gpt-4o-mini"},
     "fingerprint":          {"provider": "openai", "model": "gpt-4o-mini"},
     "mind_signature":       {"provider": "openai", "model": "gpt-4o-mini"},
     "spark":                {"provider": "openai", "model": "gpt-4.1-mini"},
-    "daily_spark":          {"provider": "openai", "model": "gpt-4.1-nano"},
-    "knowledge_extraction": {"provider": "openai", "model": "gpt-4.1-nano"},
+    "daily_spark":          {"provider": "openai", "model": "gpt-4o-mini"},
+    "knowledge_extraction": {"provider": "openai", "model": "gpt-4o-mini"},
     "journey":              {"provider": "openai", "model": "gpt-4.1"},
     "step_content":         {"provider": "openai", "model": "gpt-4.1-mini"},
-    "content_critic":       {"provider": "openai", "model": "gpt-4.1-nano"},
+    "content_critic":       {"provider": "openai", "model": "gpt-4o-mini"},
     "quiz":                 {"provider": "openai", "model": "gpt-4o-mini"},
-    "journey_tutor":        {"provider": "openai", "model": "gpt-4.1-nano"},
+    "journey_tutor":        {"provider": "openai", "model": "gpt-4o-mini"},
     "journey_image":        {"provider": "openai", "model": "gpt-image-1-mini"},
-    "visual_planner":       {"provider": "openai", "model": "gpt-4.1-nano"},
+    "visual_planner":       {"provider": "openai", "model": "gpt-4o-mini"},
     "visual_recipe":        {"provider": "openai", "model": "gpt-4.1-mini"},
     "visual_image":         {"provider": "openai", "model": "gpt-image-1-mini"},
+    # School course builder (M4)
+    "school_course_outline":      {"provider": "openai", "model": "gpt-4.1"},
+    "school_step_content":        {"provider": "openai", "model": "gpt-4.1-mini"},
+    "school_faithfulness_critic": {"provider": "openai", "model": "gpt-4.1-mini"},
 }
 
 # Cost per token in cents (input, output)

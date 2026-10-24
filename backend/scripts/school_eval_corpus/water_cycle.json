@@ -1,0 +1,26 @@
+{
+  "name": "water_cycle",
+  "chunks": [
+    {"heading_path": ["Evaporation"], "text": "The sun heats water in oceans, rivers and lakes. The warmed water turns into an invisible gas called water vapour and rises into the air."},
+    {"heading_path": ["Condensation"], "text": "As water vapour rises it cools down. The cooling vapour condenses into tiny droplets, and billions of these droplets together form clouds."},
+    {"heading_path": ["Precipitation"], "text": "When the droplets in a cloud join together and grow heavy enough, they fall back to the ground as rain, snow, sleet or hail."}
+  ],
+  "inputs": {"grade": 5, "subject": "Science", "language": "English"},
+  "oracle": {
+    "outline": {
+      "meta": {"title": "The Water Cycle", "description": "How water moves between the ground and the sky.", "estimated_hours": 1},
+      "steps": [
+        {"title": "Evaporation", "description": "Where water goes when the sun heats it.", "type": "concept", "estimated_minutes": 15, "core_question": "Where does water go when it is heated?", "learning_objective": "Explain evaporation", "chunk_ids": [0]},
+        {"title": "Condensation", "description": "How clouds form.", "type": "concept", "estimated_minutes": 15, "core_question": "How do clouds form?", "learning_objective": "Explain condensation", "chunk_ids": [1]},
+        {"title": "Precipitation", "description": "Why it rains.", "type": "concept", "estimated_minutes": 15, "core_question": "Why does it rain?", "learning_objective": "Explain precipitation", "chunk_ids": [2]}
+      ],
+      "skipped_sections": []
+    },
+    "bodies": {
+      "0": {"body_md": "The sun heats water in oceans and lakes until it turns into water vapour, which rises into the air.", "citations": [0], "key_facts": ["The sun heats water into vapour", "Water vapour rises into the air"]},
+      "1": {"body_md": "As the vapour rises it cools and condenses into tiny droplets, and many droplets together make a cloud.", "citations": [1], "key_facts": ["Vapour cools and condenses", "Droplets form clouds"]},
+      "2": {"body_md": "When droplets grow heavy they fall as rain, snow, sleet or hail.", "citations": [2], "key_facts": ["Heavy droplets fall as precipitation"]}
+    }
+  },
+  "expect": {"min_steps": 3, "coverage": true}
+}

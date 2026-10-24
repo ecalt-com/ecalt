@@ -161,6 +161,7 @@ class TestNoUnknownInteractionType:
         "spark", "daily_spark", "knowledge_extraction",
         "journey", "step_content", "content_critic", "quiz", "nudge",
         "journey_tutor", "journey_image", "visual_planner", "visual_recipe", "visual_image",
+        "school_course_outline", "school_step_content", "school_faithfulness_critic",
     }
 
     def test_all_provider_default_config_types_are_known(self):

@@ -9,7 +9,7 @@ from app.core.limiter import limiter
 from app.core.school_auth import is_school_student_uid, student_not_allowed
 from app.services.journey_access import assert_can_read_journey
 from app.services.chat_service import stream_chat
-from app.services.subscription_service import check_budget
+from app.services.subscription_service import budget_error_detail, check_budget
 
 router = APIRouter()
 
@@ -35,13 +35,18 @@ async def chat_stream(request: Request, body: ChatRequest, uid: str = Depends(ge
         raise student_not_allowed()  # students only get the in-course tutor (D5)
     if body.journey_id:
         assert_can_read_journey(uid, body.journey_id)
+    # The teacher can switch the tutor off for a class's assignment (SC-503).
+    if is_school_student_uid(uid):
+        from app.services.school_assignment_service import student_tutor_allowed
+        if not student_tutor_allowed(uid, body.journey_id):
+            raise HTTPException(status_code=403, detail={
+                "error": "tutor_disabled",
+                "message": "Your teacher has turned off the tutor for this course.",
+            })
     ensure_chat_allowed(uid)  # parental control (covers daily chat + journey tutor)
     allowed, reason = check_budget(uid, context="chat")
     if not allowed:
-        raise HTTPException(
-            status_code=402,
-            detail={"error": reason, "upgrade_url": "/pricing"},
-        )
+        raise HTTPException(status_code=402, detail=budget_error_detail(reason))
     return StreamingResponse(
         stream_chat(
             uid=uid,

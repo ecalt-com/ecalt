@@ -17,17 +17,29 @@ const MESSAGES = {
     title: "Monthly learning budget reached",
     body: "You've used your plan's token budget for this month. Upgrade to a higher plan or wait for next month's reset.",
   },
+  school_budget_exhausted: {
+    title: "Out of AI help for now",
+    body: "Your class has used up its AI help for now. Ask your teacher.",
+  },
+  school_daily_limit_reached: {
+    title: "That's all for today",
+    body: "You've used all your AI help for today. Come back tomorrow!",
+  },
   default: {
     title: "Upgrade to continue",
     body: "Unlock unlimited learning conversations, personalized sparks, and your Knowledge Universe.",
   },
 }
 
+// School students can't buy a plan — these show the message without an upsell.
+const SCHOOL_REASONS = new Set(['school_budget_exhausted', 'school_daily_limit_reached'])
+
 export default function UpgradePrompt({ reason, onDismiss }: UpgradePromptProps) {
   const navigate = useNavigate()
   const { plan, plans } = useSubscription()
   const { country, loading: geoLoading } = useGeo()
   const msg = MESSAGES[reason as keyof typeof MESSAGES] ?? MESSAGES.default
+  const isSchool = SCHOOL_REASONS.has(reason)
   const individualPlan = plans.find(p => p.plan_id === 'individual')
 
   let individualPrice: string | null = null
@@ -57,22 +69,24 @@ export default function UpgradePrompt({ reason, onDismiss }: UpgradePromptProps)
 
       <p className="text-xs text-slate-400 leading-relaxed mb-4">{msg.body}</p>
 
-      <div className="flex gap-2">
-        <button
-          onClick={() => navigate('/pricing')}
-          className="flex-1 btn-primary text-xs py-2"
-        >
-          View plans →
-        </button>
-        {plan?.plan_id === 'free_trial' && individualPrice && (
+      {!isSchool && (
+        <div className="flex gap-2">
           <button
-            onClick={() => navigate('/pricing?plan=individual')}
-            className="flex-1 py-2 px-3 rounded-lg text-xs font-medium border border-violet-400/40 text-violet-300 hover:bg-violet-500/10 transition-colors"
+            onClick={() => navigate('/pricing')}
+            className="flex-1 btn-primary text-xs py-2"
           >
-            Individual — {individualPrice}
+            View plans →
           </button>
-        )}
-      </div>
+          {plan?.plan_id === 'free_trial' && individualPrice && (
+            <button
+              onClick={() => navigate('/pricing?plan=individual')}
+              className="flex-1 py-2 px-3 rounded-lg text-xs font-medium border border-violet-400/40 text-violet-300 hover:bg-violet-500/10 transition-colors"
+            >
+              Individual — {individualPrice}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

@@ -12,18 +12,23 @@ import {
 } from '../lib/schoolApi'
 
 // /school-invite?token=… (frontend-changes.md §3). The token is moved out of
-// the URL straight away (history, screenshots, referrers) into sessionStorage
-// so a refresh or the Google sign-in round trip still works.
+// the URL straight away (history, screenshots, referrers) into localStorage so
+// it survives the sign-out → sign-in round trip the invite often needs —
+// including reopening the link in a new tab, restoring the tab, or a PWA cold
+// start. sessionStorage is per-tab and dies with the session, so a bare
+// /school-invite remount would lose the token ("this page needs the link")
+// even though Firebase keeps you signed in (its own persistence is 'local').
+// Cleared the moment the invite is accepted or turns out to be invalid/expired.
 const TOKEN_KEY = 'ecalt.schoolInvite'
 
 const storeToken = (t: string | null) => {
   try {
-    if (t) sessionStorage.setItem(TOKEN_KEY, t)
-    else sessionStorage.removeItem(TOKEN_KEY)
+    if (t) localStorage.setItem(TOKEN_KEY, t)
+    else localStorage.removeItem(TOKEN_KEY)
   } catch { /* storage unavailable — the token lives in memory only */ }
 }
 const storedToken = (): string | null => {
-  try { return sessionStorage.getItem(TOKEN_KEY) } catch { return null }
+  try { return localStorage.getItem(TOKEN_KEY) } catch { return null }
 }
 
 export default function SchoolInviteAccept() {
@@ -50,7 +55,12 @@ export default function SchoolInviteAccept() {
     if (!token) return
     previewSchoolInvite(token)
       .then(setPreview)
-      .catch(err => setError(apiErrorCode(err) ?? 'unknown'))
+      .catch(err => {
+        const code = apiErrorCode(err) ?? 'unknown'
+        // A dead invite shouldn't linger in storage and reappear next visit.
+        if (code === 'invite_invalid' || code === 'invite_expired') storeToken(null)
+        setError(code)
+      })
   }, [token])
 
   const accept = async () => {

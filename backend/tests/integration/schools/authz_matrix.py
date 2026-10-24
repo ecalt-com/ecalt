@@ -49,6 +49,8 @@ _KIND_DEFAULTS = {
     # ECALT admin
     "ecalt_admin": {"ANON": 401, "OUT": "admin", "PRF": "admin", "SA": "admin", "T": "admin", "T2": "admin",
                     "XA": "admin", "ADM": "ok", **{s: "student" for s in STUDENTS}},
+    # any signed-in caller, including school students (student home); anon → 401
+    "any_authed": {p: ("ok" if p != "ANON" else 401) for p in PERSONAS},
 }
 
 
@@ -67,6 +69,21 @@ class Case:
 
 def _sid(w):
     return w.school_a["id"]
+
+
+def _a1_c1_assignment(w, db) -> str:
+    """The active A1 → C1 assignment the world seeds (for PATCH/DELETE)."""
+    return f.fetch(
+        db,
+        "SELECT id::text AS id FROM course_assignments "
+        "WHERE class_id = %s AND journey_id = %s AND status = 'active'",
+        (w.A1["id"], w.C1),
+    )[0]["id"]
+
+
+def _s_conversation(w, db) -> str:
+    """A tutor conversation owned by student S (for the transcript-read route)."""
+    return f.fetch(db, "INSERT INTO conversations (uid) VALUES (%s) RETURNING id::text AS id", (w.S,))[0]["id"]
 
 
 def _open_invite(w, db) -> str:
@@ -166,6 +183,89 @@ MATRIX: list[Case] = [
          lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/rotate-code"),
     Case("POST", "/api/v1/schools/{school_id}/classes/{class_id}/login-cards", "class_staff",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/login-cards", body=lambda w, db: {}),
+    # ── M5: course assignments ──
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/courses", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/courses"),
+    Case("POST", "/api/v1/schools/{school_id}/classes/{class_id}/courses", "class_staff",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/courses",
+         body=lambda w, db: {"journey_id": f.make_published_course(db, w.school_a)}),
+    Case("PATCH", "/api/v1/schools/{school_id}/classes/{class_id}/courses/{assignment_id}", "class_staff",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/courses/{_a1_c1_assignment(w, db)}",
+         body=lambda w, db: {"tutor_enabled": False}),
+    Case("DELETE", "/api/v1/schools/{school_id}/classes/{class_id}/courses/{assignment_id}", "class_staff",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/courses/{_a1_c1_assignment(w, db)}"),
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/progress", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/progress"),
+    # ── M7: teacher analytics ──
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/students/{student_uid}/progress", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/progress"),
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/progress/export", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/progress/export"),
+    Case("GET", "/api/v1/schools/{school_id}/usage", "school_admin",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/usage"),
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/students/{student_uid}/transcripts", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts"),
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/students/{student_uid}/transcripts/{conversation_id}", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts/{_s_conversation(w, db)}"),
+    # ── M3: documents (any staff member) ──
+    Case("POST", "/api/v1/schools/{school_id}/documents/upload-url", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/upload-url",
+         body=lambda w, db: {"filename": "notes.pdf", "size_bytes": 2048, "mime": "application/pdf"}),
+    Case("POST", "/api/v1/schools/{school_id}/documents/{document_id}/complete", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/{f.make_document(db, w.school_a, status='pending_upload')['id']}/complete"),
+    Case("GET", "/api/v1/schools/{school_id}/documents", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/documents"),
+    Case("GET", "/api/v1/schools/{school_id}/documents/{document_id}", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/{f.make_document(db, w.school_a)['id']}"),
+    Case("DELETE", "/api/v1/schools/{school_id}/documents/{document_id}", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/{f.make_document(db, w.school_a)['id']}"),
+    # ── M4: courses + jobs (any staff member) ──
+    Case("GET", "/api/v1/schools/{school_id}/courses", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses"),
+    Case("POST", "/api/v1/schools/{school_id}/courses", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses",
+         body=lambda w, db: {"title": "New Course", "document_ids": [f.make_document(db, w.school_a, status="ready")["id"]]}),
+    Case("GET", "/api/v1/schools/{school_id}/courses/{journey_id}", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_course_draft(db, w.school_a)}"),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/estimate", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_course_draft(db, w.school_a)}/estimate"),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/outline", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_course_draft(db, w.school_a)}/outline", body=lambda w, db: {}),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/build", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/build", body=lambda w, db: {}),
+    Case("PATCH", "/api/v1/schools/{school_id}/courses/{journey_id}/draft", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/draft",
+         body=lambda w, db: {"title": "Edited"}),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/draft/steps", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/draft/steps",
+         body=lambda w, db: {"title": "New step"}),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/draft/steps/reorder", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/draft/steps/reorder",
+         body=lambda w, db: {"order": ["s2", "s1"]}),
+    Case("PATCH", "/api/v1/schools/{school_id}/courses/{journey_id}/draft/steps/{step_id}", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/draft/steps/s1",
+         body=lambda w, db: {"title": "Edited step"}),
+    Case("DELETE", "/api/v1/schools/{school_id}/courses/{journey_id}/draft/steps/{step_id}", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/draft/steps/s1"),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/draft/steps/{step_id}/regenerate", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_built_draft(db, w.school_a)}/draft/steps/s1/regenerate",
+         body=lambda w, db: {}),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/publish", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_built_draft(db, w.school_a)}/publish", body=lambda w, db: {}),
+    Case("GET", "/api/v1/schools/{school_id}/courses/{journey_id}/versions", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_published_course(db, w.school_a)}/versions"),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/versions/{version}/restore", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_published_course(db, w.school_a)}/versions/1/restore", body=lambda w, db: {}),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/duplicate", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/duplicate", body=lambda w, db: {}),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/archive", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/archive", body=lambda w, db: {}),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/hero-image", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/hero-image", body=lambda w, db: {}),
+    Case("GET", "/api/v1/schools/{school_id}/jobs/{job_id}", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/jobs/{f.enqueue_job(db, w.school_a)}"),
+    Case("POST", "/api/v1/schools/{school_id}/jobs/{job_id}/cancel", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/jobs/{f.enqueue_job(db, w.school_a)}/cancel", body=lambda w, db: {}),
     # ── M2: student sign-in (public) ──
     Case("GET", "/api/v1/school-login/classes/{code}", "public",
          lambda w, db: f"/api/v1/school-login/classes/{w.A1['join_code']}"),
@@ -174,6 +274,8 @@ MATRIX: list[Case] = [
                              "secret": {"kind": "pin", "value": "000000"}}),
     Case("POST", "/api/v1/school-login/badge", "public_401", lambda w, db: "/api/v1/school-login/badge",
          body=lambda w, db: {"token": "not-a-real-badge-token-123"}),
+    # ── M5: student home (any signed-in caller; students included) ──
+    Case("GET", "/api/v1/school-student/home", "any_authed", lambda w, db: "/api/v1/school-student/home"),
     Case("POST", "/api/v1/admin/schools", "ecalt_admin", lambda w, db: "/api/v1/admin/schools",
          body=lambda w, db: {"name": "New School"}),
     Case("GET", "/api/v1/admin/schools", "ecalt_admin", lambda w, db: "/api/v1/admin/schools"),

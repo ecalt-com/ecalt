@@ -34,6 +34,10 @@ PICTURE_ICONS = 16
 PICTURE_LENGTH = 3
 PIN_LENGTH = 6
 SECRET_KINDS = ("picture", "pin")
+# Picture passwords (16^3 = 4096 combinations) are only for the youngest
+# children (D1); older students must use a 6-digit PIN. Lockouts bound online
+# guessing regardless, but this keeps the low-entropy secret off older grades.
+PICTURE_MAX_GRADE = 4
 # Same keys as the frontend's avatars.ts — a picture helps young children find their name.
 STUDENT_AVATARS = ("fox", "owl", "panda", "octopus", "turtle", "rocket", "star", "dino")
 MAX_IMPORT_ROWS = 2000
@@ -43,7 +47,17 @@ MAX_IMPORT_ROWS = 2000
 
 def default_secret_kind(grade: Optional[int]) -> str:
     """Picture passwords up to grade 4, PINs after (decision D1)."""
-    return "picture" if grade is None or grade <= 4 else "pin"
+    return "picture" if grade is None or grade <= PICTURE_MAX_GRADE else "pin"
+
+
+def resolve_secret_kind(requested: Optional[str], grade: Optional[int]) -> str:
+    """The secret kind to use: an explicit choice (validated against the grade),
+    else the grade-based default. Rejects a picture password for an older
+    student (M3) — their known grade would otherwise get a 4096-space secret."""
+    if requested == "picture" and grade is not None and grade > PICTURE_MAX_GRADE:
+        raise _err(422, "picture_secret_too_old",
+                   "Picture passwords are only for younger grades. Use a PIN instead.")
+    return requested or default_secret_kind(grade)
 
 
 def generate_secret(kind: str) -> tuple[str, Any]:
@@ -225,7 +239,10 @@ def _insert_students(cur, school: dict, ctx_uid: str, rows: list[dict], with_sec
     users_rows, student_rows, consent_rows = [], [], []
     for r in rows:
         uid = f"stu_{secrets.token_hex(8)}"
-        kind = r.get("secret_kind") or default_secret_kind(r.get("grade"))
+        kind = r.get("secret_kind")
+        if kind == "picture" and (r.get("grade") or 0) > PICTURE_MAX_GRADE:
+            kind = None  # older students can't use a picture password (M3) — fall back to PIN
+        kind = kind or default_secret_kind(r.get("grade"))
         secret_value = badge = None
         secret_hash = badge_hash = None
         if with_secrets:
@@ -356,6 +373,7 @@ def get_student(ctx: SchoolCtx, uid: str) -> dict:
 
 def create_student(ctx: SchoolCtx, display_name: str, grade: Optional[int], external_ref: Optional[str],
                    secret_kind: Optional[str], class_ids: list[str]) -> dict:
+    secret_kind = resolve_secret_kind(secret_kind, grade)
     with get_db() as conn:
         with conn.cursor() as cur:
             school = _load_school(cur, ctx.school_id, for_update=True)
@@ -419,7 +437,7 @@ def reset_secret(ctx: SchoolCtx, uid: str, secret_kind: Optional[str]) -> dict:
         with conn.cursor() as cur:
             student = _load_student(cur, ctx, uid, for_update=True)
             _require_secret_access(cur, ctx, uid)
-            kind = secret_kind or student["secret_kind"]
+            kind = resolve_secret_kind(secret_kind, student["grade"]) if secret_kind else student["secret_kind"]
             canonical, value = generate_secret(kind)
             cur.execute(
                 """

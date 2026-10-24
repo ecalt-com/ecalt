@@ -60,6 +60,10 @@ def _digest(db, school_id) -> str:
         f.fetch(db, "SELECT * FROM classes WHERE school_id = %s ORDER BY id", (school_id,)),
         f.fetch(db, "SELECT * FROM class_teachers WHERE school_id = %s ORDER BY class_id, uid", (school_id,)),
         f.fetch(db, "SELECT * FROM class_enrollments WHERE school_id = %s ORDER BY class_id, student_uid", (school_id,)),
+        f.fetch(db, "SELECT * FROM source_documents WHERE school_id = %s ORDER BY id", (school_id,)),
+        f.fetch(db, "SELECT * FROM school_courses WHERE school_id = %s ORDER BY journey_id", (school_id,)),
+        f.fetch(db, "SELECT id, class_id, journey_id, status, due_at, settings FROM course_assignments WHERE school_id = %s ORDER BY id", (school_id,)),
+        f.fetch(db, "SELECT id, status, kind, cancel_requested FROM school_jobs WHERE school_id = %s ORDER BY id", (school_id,)),
     ]
     return hashlib.sha256(repr(rows).encode()).hexdigest()
 
@@ -70,6 +74,12 @@ def test_iso_staff_routes_never_reach_another_school(client, world, db):
         INSERT INTO school_invites (school_id, email, role, token_hash, expires_at)
         VALUES (%s, 'b@b.example', 'teacher', 'hash-b', now() + interval '1 day') RETURNING id::text
     """, (b,))[0]["id"]
+    doc_b = f.make_document(db, world.school_b)["id"]
+    course_b = f.make_course_draft(db, world.school_b)
+    job_b = f.enqueue_job(db, world.school_b)
+    assignment_b = f.fetch(db, "SELECT id::text AS id FROM course_assignments "
+                               "WHERE class_id = %s AND journey_id = %s",
+                           (world.B1["id"], world.CB))[0]["id"]
     before = _digest(db, b)
     h = world.headers("SA")
 
@@ -105,6 +115,36 @@ def test_iso_staff_routes_never_reach_another_school(client, world, db):
         # school A's class, school B's student
         ("POST", f"/api/v1/schools/{a}/classes/{world.A1['id']}/students", {"student_uids": [world.XS]}),
         ("DELETE", f"/api/v1/schools/{a}/classes/{world.A1['id']}/students/{world.XS}", None),
+        # M3: school B's document through school A's routes
+        ("GET", f"/api/v1/schools/{a}/documents/{doc_b}", None),
+        ("POST", f"/api/v1/schools/{a}/documents/{doc_b}/complete", None),
+        ("DELETE", f"/api/v1/schools/{a}/documents/{doc_b}", None),
+        # M4: school B's course + job through school A's routes
+        ("GET", f"/api/v1/schools/{a}/courses/{course_b}", None),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/estimate", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/outline", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/build", {}),
+        ("PATCH", f"/api/v1/schools/{a}/courses/{course_b}/draft", {"title": "pwned"}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps", {"title": "pwned"}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/reorder", {"order": ["s1"]}),
+        ("PATCH", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/s1", {"title": "pwned"}),
+        ("DELETE", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/s1", None),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/draft/steps/s1/regenerate", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/publish", {}),
+        ("GET", f"/api/v1/schools/{a}/courses/{course_b}/versions", None),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/versions/1/restore", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/duplicate", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/archive", {}),
+        ("POST", f"/api/v1/schools/{a}/courses/{course_b}/hero-image", {}),
+        ("GET", f"/api/v1/schools/{a}/jobs/{job_b}", None),
+        ("POST", f"/api/v1/schools/{a}/jobs/{job_b}/cancel", {}),
+        # M5: school B's class assignments through school A's routes
+        ("GET", f"/api/v1/schools/{a}/classes/{world.B1['id']}/courses", None),
+        ("POST", f"/api/v1/schools/{a}/classes/{world.B1['id']}/courses", {"journey_id": world.CB}),
+        ("PATCH", f"/api/v1/schools/{a}/classes/{world.B1['id']}/courses/{assignment_b}", {"tutor_enabled": False}),
+        ("DELETE", f"/api/v1/schools/{a}/classes/{world.B1['id']}/courses/{assignment_b}", None),
+        # school A's own class, but school B's course in the body
+        ("POST", f"/api/v1/schools/{a}/classes/{world.A1['id']}/courses", {"journey_id": course_b}),
     ]
     for method, path, body in calls:
         r = client.request(method, path, json=body, headers=h)

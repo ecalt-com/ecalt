@@ -9,6 +9,7 @@ from typing import Literal, Optional, Union
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from app.core.config import settings
 from app.core.limiter import limiter
 from app.services import school_login_service as login
 
@@ -42,10 +43,12 @@ def lookup_class(request: Request, code: str):
 
 
 @router.post("/sessions", summary="Sign in with class code + picture password / PIN → Firebase custom token")
-def create_session(body: SessionRequest):
+@limiter.limit(lambda: settings.SCHOOL_SIGNIN_RATELIMIT)
+def create_session(request: Request, body: SessionRequest):
     return login.sign_in(body.class_code, body.student_uid, body.external_ref, body.secret.kind, body.secret.value)
 
 
 @router.post("/badge", summary="Sign in with a QR badge token → Firebase custom token")
-def badge_session(body: BadgeRequest):
+@limiter.limit(lambda: settings.SCHOOL_BADGE_RATELIMIT)
+def badge_session(request: Request, body: BadgeRequest):
     return login.badge_sign_in(body.token)

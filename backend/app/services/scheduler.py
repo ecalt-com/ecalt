@@ -692,6 +692,28 @@ async def _family_digest_dispatch() -> None:
             logger.error("family_digest: parent=%s failed: %s", parent_uid, e)
 
 
+# ── Weekly teacher digest (schools, SC-705) ──────────────────────────────────
+
+async def _teacher_digest_dispatch() -> None:
+    """One email per teacher summarising their classes (students, courses,
+    overdue assignments). Teachers with nothing assigned get nothing."""
+    from app.services.email_service import send_teacher_digest_email
+    from app.services.school_analytics_service import weekly_teacher_digests
+
+    try:
+        digests = weekly_teacher_digests()
+    except Exception as e:
+        logger.error("teacher_digest: query failed: %s", e)
+        return
+
+    for d in digests:
+        try:
+            await send_teacher_digest_email(d["teacher_email"], d["teacher_uid"],
+                                            d["teacher_name"], d["classes"])
+        except Exception as e:
+            logger.error("teacher_digest: teacher=%s failed: %s", d["teacher_uid"], e)
+
+
 # ── Scheduled deletions (Phase 4: consent revocation grace window) ───────────
 
 async def _scheduled_deletion_dispatch() -> None:
@@ -1208,6 +1230,32 @@ async def _marketplace_popularity_scan() -> None:
         logger.error("marketplace_popularity_scan failed: %s", e)
 
 
+def _prune_school_audit_log() -> None:
+    """Delete high-volume 'student.sign_in_failed' audit rows older than the
+    retention window. The class sign-in throttle only reads the last few
+    minutes, so these pile up fast; every other audit action is kept
+    (plans/school-courses/REVIEW.md M2)."""
+    try:
+        from app.core.config import settings
+        from app.core.database import get_db
+        days = int(settings.SCHOOL_SIGNIN_FAIL_RETENTION_DAYS)
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    DELETE FROM school_audit_log
+                     WHERE action = 'student.sign_in_failed'
+                       AND created_at < now() - make_interval(days => %s)
+                    """,
+                    (days,),
+                )
+                deleted = cur.rowcount
+        if deleted:
+            logger.info("prune_school_audit_log removed %s sign-in-failed rows", deleted)
+    except Exception as e:
+        logger.error("prune_school_audit_log failed: %s", e)
+
+
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -1225,9 +1273,12 @@ def setup_scheduler() -> AsyncIOScheduler:
         (_consent_followup_dispatch, "cron", {"minute": 10},              "consent_followup_dispatch"),
         (_family_digest_dispatch,    "cron", {"day_of_week": "sun",
                                               "hour": 17, "minute": 0},   "family_digest_dispatch"),
+        (_teacher_digest_dispatch,   "cron", {"day_of_week": "sun",
+                                              "hour": 16, "minute": 0},   "teacher_digest_dispatch"),
         (_scheduled_deletion_dispatch, "cron", {"hour": 3, "minute": 30}, "scheduled_deletion_dispatch"),
         (_family_lifecycle_dispatch,   "cron", {"hour": 4, "minute": 0},  "family_lifecycle_dispatch"),
         (_marketplace_popularity_scan, "cron", {"hour": "*/6"},           "marketplace_popularity_scan"),
+        (_prune_school_audit_log,      "cron", {"hour": 4, "minute": 20},  "prune_school_audit_log"),
     ]
     for func, trigger, kwargs, job_id in jobs:
         scheduler.add_job(func, trigger, id=job_id, replace_existing=True, **kwargs)

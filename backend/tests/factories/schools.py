@@ -233,6 +233,154 @@ def make_family_profile(conn, parent_uid: str) -> str:
     return uid
 
 
+def make_document(conn, school: dict, *, uploaded_by: Optional[str] = None,
+                  filename: str = "notes.pdf", status: str = "uploaded",
+                  sha256: Optional[str] = None, size_bytes: int = 2048) -> dict:
+    """A source_documents row with a storage_path derived from its id."""
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "pdf"
+    mime = ("application/pdf" if ext == "pdf"
+            else "application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+    with _cur(conn) as cur:
+        cur.execute(
+            """
+            INSERT INTO source_documents (school_id, uploaded_by, filename, mime, size_bytes, sha256, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+            """,
+            (school["id"], uploaded_by, filename, mime, size_bytes, sha256, status),
+        )
+        row = dict(cur.fetchone())
+        doc_id = str(row["id"])
+        path = f"{school['id']}/{doc_id}.{ext}"
+        cur.execute("UPDATE source_documents SET storage_path = %s WHERE id = %s", (path, doc_id))
+    row["id"] = doc_id
+    row["storage_path"] = path
+    return row
+
+
+def add_chunks(conn, document_id: str, texts: list[str]) -> None:
+    """Attach ordered document_chunks to a document (for builder/update tests)."""
+    with _cur(conn) as cur:
+        for i, text in enumerate(texts):
+            cur.execute(
+                """INSERT INTO document_chunks (document_id, ordinal, heading_path, text, char_count)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (document_id, i, [], text, len(text)),
+            )
+
+
+def make_course_draft(conn, school: dict, *, creator: Optional[str] = None,
+                      title: str = "Draft Course", with_source: bool = True) -> str:
+    """A draft school course: journey (uid NULL) + school_courses('draft') +
+    course_versions('draft'), optionally with a ready source document + chunks."""
+    journey_id = str(uuid.uuid4())
+    with _cur(conn) as cur:
+        cur.execute(
+            "INSERT INTO journeys (id, uid, school_id, question, title, description, estimated_hours, steps) "
+            "VALUES (%s, NULL, %s, %s, %s, '', 0, '[]'::jsonb)",
+            (journey_id, school["id"], title, title),
+        )
+        cur.execute(
+            "INSERT INTO school_courses (journey_id, school_id, status, created_by) VALUES (%s, %s, 'draft', %s)",
+            (journey_id, school["id"], creator),
+        )
+        cur.execute(
+            "INSERT INTO course_versions (journey_id, version, state, revision, meta, steps) "
+            "VALUES (%s, 1, 'draft', 0, '{\"status\":\"empty\"}'::jsonb, '[]'::jsonb)",
+            (journey_id,),
+        )
+        if with_source:
+            cur.execute(
+                "INSERT INTO source_documents (school_id, filename, mime, size_bytes, status) "
+                "VALUES (%s, 'notes.pdf', 'application/pdf', 4096, 'ready') RETURNING id",
+                (school["id"],),
+            )
+            doc_id = cur.fetchone()["id"]
+            for i in range(3):
+                cur.execute(
+                    "INSERT INTO document_chunks (document_id, ordinal, heading_path, text, char_count) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (doc_id, i, [f"Section {i + 1}"], f"Lesson content about topic {i + 1}. " * 12, 300),
+                )
+            cur.execute(
+                "INSERT INTO course_sources (journey_id, document_id, school_id) VALUES (%s, %s, %s)",
+                (journey_id, doc_id, school["id"]),
+            )
+    return journey_id
+
+
+def make_outlined_draft(conn, school: dict, *, creator: Optional[str] = None) -> str:
+    """A draft course whose outline is reviewed and ready to build: two AI steps
+    grounded in the source document's chunk UUIDs (for build/regenerate tests)."""
+    journey_id = make_course_draft(conn, school, creator=creator)
+    rows = fetch(conn, """
+        SELECT dc.id::text AS id FROM course_sources cs
+          JOIN document_chunks dc ON dc.document_id = cs.document_id
+         WHERE cs.journey_id = %s ORDER BY dc.ordinal
+    """, (journey_id,))
+    cids = [r["id"] for r in rows]  # 3 chunk uuids, cite_ids 0..2
+    steps = [
+        {"id": "s1", "title": "Introduction", "description": "", "type": "concept",
+         "estimated_minutes": 10, "core_question": "What is topic 1?",
+         "learning_objective": "Understand topic 1", "chunk_ids": [cids[0], cids[1]],
+         "origin": "ai", "body_md": None, "flags": []},
+        {"id": "s2", "title": "Going deeper", "description": "", "type": "practice",
+         "estimated_minutes": 10, "core_question": "How does topic 3 work?",
+         "learning_objective": "Apply topic 3", "chunk_ids": [cids[2]],
+         "origin": "ai", "body_md": None, "flags": []},
+    ]
+    with _cur(conn) as cur:
+        cur.execute(
+            "UPDATE course_versions SET steps = %s::jsonb, "
+            "meta = '{\"status\":\"outline_ready\"}'::jsonb, revision = 1 "
+            "WHERE journey_id = %s AND state = 'draft'",
+            (json.dumps(steps), journey_id))
+    return journey_id
+
+
+def make_built_draft(conn, school: dict, *, creator: Optional[str] = None) -> str:
+    """A draft whose steps are built (bodies + quiz anchors), ready to publish."""
+    journey_id = make_outlined_draft(conn, school, creator=creator)
+    steps = fetch(conn, "SELECT steps FROM course_versions WHERE journey_id = %s AND state = 'draft'",
+                  (journey_id,))[0]["steps"]
+    for i, s in enumerate(steps):
+        s["body_md"] = f"## {s['title']}\n\nA grounded lesson body for step {i + 1}."
+        s["citations"] = s.get("chunk_ids", [])
+        s["key_facts"] = ["Fact A", "Fact B"]
+        s["quiz_anchors"] = [{"id": "qa1", "fact": "Fact A", "chunk_ids": s.get("chunk_ids", [])}]
+        s["flags"] = []
+        s["build_status"] = "built"
+    with _cur(conn) as cur:
+        cur.execute(
+            "UPDATE course_versions SET steps = %s::jsonb, "
+            "meta = '{\"status\":\"built\",\"title\":\"Draft Course\"}'::jsonb, revision = 2 "
+            "WHERE journey_id = %s AND state = 'draft'", (json.dumps(steps), journey_id))
+    return journey_id
+
+
+def make_published_course(conn, school: dict, *, creator: Optional[str] = None) -> str:
+    """A published course: one `published` version, no draft, student-facing
+    `journeys.steps` written — for version-history / restore tests."""
+    journey_id = make_built_draft(conn, school, creator=creator)
+    steps = fetch(conn, "SELECT steps FROM course_versions WHERE journey_id = %s AND state = 'draft'",
+                  (journey_id,))[0]["steps"]
+    public = [{k: s.get(k) for k in ("id", "title", "description", "type", "estimated_minutes", "core_question")}
+              for s in steps]
+    with _cur(conn) as cur:
+        cur.execute("UPDATE course_versions SET state = 'published', published_at = now() "
+                    "WHERE journey_id = %s AND state = 'draft'", (journey_id,))
+        cur.execute("UPDATE journeys SET steps = %s::jsonb WHERE id = %s", (json.dumps(public), journey_id))
+        cur.execute("UPDATE school_courses SET status = 'published', published_version = 1 WHERE journey_id = %s",
+                    (journey_id,))
+    return journey_id
+
+
+def enqueue_job(conn, school: dict, kind: str = "outline", status: str = "queued") -> str:
+    row = fetch(conn, "INSERT INTO school_jobs (school_id, kind, status) VALUES (%s, %s, %s) RETURNING id::text",
+                (school["id"], kind, status))
+    return row[0]["id"]
+
+
 def step_ids(conn, journey_id: str) -> list[str]:
     with _cur(conn) as cur:
         cur.execute("SELECT steps FROM journeys WHERE id = %s", (journey_id,))

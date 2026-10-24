@@ -5,12 +5,15 @@ Read routes are open to every staff member of the school; the services decide
 who may change what (school admins, class teachers, or teachers when the
 school lets them manage students — decision D9).
 """
+from datetime import datetime
 from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, Field
 
-from app.core.school_auth import SchoolCtx, school_member
+from app.core.school_auth import ADMIN_ROLES, SchoolCtx, school_member
+from app.services import school_analytics_service as analytics
+from app.services import school_assignment_service as assignments
 from app.services import school_class_service as classes
 from app.services import school_student_service as students
 
@@ -69,6 +72,19 @@ class AddTeacherRequest(BaseModel):
 class LoginCardsRequest(BaseModel):
     student_uids: Optional[list[str]] = Field(None, max_length=500)
     reset: bool = True
+
+
+class AssignCourseRequest(BaseModel):
+    journey_id: str = Field(..., min_length=1, max_length=64)
+    due_at: Optional[datetime] = None
+    tutor_enabled: bool = True
+    quiz_required: bool = False
+
+
+class UpdateAssignmentRequest(BaseModel):
+    due_at: Optional[datetime] = None
+    tutor_enabled: Optional[bool] = None
+    quiz_required: Optional[bool] = None
 
 
 # ── Students ──────────────────────────────────────────────────────────────────
@@ -203,3 +219,74 @@ def rotate_code(class_id: str, ctx: SchoolCtx = Depends(school_member())):
              summary="Printable sign-in cards (reset=true issues new secrets and badges)")
 def login_cards(class_id: str, body: LoginCardsRequest, ctx: SchoolCtx = Depends(school_member())):
     return classes.login_cards(ctx, class_id, body.student_uids, body.reset)
+
+
+# ── Course assignments (M5 SC-501) ────────────────────────────────────────────
+
+@router.get("/{school_id}/classes/{class_id}/courses",
+            summary="Courses assigned to a class, with a progress summary")
+def list_assignments(class_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return {"assignments": assignments.list_class_assignments(ctx, class_id)}
+
+
+@router.post("/{school_id}/classes/{class_id}/courses", status_code=201,
+             summary="Assign a published course to a class")
+def assign_course(class_id: str, body: AssignCourseRequest, ctx: SchoolCtx = Depends(school_member())):
+    return assignments.assign_course(
+        ctx, class_id, body.journey_id, body.due_at,
+        {"tutor_enabled": body.tutor_enabled, "quiz_required": body.quiz_required},
+    )
+
+
+@router.patch("/{school_id}/classes/{class_id}/courses/{assignment_id}",
+              summary="Change an assignment's due date or settings")
+def update_assignment(class_id: str, assignment_id: str, body: UpdateAssignmentRequest,
+                      ctx: SchoolCtx = Depends(school_member())):
+    return assignments.update_assignment(ctx, class_id, assignment_id,
+                                         body.model_dump(exclude_unset=True))
+
+
+@router.delete("/{school_id}/classes/{class_id}/courses/{assignment_id}", status_code=204,
+               summary="Unassign a course (students lose access; progress is kept)")
+def unassign_course(class_id: str, assignment_id: str, ctx: SchoolCtx = Depends(school_member())):
+    assignments.unassign(ctx, class_id, assignment_id)
+
+
+@router.get("/{school_id}/classes/{class_id}/progress",
+            summary="Class progress matrix (students × assigned courses)")
+def class_progress(class_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return assignments.class_progress_matrix(ctx, class_id)
+
+
+# ── M7: teacher analytics (SC-701/704/706) ────────────────────────────────────
+
+@router.get("/{school_id}/classes/{class_id}/students/{student_uid}/progress",
+            summary="One student's drill-down across the class's courses")
+def student_progress(class_id: str, student_uid: str, ctx: SchoolCtx = Depends(school_member())):
+    return analytics.student_drilldown(ctx, class_id, student_uid)
+
+
+@router.get("/{school_id}/classes/{class_id}/progress/export",
+            summary="Class progress matrix as a CSV download")
+def export_class_progress(class_id: str, ctx: SchoolCtx = Depends(school_member())):
+    csv = analytics.class_progress_csv(ctx, class_id)
+    return Response(content=csv, media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="class-progress.csv"'})
+
+
+@router.get("/{school_id}/usage", summary="School AI budget + usage overview (admins)")
+def school_usage(ctx: SchoolCtx = Depends(school_member(*ADMIN_ROLES))):
+    return analytics.school_usage_overview(ctx)
+
+
+@router.get("/{school_id}/classes/{class_id}/students/{student_uid}/transcripts",
+            summary="A student's tutor conversations (D4; 403 if the school disabled it)")
+def list_transcripts(class_id: str, student_uid: str, ctx: SchoolCtx = Depends(school_member())):
+    return analytics.list_student_transcripts(ctx, class_id, student_uid)
+
+
+@router.get("/{school_id}/classes/{class_id}/students/{student_uid}/transcripts/{conversation_id}",
+            summary="One tutor conversation's messages (audited)")
+def read_transcript(class_id: str, student_uid: str, conversation_id: str,
+                    ctx: SchoolCtx = Depends(school_member())):
+    return analytics.read_student_transcript(ctx, class_id, student_uid, conversation_id)

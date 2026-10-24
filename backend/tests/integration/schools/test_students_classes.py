@@ -57,9 +57,19 @@ def test_api_stu_create_returns_secret_once(client, world, db):
 def test_api_stu_pin_for_older_students_and_explicit_kind(client, world):
     r = client.post(_url(world, "/students"), headers=world.headers("SA"), json={"display_name": "Meera", "grade": 9})
     assert r.json()["secret_kind"] == "pin" and len(r.json()["secret"]) == 6 and r.json()["secret"].isdigit()
+    # An explicit PIN for an older student is honoured...
     r = client.post(_url(world, "/students"), headers=world.headers("SA"),
-                    json={"display_name": "Kabir", "grade": 9, "secret_kind": "picture"})
-    assert r.json()["secret_kind"] == "picture"
+                    json={"display_name": "Kabir", "grade": 9, "secret_kind": "pin"})
+    assert r.json()["secret_kind"] == "pin"
+    # ...but a picture password (16^3 = 4096 combinations) is rejected above the
+    # grade threshold, not silently honoured (M3).
+    r = client.post(_url(world, "/students"), headers=world.headers("SA"),
+                    json={"display_name": "Ira", "grade": 9, "secret_kind": "picture"})
+    assert r.status_code == 422 and r.json()["detail"]["error"] == "picture_secret_too_old"
+    # A young child can still use a picture password.
+    r = client.post(_url(world, "/students"), headers=world.headers("SA"),
+                    json={"display_name": "Anya", "grade": 2, "secret_kind": "picture"})
+    assert r.json()["secret_kind"] == "picture" and len(r.json()["secret"]) == 3
 
 
 def test_api_stu_gates(client, world, db):
@@ -204,10 +214,15 @@ def test_api_cls_login_cards(client, world, db):
     # without reset, a student who already has a secret gets a card without one
     second = client.post(_url(world, f"/classes/{a1}/login-cards"), headers=world.headers("T"),
                          json={"reset": False}).json()
-    assert second["cards"][0]["secret"] is None
-    # reset issues new ones
+    assert second["cards"][0]["secret"] is None and second["cards"][0]["badge_token"] is None
+    # reset re-issues the secret, but no longer rotates an existing badge (L2):
+    # it can't be reprinted until QR cards ship, and the badge sign-in is live —
+    # re-printing secrets shouldn't silently break a student's badge. rotate-badge
+    # is the explicit way to roll it.
     third = client.post(_url(world, f"/classes/{a1}/login-cards"), headers=world.headers("T"), json={}).json()
-    assert third["cards"][0]["secret"] is not None and third["cards"][0]["badge_token"] != card["badge_token"]
+    assert third["cards"][0]["secret"] is not None and third["cards"][0]["badge_token"] is None
+    rolled = client.post(_url(world, f"/students/{world.S}/rotate-badge"), headers=world.headers("T")).json()
+    assert rolled["badge_token"] and rolled["badge_token"] != card["badge_token"]
     r = client.post(_url(world, f"/classes/{a1}/login-cards"), headers=world.headers("T"),
                     json={"student_uids": [world.S2]})
     assert r.status_code == 404

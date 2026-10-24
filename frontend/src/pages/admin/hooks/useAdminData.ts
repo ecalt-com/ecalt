@@ -37,50 +37,58 @@ export function useAdminData() {
       if (!token) return
 
       const h = { Authorization: `Bearer ${token}` }
+      // Each of these can be slow or flaky (heavy analytics on a cold dev
+      // backend). One failure must NOT take down the whole admin panel, so we
+      // tolerate a rejected fetch (-> null) and never reject the batch. The only
+      // redirect is for a genuine 403 (not an admin), checked below.
+      const safe = (p: Promise<Response>): Promise<Response | null> => p.catch(() => null)
       const [pRes, sRes, uRes, aiRes, usageRes, cRes, revRes, costRes, retRes, fuRes, fnRes, csRes, prRes, ntRes, tvRes] = await Promise.all([
-        fetch('/api/v1/admin/plans',                            { headers: h }),
-        fetch('/api/v1/admin/stats',                            { headers: h }),
-        fetch('/api/v1/admin/users',                            { headers: h }),
-        fetch('/api/v1/admin/ai-config',                        { headers: h }),
-        fetch('/api/v1/admin/usage',                            { headers: h }),
-        fetch('/api/v1/coupons/admin',                          { headers: h }),
-        fetch('/api/v1/admin/revenue',                          { headers: h }),
-        fetch('/api/v1/admin/cost-analysis',                    { headers: h }),
-        fetch('/api/v1/admin/retention',                        { headers: h }),
-        fetch('/api/v1/admin/feature-usage',                    { headers: h }),
-        fetch('/api/v1/admin/funnel',                           { headers: h }),
-        fetch('/api/v1/admin/content-stats',                    { headers: h }),
-        fetch('/api/v1/admin/prompts',                          { headers: h }),
-        fetch('/api/v1/admin/notification-templates',           { headers: h }),
-        fetch('/api/v1/admin/notification-templates/variables', { headers: h }),
+        safe(fetch('/api/v1/admin/plans',                            { headers: h })),
+        safe(fetch('/api/v1/admin/stats',                            { headers: h })),
+        safe(fetch('/api/v1/admin/users',                            { headers: h })),
+        safe(fetch('/api/v1/admin/ai-config',                        { headers: h })),
+        safe(fetch('/api/v1/admin/usage',                            { headers: h })),
+        safe(fetch('/api/v1/coupons/admin',                          { headers: h })),
+        safe(fetch('/api/v1/admin/revenue',                          { headers: h })),
+        safe(fetch('/api/v1/admin/cost-analysis',                    { headers: h })),
+        safe(fetch('/api/v1/admin/retention',                        { headers: h })),
+        safe(fetch('/api/v1/admin/feature-usage',                    { headers: h })),
+        safe(fetch('/api/v1/admin/funnel',                           { headers: h })),
+        safe(fetch('/api/v1/admin/content-stats',                    { headers: h })),
+        safe(fetch('/api/v1/admin/prompts',                          { headers: h })),
+        safe(fetch('/api/v1/admin/notification-templates',           { headers: h })),
+        safe(fetch('/api/v1/admin/notification-templates/variables', { headers: h })),
       ])
 
-      if (pRes.status === 403) { navigate('/'); return }
-      if (!cancelled && pRes.ok) setPlans(await pRes.json().then((d: any) => d.plans ?? []))
-      if (!cancelled && sRes.ok) setStats(await sRes.json())
-      if (!cancelled && uRes.ok) setUsers(await uRes.json().then((d: any) => d.users ?? []))
-      if (!cancelled && aiRes.ok) {
+      // A 403 on the first admin call means this account isn't an admin.
+      if (pRes && pRes.status === 403) { navigate('/'); return }
+      if (!cancelled && pRes && pRes.ok) setPlans(await pRes.json().then((d: any) => d.plans ?? []))
+      if (!cancelled && sRes && sRes.ok) setStats(await sRes.json())
+      if (!cancelled && uRes && uRes.ok) setUsers(await uRes.json().then((d: any) => d.users ?? []))
+      if (!cancelled && aiRes && aiRes.ok) {
         const d = await aiRes.json()
         setAiConfigs(d.configs ?? [])
         setAvailableModels(d.available_models ?? {})
       }
-      if (!cancelled && usageRes.ok) {
+      if (!cancelled && usageRes && usageRes.ok) {
         const d = await usageRes.json()
         setUsageByModel(d.by_model ?? [])
         setDailyUsage(d.daily ?? [])
       }
-      if (!cancelled && cRes.ok) setCoupons(await cRes.json().then((d: any) => d.coupons ?? []))
-      if (!cancelled && revRes.ok) setRevenue(await revRes.json())
-      if (!cancelled && costRes.ok) setCostAnalysis(await costRes.json())
-      if (!cancelled && retRes.ok) setRetentionData(await retRes.json())
-      if (!cancelled && fuRes.ok) setFeatureUsage(await fuRes.json())
-      if (!cancelled && fnRes.ok) setFunnelData(await fnRes.json())
-      if (!cancelled && csRes.ok) setContentData(await csRes.json())
-      if (!cancelled && prRes.ok) setPrompts(await prRes.json())
-      if (!cancelled && ntRes.ok) setNotificationTemplates(await ntRes.json())
-      if (!cancelled && tvRes.ok) setTemplateVariables(await tvRes.json())
+      if (!cancelled && cRes && cRes.ok) setCoupons(await cRes.json().then((d: any) => d.coupons ?? []))
+      if (!cancelled && revRes && revRes.ok) setRevenue(await revRes.json())
+      if (!cancelled && costRes && costRes.ok) setCostAnalysis(await costRes.json())
+      if (!cancelled && retRes && retRes.ok) setRetentionData(await retRes.json())
+      if (!cancelled && fuRes && fuRes.ok) setFeatureUsage(await fuRes.json())
+      if (!cancelled && fnRes && fnRes.ok) setFunnelData(await fnRes.json())
+      if (!cancelled && csRes && csRes.ok) setContentData(await csRes.json())
+      if (!cancelled && prRes && prRes.ok) setPrompts(await prRes.json())
+      if (!cancelled && ntRes && ntRes.ok) setNotificationTemplates(await ntRes.json())
+      if (!cancelled && tvRes && tvRes.ok) setTemplateVariables(await tvRes.json())
     }
-    load().catch(() => navigate('/'))
+    // A load failure (e.g. a non-JSON body) logs but never redirects — only the
+    // explicit 403 above sends a non-admin home.
+    load().catch((e) => { if (!cancelled) console.error('[admin] data load failed', e) })
     return () => { cancelled = true }
   }, [getToken, navigate, user])
 

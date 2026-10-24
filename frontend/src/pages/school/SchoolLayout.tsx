@@ -100,11 +100,15 @@ export default function SchoolLayout() {
     )
   }
 
+  const isAdmin = activeSchool?.role === 'admin' || activeSchool?.role === 'owner'
   const tabs = [
     { to: '/school', label: 'Dashboard', end: true },
     { to: '/school/classes', label: 'Classes', end: false },
     { to: '/school/students', label: 'Students', end: false },
+    { to: '/school/materials', label: 'Materials', end: false },
+    { to: '/school/courses', label: 'Courses', end: false },
     { to: '/school/staff', label: 'Staff', end: false },
+    ...(isAdmin ? [{ to: '/school/usage', label: 'Usage', end: false }] : []),
     { to: '/school/settings', label: 'Settings', end: false },
   ]
 

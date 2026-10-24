@@ -2,8 +2,12 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 import { Lightbulb, Loader2, Award, RotateCcw, SkipForward } from 'lucide-react'
-import { generateQuizSet, getQuizHint, submitQuizAnswer, skipStepQuiz } from '../lib/api'
+import { apiErrorCode, generateQuizSet, getQuizHint, submitQuizAnswer, skipStepQuiz } from '../lib/api'
+import { schoolErrorMessage } from '../lib/schoolApi'
 import type { QuizSet, QuizHint, QuizResult, QuizVerdict } from '../lib/types'
+
+// Budget codes raised for a school student — they can't upgrade, so no CTA.
+const SCHOOL_BUDGET_CODES = new Set(['school_budget_exhausted', 'school_daily_limit_reached'])
 
 // ── 3-tier verdict display config ────────────────────────────────────────────
 const VERDICT_CONFIG: Record<QuizVerdict, { icon: string; label: string; cardCls: string; textCls: string }> = {
@@ -53,6 +57,7 @@ const DIFFICULTY_COLORS: Record<string, string> = {
 
 export default function QuizCard({ concept, context, getToken, journeyId, stepId, onPassed }: QuizCardProps) {
   const [phase, setPhase] = useState<Phase>('loading')
+  const [budgetCode, setBudgetCode] = useState<string | null>(null)
   const [quizSet, setQuizSet] = useState<QuizSet | null>(null)
   const [answers, setAnswers] = useState<string[]>([])
   const [results, setResults] = useState<QuizResult[] | null>(null)
@@ -103,7 +108,12 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
       setAnswers(set.questions.map(() => ''))
       setPhase('active')
     } catch (e: unknown) {
-      setPhase((e as { status?: number })?.status === 402 ? 'budget' : 'error')
+      if ((e as { status?: number })?.status === 402) {
+        setBudgetCode(apiErrorCode(e))
+        setPhase('budget')
+      } else {
+        setPhase('error')
+      }
     }
   }
 
@@ -223,6 +233,13 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
   }
 
   if (phase === 'budget') {
+    if (budgetCode && SCHOOL_BUDGET_CODES.has(budgetCode)) {
+      return (
+        <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 text-center">
+          <p className="text-xs text-slate-600 dark:text-slate-400">{schoolErrorMessage(budgetCode)}</p>
+        </div>
+      )
+    }
     return (
       <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 text-center space-y-2">
         <p className="text-xs text-slate-600 dark:text-slate-400">

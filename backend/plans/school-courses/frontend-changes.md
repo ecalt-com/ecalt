@@ -148,12 +148,47 @@ Errors: `invalid_student_secret` ("That's not quite right — try again"), `423 
 - Accepted proposals open in the editor as a new draft → publish as v(n+1).
 - Student side: steps changed since the student completed them show an **"Updated"** badge on `StepNode`.
 
+### 8.7 As-built backend contract (M4 SC-402..409) — authoritative
+
+All routes are under `/api/v1/schools/{sid}` and need a staff member (any role).
+Endpoints as shipped:
+
+| Action | Endpoint |
+|---|---|
+| list / create course | `GET` / `POST /courses` |
+| get course (+ draft) | `GET /courses/{jid}` |
+| estimate cost | `POST /courses/{jid}/estimate` |
+| generate outline | `POST /courses/{jid}/outline` (body = teacher inputs) |
+| **approve outline → build** | `POST /courses/{jid}/build` (this *is* "approve outline"; `schoolApi.approveOutline` calls it) |
+| regenerate one step | `POST /courses/{jid}/draft/steps/{step_id}/regenerate` `{instruction?, overwrite_teacher_edits?, expected_revision?}` |
+| edit meta | `PATCH /courses/{jid}/draft` `{title?, description?, estimated_hours?, expected_revision?}` |
+| add / reorder steps | `POST /courses/{jid}/draft/steps` · `POST /courses/{jid}/draft/steps/reorder` `{order:[step_id]}` |
+| edit / delete step | `PATCH /courses/{jid}/draft/steps/{step_id}` · `DELETE …/{step_id}?revision=N` |
+| hero image | `POST /courses/{jid}/hero-image` (school-billed; 503 `image_unavailable` until storage configured) |
+| publish | `POST /courses/{jid}/publish` `{change_summary?, expected_revision?}` |
+| versions / restore | `GET /courses/{jid}/versions` · `POST /courses/{jid}/versions/{version}/restore` |
+| duplicate / archive | `POST /courses/{jid}/duplicate` · `POST /courses/{jid}/archive` |
+
+- **Course shape** (`GET /courses/{jid}`): `{journey_id, title, status('draft'|'published'|'archived'), published_version, documents:[{id,filename,status,page_count}], draft}`. `draft` is `null` once published with no working draft (restore/duplicate makes a new one).
+- **Draft shape**: `{version, revision, status, meta, steps}`. **`status` state machine** (from `meta.status`): `empty → outlining → outline_ready → building → built`; plus `outline_failed`, `build_failed`, and `published`. Poll the job (`GET /jobs/{job_id}` → `{status, progress:{steps_done,steps_total}, result}`) while `outlining`/`building`; the UI must treat those two as busy (edits return 409 `course_busy`).
+- **Step shape** (draft): `{id, title, description, type, estimated_minutes, core_question, learning_objective, chunk_ids:[uuid], citations:[uuid], key_facts:[str], quiz_anchors:[{id,fact,chunk_ids}], body_md|null, flags:[{kind:'unsupported'|'build_error', claim?, reason?}], origin:'ai'|'teacher', edited_by_teacher:bool, build_status:'built'|'failed'|'empty'}`. Render `flags` as the right-pane "Check this" highlights; **never show `flags`/`citations`/`chunk_ids` to students** (publish strips them — the student journey carries only `id/title/description/type/estimated_minutes/core_question`).
+- **Optimistic lock:** every mutating draft/publish call takes `expected_revision`; a stale value → 409 `{error:'draft_conflict', current_revision}`. Read it from `draft.revision`, resend it, and on conflict follow §8.4's reload-keeping-text flow.
+- **Publish validation:** 409 `steps_incomplete` (`detail.steps` = step ids missing a body), `empty_course`, `course_busy`, `course_archived`. Regenerate adds 409 `teacher_edits_protected` (offer "replace my edits" → `overwrite_teacher_edits:true`) and `step_not_grounded` (teacher-authored steps have no source — edit by hand).
+- Jobs (`build`, `outline`, `regenerate_step`) are async; reuse `usePollJob`. Cancel via `POST /jobs/{job_id}/cancel` (build/regenerate reset the draft to a rebuildable state).
+
 ## 9. Assignments and student home (SC-501..503, SC-507)
 
 - Class → **Courses** tab: assign a **published** course, with an optional due date, tutor on/off and quiz required. Show each assignment's progress summary. Unassigning archives the assignment (progress is kept).
 - **Student home (`/my-classes`)**: `GET /school-student/home` → for each class, cards for assigned courses with progress ring, due date ("Due Fri", red when overdue) and teacher name. Tap → `/journey/:id`.
 - On `/journey/:id` for students: hide like/fork/share/marketplace actions and suggestions. Show the tutor only when the assignment allows it.
 - 402 `school_budget_exhausted` → a friendly inline card: "Your class has used up its AI helpers for this month — tell your teacher". It never links to pricing.
+
+### 9.1 As built (SC-501..503 + SC-507, 2026-10-23)
+
+- **API contract:** `GET/POST /schools/{id}/classes/{cid}/courses`, `PATCH/DELETE …/courses/{aid}`. POST body `{journey_id, due_at?, tutor_enabled=true, quiz_required=false}`; POST is published-courses-only (409 `course_not_published`, 404 `course_not_found`, 409 `already_assigned`). GET returns `{assignments: [{id, journey_id, title, icon, total_steps, due_at, settings:{tutor_enabled,quiz_required}, assigned_at, assigned_by_name, progress:{enrolled,started,completed,avg_percent}}]}`. PATCH takes any of `due_at`/`tutor_enabled`/`quiz_required` (sent keys only; `due_at:null` clears). DELETE archives (204; progress kept). `GET /school-student/home` → `{classes:[{class_id,class_name,grade,teacher_name,courses:[{assignment_id,journey_id,title,icon,description,hero_image_url,total_steps,done_steps,percent,completed,due_at,tutor_enabled}]}]}` (lists every active class, even with no courses).
+- **Settings enforcement:** tutor on/off → `chat/stream` 403 `tutor_disabled`; quiz-required → `progress` step-complete 412 `quiz_not_passed` only when required (default optional for school courses). `GET /journeys/{id}` carries `tutor_enabled` for a student so the UI hides the tutor rather than offering one that 403s.
+- **Frontend:** `components/school/ClassCourses.tsx` (in the class page), `StudentHome.tsx` (on `getStudentHome`), student `Journey` adjustments. `lib/schoolApi.ts`: `listAssignments`, `assignCourse`, `updateAssignment`, `unassignCourse`, `getStudentHome` + types. The budget card reuses `UpgradePrompt` (already maps `school_budget_exhausted`/`school_daily_limit_reached` to no-upsell copy).
+- **Deferred:** §10 class progress page (needs the SC-505 matrix endpoint); drag-and-drop/reorder of assignments; grade→age-band (SC-503).
 
 ## 10. Progress and analytics (SC-505, SC-701..707)
 

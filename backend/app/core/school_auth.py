@@ -34,6 +34,8 @@ STUDENT_ALLOWED_ROUTES: frozenset[tuple[str, str]] = frozenset({
     # bootstrap
     ("POST", "/api/v1/users"),
     ("GET", "/api/v1/users/me"),
+    # student home (their classes + assigned courses)
+    ("GET", "/api/v1/school-student/home"),
     # assigned school courses
     ("GET", "/api/v1/journeys"),
     ("GET", "/api/v1/journeys/{journey_id}"),

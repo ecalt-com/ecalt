@@ -46,9 +46,18 @@ async def lifespan(_app: FastAPI):
         sched.start()
     else:
         logging.getLogger("ecalt.startup").info("scheduler disabled (SCHEDULER_ENABLED=false)")
+    # School background-job worker (document extraction, course generation).
+    # Gated on its own flag, independent of the scheduler (README §3.13).
+    worker_started = False
+    if settings.SCHOOLS_ENABLED:
+        from app.services.school_jobs import start_worker
+        worker_started = start_worker()
     yield
     if sched:
         sched.shutdown(wait=False)
+    if worker_started:
+        from app.services.school_jobs import stop_worker
+        stop_worker()
 
 if settings.SENTRY_DSN:
     sentry_sdk.init(

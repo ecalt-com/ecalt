@@ -7,7 +7,7 @@ import PageMeta from '../components/PageMeta'
 import JourneyTutor from '../components/journey/JourneyTutor'
 import { getJourney, getJourneys, getProgress, getJourneySuggestions, markStepComplete, toggleJourneyLike, forkJourney, submitToMarketplace } from '../lib/api'
 import type { JourneySuggestions } from '../lib/api'
-import { useAuth } from '../lib/AuthContext'
+import { isStudentUid, useAuth } from '../lib/AuthContext'
 import { useToast } from '../lib/ToastContext'
 import type { Journey as JourneyType, JourneyStep } from '../lib/types'
 
@@ -112,6 +112,9 @@ export default function Journey() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user, getToken } = useAuth()
+  // School students get a focused view: no marketplace/social actions, and the
+  // tutor only when the teacher left it on for their assignment (§9).
+  const isStudent = !!user && isStudentUid(user.uid)
   const { addToast } = useToast()
   const [journey, setJourney] = useState<JourneyType | null>(null)
   const [steps, setSteps] = useState<JourneyStep[]>([])
@@ -461,60 +464,64 @@ export default function Journey() {
                     <TrendingUp size={14} />
                     {completed === 0 ? 'Start Journey' : 'Continue'}
                   </button>
-                  <button
-                    onClick={async () => {
-                      const url = window.location.href
-                      const title = journey.title
-                      if (navigator.share) {
-                        try { await navigator.share({ title, url }) } catch { /* cancelled */ }
-                      } else {
-                        await navigator.clipboard.writeText(url)
-                        addToast('Link copied to clipboard')
-                      }
-                    }}
-                    className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
-                  >
-                    <Share2 size={13} />Share
-                  </button>
-                  <button
-                    onClick={handleLike}
-                    disabled={liking}
-                    className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
-                  >
-                    <Heart size={13} className={liked ? 'fill-rose-500 text-rose-500' : ''} />
-                    {likeCount}
-                  </button>
-                  {journey.marketplace_status === 'published' && !journey.is_owner && (
-                    <button
-                      onClick={handleFork}
-                      disabled={forking}
-                      className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
-                    >
-                      {forking ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
-                      Add to my journeys
-                    </button>
-                  )}
-                  {journey.is_owner && (journey.marketplace_status === 'private' || journey.marketplace_status === 'rejected') && (
-                    <button
-                      onClick={handleSubmitToMarketplace}
-                      disabled={submitting}
-                      className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
-                    >
-                      {submitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                      {journey.marketplace_status === 'rejected' ? 'Resubmit to Marketplace' : 'Submit to Marketplace'}
-                    </button>
-                  )}
-                  {journey.is_owner && journey.marketplace_status === 'pending_review' && (
-                    <span className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-400/10 w-full sm:w-auto">
-                      <Loader2 size={12} />
-                      Pending marketplace review
-                    </span>
-                  )}
-                  {journey.is_owner && journey.marketplace_status === 'published' && (
-                    <span className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-400/10 w-full sm:w-auto">
-                      <CheckCircle2 size={12} />
-                      Live in Marketplace
-                    </span>
+                  {!isStudent && (
+                    <>
+                      <button
+                        onClick={async () => {
+                          const url = window.location.href
+                          const title = journey.title
+                          if (navigator.share) {
+                            try { await navigator.share({ title, url }) } catch { /* cancelled */ }
+                          } else {
+                            await navigator.clipboard.writeText(url)
+                            addToast('Link copied to clipboard')
+                          }
+                        }}
+                        className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
+                      >
+                        <Share2 size={13} />Share
+                      </button>
+                      <button
+                        onClick={handleLike}
+                        disabled={liking}
+                        className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
+                      >
+                        <Heart size={13} className={liked ? 'fill-rose-500 text-rose-500' : ''} />
+                        {likeCount}
+                      </button>
+                      {journey.marketplace_status === 'published' && !journey.is_owner && (
+                        <button
+                          onClick={handleFork}
+                          disabled={forking}
+                          className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
+                        >
+                          {forking ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+                          Add to my journeys
+                        </button>
+                      )}
+                      {journey.is_owner && (journey.marketplace_status === 'private' || journey.marketplace_status === 'rejected') && (
+                        <button
+                          onClick={handleSubmitToMarketplace}
+                          disabled={submitting}
+                          className="btn-ghost flex items-center justify-center gap-1.5 w-full sm:w-auto"
+                        >
+                          {submitting ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                          {journey.marketplace_status === 'rejected' ? 'Resubmit to Marketplace' : 'Submit to Marketplace'}
+                        </button>
+                      )}
+                      {journey.is_owner && journey.marketplace_status === 'pending_review' && (
+                        <span className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-amber-700 bg-amber-50 dark:text-amber-400 dark:bg-amber-400/10 w-full sm:w-auto">
+                          <Loader2 size={12} />
+                          Pending marketplace review
+                        </span>
+                      )}
+                      {journey.is_owner && journey.marketplace_status === 'published' && (
+                        <span className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium text-emerald-700 bg-emerald-50 dark:text-emerald-400 dark:bg-emerald-400/10 w-full sm:w-auto">
+                          <CheckCircle2 size={12} />
+                          Live in Marketplace
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -567,7 +574,7 @@ export default function Journey() {
               </div>
             )}
 
-            {related.length > 0 && (
+            {!isStudent && related.length > 0 && (
               <div className="mt-16 pt-8 border-t border-slate-200 dark:border-slate-800/50">
                 <p className="text-xs text-slate-400 uppercase tracking-widest mb-4">More like this</p>
                 <div className="space-y-3">
@@ -593,7 +600,7 @@ export default function Journey() {
         </div>{/* end content column */}
 
         {/* Tutor sidebar — desktop/large iPad */}
-        {user && journey && (
+        {user && journey && journey.tutor_enabled !== false && (
           <div className="hidden lg:flex flex-col w-80 xl:w-96 shrink-0 sticky top-24 h-[calc(100dvh-7rem)]">
             <JourneyTutor
               journeyId={id!}
@@ -607,7 +614,7 @@ export default function Journey() {
         </div>{/* end flex wrapper */}
 
         {/* Tutor — mobile/iPad floating button + bottom-sheet overlay */}
-        {user && journey && (
+        {user && journey && journey.tutor_enabled !== false && (
           <>
             {!tutorOpen && (
               <button

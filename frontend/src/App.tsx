@@ -51,9 +51,14 @@ const SchoolLayout    = lazy(() => import('./pages/school/SchoolLayout'))
 const SchoolDashboard = lazy(() => import('./pages/school/SchoolDashboard'))
 const SchoolStaff     = lazy(() => import('./pages/school/SchoolStaff'))
 const SchoolSettings  = lazy(() => import('./pages/school/SchoolSettings'))
+const SchoolUsage     = lazy(() => import('./pages/school/SchoolUsage'))
 const SchoolStudents  = lazy(() => import('./pages/school/SchoolStudents'))
 const SchoolClasses   = lazy(() => import('./pages/school/SchoolClasses'))
 const SchoolClassDetail = lazy(() => import('./pages/school/SchoolClassDetail'))
+const SchoolDocuments = lazy(() => import('./pages/school/SchoolDocuments'))
+const SchoolCourses   = lazy(() => import('./pages/school/SchoolCourses'))
+const SchoolCourseNew = lazy(() => import('./pages/school/SchoolCourseNew'))
+const SchoolCourseBuilder = lazy(() => import('./pages/school/SchoolCourseBuilder'))
 const LoginCardsPrint = lazy(() => import('./pages/school/LoginCardsPrint'))
 const ClassSignIn     = lazy(() => import('./pages/ClassSignIn'))
 const BadgeSignIn     = lazy(() => import('./pages/BadgeSignIn'))
@@ -113,7 +118,12 @@ function AppShell() {
             <Route path="classes" element={<SchoolClasses />} />
             <Route path="classes/:classId" element={<SchoolClassDetail />} />
             <Route path="students" element={<SchoolStudents />} />
+            <Route path="materials" element={<SchoolDocuments />} />
+            <Route path="courses" element={<SchoolCourses />} />
+            <Route path="courses/new" element={<SchoolCourseNew />} />
+            <Route path="courses/:courseId" element={<SchoolCourseBuilder />} />
             <Route path="staff" element={<SchoolStaff />} />
+            <Route path="usage" element={<SchoolUsage />} />
             <Route path="settings" element={<SchoolSettings />} />
           </Route>
           <Route path="/school/print/cards/:classId" element={<ErrorBoundary><LoginCardsPrint /></ErrorBoundary>} />

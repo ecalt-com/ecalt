@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from typing import Optional
 from app.core.auth import get_active_user, get_acting_uid
 from app.core.database import get_db
+from app.core.school_auth import is_school_student_uid
 from app.services.knowledge_service import credit_step_knowledge
 from app.services.quiz_service import step_quiz_passed
 from app.services.interest_profile_service import invalidate as invalidate_profile
@@ -201,7 +202,14 @@ async def mark_step_complete(
     assert_can_read_journey(uid, journey_id)
     resolved = _journey_steps(journey_id)
     _check_previous_steps_complete(uid, journey_id, step_id, resolved)
-    _check_quiz_passed(uid, journey_id, step_id, resolved)
+    # On a school course the quiz only gates completion when the teacher made it
+    # required for the class (SC-503); ordinary journeys always gate (unchanged).
+    if is_school_student_uid(uid):
+        from app.services.school_assignment_service import student_quiz_required
+        if student_quiz_required(uid, journey_id):
+            _check_quiz_passed(uid, journey_id, step_id, resolved)
+    else:
+        _check_quiz_passed(uid, journey_id, step_id, resolved)
 
     with get_db() as conn:
         with conn.cursor() as cur:

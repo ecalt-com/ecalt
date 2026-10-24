@@ -779,6 +779,11 @@ async def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional
     journey = _db_journey(journey_id, uid) or _journey_map.get(journey_id)
     if not journey:
         raise HTTPException(status_code=404, detail="Journey not found")
+    # A student opening an assigned course learns whether the tutor is on so the
+    # UI can hide it rather than offer a tutor that 403s (SC-503).
+    if is_school_student_uid(uid):
+        from app.services.school_assignment_service import student_tutor_allowed
+        journey.tutor_enabled = student_tutor_allowed(uid, journey_id)
     return journey
 
 
