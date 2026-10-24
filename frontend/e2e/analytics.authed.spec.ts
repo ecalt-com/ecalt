@@ -49,6 +49,8 @@ test('teacher analytics — drill-down, CSV export, usage (recorded)', async ({ 
   await expect(page).toHaveURL(/\/school\/usage$/)
   await expect(page.getByRole('heading', { name: /AI budget/ })).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText(/Daily cap per student/)).toBeVisible()
+  // SC-706: per-course spend (populated by course builds post-migration-016).
+  await expect(page.getByRole('heading', { name: /Spend by course/ })).toBeVisible({ timeout: 15_000 })
   await page.waitForTimeout(1500)
 
   // eslint-disable-next-line no-console
