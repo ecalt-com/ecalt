@@ -687,6 +687,47 @@ export const duplicateCourse = (schoolId: string, jid: string, token: string): P
 export const archiveCourse = (schoolId: string, jid: string, token: string): Promise<Course> =>
   request(`${courses(schoolId)}/${enc(jid)}/archive`, json('POST'), token)
 
+// ── Updates from a new document (M6: propose → review → apply) ────────────────
+
+export type UpdateMode = 'revise' | 'supplement'
+
+export interface UpdateHandle { job_id: string; status: string; mode: UpdateMode }
+
+export interface ProposalDiff { added: number; removed: number }
+
+export interface CourseProposal {
+  id: string
+  op: 'modify' | 'add' | 'remove'
+  step_id: string | null
+  status: 'pending' | 'accepted' | 'rejected'
+  reason: string | null
+  suggestion_only: boolean
+  title: string | null
+  old_title: string | null
+  old_body: string | null
+  new_body: string | null
+  diff: ProposalDiff | null
+  after_step_id: string | null
+}
+
+export interface ProposalList { proposals: CourseProposal[]; pending: number; accepted: number }
+
+export const startCourseUpdate = (
+  schoolId: string, jid: string, documentId: string, mode: UpdateMode, token: string,
+): Promise<UpdateHandle> =>
+  request(`${courses(schoolId)}/${enc(jid)}/update`, json('POST', { document_id: documentId, mode }), token)
+
+export const getCourseProposals = (schoolId: string, jid: string, token: string): Promise<ProposalList> =>
+  request(`${courses(schoolId)}/${enc(jid)}/proposals`, undefined, token)
+
+export const decideProposal = (
+  schoolId: string, jid: string, proposalId: string, decision: 'accept' | 'reject', token: string,
+): Promise<{ id: string; status: string }> =>
+  request(`${courses(schoolId)}/${enc(jid)}/proposals/${enc(proposalId)}/decide`, json('POST', { decision }), token)
+
+export const applyProposals = (schoolId: string, jid: string, token: string): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/proposals/apply`, json('POST'), token)
+
 // ── Assignments (M5 §9, SC-501..502) ─────────────────────────────────────────
 
 export interface AssignmentSettings { tutor_enabled: boolean; quiz_required: boolean }

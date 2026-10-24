@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, Eye, History,
+  AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, Eye, FilePlus2, History,
   Loader2, Pencil, Plus, RefreshCw, Rocket, Trash2, X,
 } from 'lucide-react'
 import clsx from 'clsx'
 import MarkdownContent from '../../components/MarkdownContent'
+import UpdateFromDocument from '../../components/school/UpdateFromDocument'
 import { useAuth } from '../../lib/AuthContext'
 import { useToast } from '../../lib/ToastContext'
 import { apiErrorCode } from '../../lib/api'
@@ -55,6 +56,7 @@ export default function SchoolCourseBuilder() {
   const [showPublish, setShowPublish] = useState(false)
   const [showVersions, setShowVersions] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
+  const [showUpdate, setShowUpdate] = useState(false)
   const [working, setWorking] = useState(false)
 
   const reload = useCallback(async () => {
@@ -179,13 +181,25 @@ export default function SchoolCourseBuilder() {
           <CheckCircle2 size={26} className="text-emerald-500 mx-auto" />
           <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{c.title}</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400">Published{c.published_version ? ` (v${c.published_version})` : ''} and live for assigned classes.</p>
-          <button
-            onClick={async () => { const t = await getToken(); if (!t) return; setWorking(true); try { const d = await duplicateCourse(school.id, c.journey_id, t); navigate(`/school/courses/${d.journey_id}`) } finally { setWorking(false) } }}
-            disabled={working}
-            className="btn-primary inline-flex items-center gap-2"
-          >{working ? <Loader2 size={16} className="animate-spin" /> : <Pencil size={16} />} Edit as a new draft</button>
+          <div className="flex items-center justify-center gap-2 flex-wrap">
+            <button
+              onClick={async () => { const t = await getToken(); if (!t) return; setWorking(true); try { const d = await duplicateCourse(school.id, c.journey_id, t); navigate(`/school/courses/${d.journey_id}`) } finally { setWorking(false) } }}
+              disabled={working}
+              className="btn-primary inline-flex items-center gap-2"
+            >{working ? <Loader2 size={16} className="animate-spin" /> : <Pencil size={16} />} Edit as a new draft</button>
+            <button onClick={() => setShowUpdate(true)} disabled={working} className="btn-ghost inline-flex items-center gap-2">
+              <FilePlus2 size={16} /> Update from a document
+            </button>
+          </div>
         </div>
         {showVersions && <VersionsDrawer schoolId={school.id} jid={c.journey_id} onClose={() => setShowVersions(false)} onRestored={(nc) => { setShowVersions(false); setCourse(nc) }} />}
+        {showUpdate && (
+          <UpdateFromDocument
+            schoolId={school.id} jid={c.journey_id}
+            onClose={() => setShowUpdate(false)}
+            onApplied={(nc) => { setShowUpdate(false); setCourse(nc) }}
+          />
+        )}
       </div>
     )
   }
