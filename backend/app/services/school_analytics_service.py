@@ -264,6 +264,46 @@ def school_usage_overview(ctx: SchoolCtx) -> dict:
                 "tutor_messages": int(r["tutor_messages"]),
                 "quiz_sets": int(r["quiz_sets"]),
             } for r in cur.fetchall()]
+            # Spend this period broken down by course (SC-706).
+            cur.execute(
+                """
+                SELECT cu.journey_id, cu.cost_cents, j.title, j.icon
+                  FROM school_course_usage cu
+                  JOIN journeys j ON j.id = cu.journey_id
+                 WHERE cu.school_id = %s AND cu.period_start = %s
+                 ORDER BY cu.cost_cents DESC
+                """,
+                (ctx.school_id, period_start),
+            )
+            by_course = [{
+                "journey_id": r["journey_id"],
+                "title": r["title"],
+                "icon": r["icon"],
+                "cost_cents": float(r["cost_cents"]),
+            } for r in cur.fetchall()]
+            # Per-class rollup: the spend of the courses assigned to each class.
+            # A course assigned to several classes contributes to each (so this is
+            # a "which classes drive cost" view, not a partition of the total).
+            cur.execute(
+                """
+                SELECT c.id AS class_id, c.name AS class_name,
+                       COALESCE(SUM(cu.cost_cents), 0) AS cost_cents
+                  FROM classes c
+                  JOIN course_assignments a ON a.class_id = c.id AND a.status = 'active'
+                  JOIN school_course_usage cu
+                    ON cu.journey_id = a.journey_id AND cu.school_id = c.school_id
+                       AND cu.period_start = %s
+                 WHERE c.school_id = %s AND c.archived_at IS NULL
+                 GROUP BY c.id, c.name
+                 ORDER BY cost_cents DESC
+                """,
+                (period_start, ctx.school_id),
+            )
+            by_class = [{
+                "class_id": str(r["class_id"]),
+                "class_name": r["class_name"],
+                "cost_cents": float(r["cost_cents"]),
+            } for r in cur.fetchall()]
 
     return {
         "period_start": period_start.isoformat(),
@@ -276,7 +316,65 @@ def school_usage_overview(ctx: SchoolCtx) -> dict:
         },
         "today": today_usage,
         "history": history,
+        "by_course": by_course,
+        "by_class": by_class,
     }
+
+
+# ── SC-705: weekly teacher digest (scheduler, prod only) ─────────────────────
+
+def weekly_teacher_digests() -> list[dict]:
+    """One digest per teacher who has at least one class with an assigned course,
+    summarising each of their classes (students, courses, overdue assignments).
+    Teachers with nothing assigned are skipped. For the weekly scheduler job."""
+    out = []
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT ct.uid, u.email, u.display_name
+                  FROM class_teachers ct
+                  JOIN classes c ON c.id = ct.class_id AND c.archived_at IS NULL
+                  JOIN schools s ON s.id = c.school_id AND s.status IN ('onboarding', 'active')
+                  JOIN users u ON u.uid = ct.uid
+                 WHERE u.email IS NOT NULL
+                """
+            )
+            teachers = cur.fetchall()
+            for t in teachers:
+                cur.execute(
+                    """
+                    SELECT c.name,
+                           (SELECT COUNT(*) FROM class_enrollments e
+                              JOIN school_students ss ON ss.uid = e.student_uid AND ss.status = 'active'
+                             WHERE e.class_id = c.id AND e.removed_at IS NULL) AS student_count,
+                           (SELECT COUNT(*) FROM course_assignments a
+                             WHERE a.class_id = c.id AND a.status = 'active') AS course_count,
+                           (SELECT COUNT(*) FROM course_assignments a
+                             WHERE a.class_id = c.id AND a.status = 'active'
+                               AND a.due_at IS NOT NULL AND a.due_at < now()) AS overdue_count
+                      FROM class_teachers ct
+                      JOIN classes c ON c.id = ct.class_id AND c.archived_at IS NULL
+                     WHERE ct.uid = %s
+                     ORDER BY c.name
+                    """,
+                    (t["uid"],),
+                )
+                classes = [{
+                    "class_name": r["name"],
+                    "student_count": int(r["student_count"]),
+                    "course_count": int(r["course_count"]),
+                    "overdue_count": int(r["overdue_count"]),
+                } for r in cur.fetchall() if r["course_count"]]
+                if not classes:
+                    continue  # nothing assigned → nothing to report
+                out.append({
+                    "teacher_uid": t["uid"],
+                    "teacher_email": t["email"],
+                    "teacher_name": t["display_name"],
+                    "classes": classes,
+                })
+    return out
 
 
 # ── SC-703: tutor transcript visibility (decision D4) ────────────────────────

@@ -84,7 +84,7 @@ async def generate_quiz_endpoint(
         raise HTTPException(status_code=500, detail="Failed to generate quiz")
 
     cfg = get_config("quiz")
-    record_usage(uid, in_tok, out_tok, cfg["model"], interaction_type="quiz")
+    record_usage(uid, in_tok, out_tok, cfg["model"], interaction_type="quiz", journey_id=body.journey_id)
     return quiz
 
 

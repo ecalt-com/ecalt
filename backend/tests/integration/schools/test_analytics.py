@@ -150,3 +150,44 @@ def test_usage_overview(client, world, db):
     assert d["budget_cents"] == 1000 and d["spent_cents"] == 250 and d["percent"] == 25
     assert d["caps"] == {"student_daily_tutor_messages": 30, "student_daily_quiz_sets": 20}
     assert len(d["history"]) == 1 and d["history"][0]["cost_cents"] == 250
+
+
+# ── SC-706: per-course / per-class spend attribution ─────────────────────────
+
+def test_usage_breakdowns_by_course_and_class(client, world, db):
+    f.fetch(db, "UPDATE schools SET monthly_ai_budget_cents = 5000 WHERE id = %s", (world.school_a["id"],))
+    period = date.today().replace(day=1)
+    f.fetch(db, "INSERT INTO school_course_usage (school_id, journey_id, period_start, cost_cents, input_tokens, output_tokens) "
+                "VALUES (%s,%s,%s,%s,%s,%s)", (world.school_a["id"], world.C1, period, 120, 2000, 800))
+    d = client.get(f"/api/v1/schools/{world.school_a['id']}/usage", headers=world.headers("SA")).json()
+    assert any(c["journey_id"] == world.C1 and c["cost_cents"] == 120 for c in d["by_course"])
+    # C1 is assigned to A1 ("6A") in the world → it shows in the per-class rollup.
+    assert any(c["class_name"] == "6A" and c["cost_cents"] == 120 for c in d["by_class"])
+
+
+def test_student_usage_is_attributed_to_the_course(world, db):
+    from app.services import subscription_service as sub
+    sub.invalidate_student_school()
+    sub.record_usage(world.S, 1500, 600, "gpt-4.1-mini", interaction_type="quiz", journey_id=world.C1)
+    rows = f.fetch(db, "SELECT cost_cents FROM school_course_usage WHERE school_id = %s AND journey_id = %s",
+                   (world.school_a["id"], world.C1))
+    assert rows and float(rows[0]["cost_cents"]) > 0
+
+
+# ── SC-705: weekly teacher digest ─────────────────────────────────────────────
+
+def test_weekly_teacher_digest_summarises_a_teachers_classes(world, db):
+    from app.services.school_analytics_service import weekly_teacher_digests
+    f.fetch(db, "UPDATE users SET email = 'teacher@example.com' WHERE uid = %s", (world.T,))
+    f.fetch(db, "UPDATE course_assignments SET due_at = '2020-01-01T00:00:00Z' "
+                "WHERE class_id = %s AND journey_id = %s", (world.A1["id"], world.C1))
+    mine = next((d for d in weekly_teacher_digests() if d["teacher_uid"] == world.T), None)
+    assert mine is not None and mine["teacher_email"] == 'teacher@example.com'
+    six_a = next((c for c in mine["classes"] if c["class_name"] == "6A"), None)
+    assert six_a and six_a["course_count"] >= 1 and six_a["overdue_count"] == 1
+
+
+def test_weekly_teacher_digest_skips_teachers_without_courses(world, db):
+    from app.services.school_analytics_service import weekly_teacher_digests
+    # T2 teaches no class, so is never in the digest.
+    assert all(d["teacher_uid"] != world.T2 for d in weekly_teacher_digests())

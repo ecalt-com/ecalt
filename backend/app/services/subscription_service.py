@@ -146,9 +146,28 @@ def check_school_budget(school_id: str) -> tuple[bool, str]:
     return True, "ok"
 
 
-def record_school_usage(school_id: str, input_tokens: int, output_tokens: int, model: str) -> None:
-    """Accrue a staff-triggered model call to the school's monthly pool."""
+def _accrue_course_usage(cur, school_id: str, journey_id: str, period_start, cost_cents: float,
+                         input_tokens: int, output_tokens: int) -> None:
+    """Break a school AI charge down by course (SC-706), in the caller's txn."""
+    cur.execute(
+        """
+        INSERT INTO school_course_usage (school_id, journey_id, period_start, cost_cents, input_tokens, output_tokens)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (school_id, journey_id, period_start) DO UPDATE SET
+            cost_cents    = school_course_usage.cost_cents + EXCLUDED.cost_cents,
+            input_tokens  = school_course_usage.input_tokens + EXCLUDED.input_tokens,
+            output_tokens = school_course_usage.output_tokens + EXCLUDED.output_tokens
+        """,
+        (school_id, journey_id, period_start, cost_cents, input_tokens, output_tokens),
+    )
+
+
+def record_school_usage(school_id: str, input_tokens: int, output_tokens: int, model: str,
+                        journey_id: Optional[str] = None) -> None:
+    """Accrue a staff-triggered model call to the school's monthly pool, and (when
+    a course is in context) to that course's per-course spend (SC-706)."""
     cost_cents = cost_for_tokens(model, input_tokens, output_tokens)
+    period_start = date.today().replace(day=1)
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -161,16 +180,21 @@ def record_school_usage(school_id: str, input_tokens: int, output_tokens: int, m
                         input_tokens  = school_usage.input_tokens + EXCLUDED.input_tokens,
                         output_tokens = school_usage.output_tokens + EXCLUDED.output_tokens
                     """,
-                    (school_id, date.today().replace(day=1), cost_cents, input_tokens, output_tokens),
+                    (school_id, period_start, cost_cents, input_tokens, output_tokens),
                 )
+                if journey_id:
+                    _accrue_course_usage(cur, school_id, journey_id, period_start,
+                                         cost_cents, input_tokens, output_tokens)
     except Exception:
         logger.warning("record_school_usage failed for %s", school_id, exc_info=True)
 
 
-def record_school_image_usage(school_id: str, model: str, count: int = 1) -> None:
+def record_school_image_usage(school_id: str, model: str, count: int = 1,
+                              journey_id: Optional[str] = None) -> None:
     """Accrue a staff-triggered image generation (course hero) to the school's
-    monthly pool."""
+    monthly pool (and the course's per-course spend when known, SC-706)."""
     cost_cents = cost_for_images(model, count)
+    period_start = date.today().replace(day=1)
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -181,8 +205,10 @@ def record_school_image_usage(school_id: str, model: str, count: int = 1) -> Non
                     ON CONFLICT (school_id, period_start) DO UPDATE SET
                         cost_cents = school_usage.cost_cents + EXCLUDED.cost_cents
                     """,
-                    (school_id, date.today().replace(day=1), cost_cents),
+                    (school_id, period_start, cost_cents),
                 )
+                if journey_id:
+                    _accrue_course_usage(cur, school_id, journey_id, period_start, cost_cents, 0, 0)
     except Exception:
         logger.warning("record_school_image_usage failed for %s", school_id, exc_info=True)
 
@@ -406,6 +432,7 @@ def record_usage(
     model: str,
     interaction_type: str = "unknown",
     cached_input_tokens: int = 0,
+    journey_id: Optional[str] = None,
 ) -> None:
     """Upsert token_usage for the current billing month and log budget status."""
     cost_cents = cost_for_tokens(model, input_tokens, output_tokens)
@@ -467,6 +494,9 @@ def record_usage(
                             """,
                             (school[0], period_start, cost_cents, input_tokens, output_tokens),
                         )
+                        if journey_id:
+                            _accrue_course_usage(cur, school[0], journey_id, period_start,
+                                                 cost_cents, input_tokens, output_tokens)
                         col = ("tutor_messages" if interaction_type in ("journey_tutor", "daily_chat")
                                else "quiz_sets" if interaction_type == "quiz" else None)
                         if col:

@@ -99,7 +99,7 @@ def outline_handler(job: dict) -> dict:
         school_jobs.raise_if_cancelled(str(job["id"]))
         try:
             text, in_tok, out_tok, _ = _complete("school_course_outline", system, user, max_tokens=2000)
-            subscription_service.record_school_usage(school_id, in_tok, out_tok, model)
+            subscription_service.record_school_usage(school_id, in_tok, out_tok, model, journey_id=journey_id)
             data = _parse_outline(text, len(chunks))
             _check_coverage(data, chunks)
             steps = _materialize_steps(data, chunks)
@@ -275,7 +275,7 @@ def build_handler(job: dict) -> dict:
         async def _one(step: dict) -> dict:
             async with sem:
                 school_jobs.raise_if_cancelled(job_id)   # stop before spending on each step
-                built = await _build_step(step, chunks_by_id, school_id, cfg_body, cfg_critic)
+                built = await _build_step(step, chunks_by_id, school_id, journey_id, cfg_body, cfg_critic)
                 done["n"] += 1   # single-threaded event loop → increment is safe between awaits
                 school_jobs.update_progress(job_id, {"steps_done": done["n"], "steps_total": len(steps)})
                 return built
@@ -297,7 +297,7 @@ def build_handler(job: dict) -> dict:
     return {"status": status, "steps": len(built), "flagged": n_flagged, "failed": n_failed}
 
 
-async def _build_step(step: dict, chunks_by_id: dict, school_id: str,
+async def _build_step(step: dict, chunks_by_id: dict, school_id: str, journey_id: str,
                       cfg_body: dict, cfg_critic: dict, instruction: str = None) -> dict:
     cited = [chunks_by_id[cid] for cid in (step.get("chunk_ids") or []) if cid in chunks_by_id]
     if not cited:
@@ -307,17 +307,17 @@ async def _build_step(step: dict, chunks_by_id: dict, school_id: str,
     id_by_cite = {c["cite_id"]: c["chunk_id"] for c in cited}
 
     try:
-        body = await _generate_body(step, source_block, cite_set, cfg_body, school_id, instruction=instruction)
+        body = await _generate_body(step, source_block, cite_set, cfg_body, school_id, journey_id, instruction=instruction)
     except _ContentError as exc:
         return _failed_step(step, str(exc))
 
-    flags = await _critic_pass(body["body_md"], source_block, cfg_critic, school_id)
+    flags = await _critic_pass(body["body_md"], source_block, cfg_critic, school_id, journey_id)
     if flags:
         # one grounded rewrite that names exactly what the critic rejected
         try:
-            body2 = await _generate_body(step, source_block, cite_set, cfg_body, school_id,
+            body2 = await _generate_body(step, source_block, cite_set, cfg_body, school_id, journey_id,
                                          corrections=flags, instruction=instruction)
-            flags2 = await _critic_pass(body2["body_md"], source_block, cfg_critic, school_id)
+            flags2 = await _critic_pass(body2["body_md"], source_block, cfg_critic, school_id, journey_id)
             if len(flags2) <= len(flags):
                 body, flags = body2, flags2
         except _ContentError:
@@ -341,7 +341,7 @@ def _failed_step(step: dict, reason: str) -> dict:
 
 
 async def _generate_body(step: dict, source_block: str, cite_set: set,
-                         cfg: dict, school_id: str, corrections: list = None,
+                         cfg: dict, school_id: str, journey_id: str, corrections: list = None,
                          instruction: str = None) -> dict:
     """Write one step body, grounded in the cited chunks. Re-prompts once on a
     content error, then gives up with a _ContentError. Transient provider errors
@@ -351,7 +351,7 @@ async def _generate_body(step: dict, source_block: str, cite_set: set,
     for attempt in range(2):
         text, in_tok, out_tok, _ = await provider_service.complete_text(
             "school_step_content", cfg["style_prompt"], user, max_tokens=_BODY_MAX_TOKENS)
-        subscription_service.record_school_usage(school_id, in_tok, out_tok, cfg["model"])
+        subscription_service.record_school_usage(school_id, in_tok, out_tok, cfg["model"], journey_id=journey_id)
         try:
             return _parse_body(text, cite_set)
         except _ContentError as exc:
@@ -362,13 +362,13 @@ async def _generate_body(step: dict, source_block: str, cite_set: set,
     raise _ContentError(f"step body invalid after retry: {last_err}")
 
 
-async def _critic_pass(body_md: str, source_block: str, cfg: dict, school_id: str) -> list:
+async def _critic_pass(body_md: str, source_block: str, cfg: dict, school_id: str, journey_id: str) -> list:
     """Return the claims the critic finds unsupported by the cited chunks. A
     broken critic answer yields no findings — it must never block the build."""
     user = _critic_user(body_md, source_block)
     text, in_tok, out_tok, _ = await provider_service.complete_text(
         "school_faithfulness_critic", cfg["style_prompt"], user, max_tokens=_CRITIC_MAX_TOKENS)
-    subscription_service.record_school_usage(school_id, in_tok, out_tok, cfg["model"])
+    subscription_service.record_school_usage(school_id, in_tok, out_tok, cfg["model"], journey_id=journey_id)
     try:
         data = json.loads(_strip_json(text))
     except Exception:
@@ -540,7 +540,7 @@ def regenerate_step_handler(job: dict) -> dict:
 
     async def _run():
         school_jobs.raise_if_cancelled(job_id)
-        return await _build_step(step, chunks_by_id, school_id, cfg_body, cfg_critic, instruction=instruction)
+        return await _build_step(step, chunks_by_id, school_id, journey_id, cfg_body, cfg_critic, instruction=instruction)
 
     try:
         built = asyncio.run(_run())

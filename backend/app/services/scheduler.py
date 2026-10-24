@@ -692,6 +692,28 @@ async def _family_digest_dispatch() -> None:
             logger.error("family_digest: parent=%s failed: %s", parent_uid, e)
 
 
+# ── Weekly teacher digest (schools, SC-705) ──────────────────────────────────
+
+async def _teacher_digest_dispatch() -> None:
+    """One email per teacher summarising their classes (students, courses,
+    overdue assignments). Teachers with nothing assigned get nothing."""
+    from app.services.email_service import send_teacher_digest_email
+    from app.services.school_analytics_service import weekly_teacher_digests
+
+    try:
+        digests = weekly_teacher_digests()
+    except Exception as e:
+        logger.error("teacher_digest: query failed: %s", e)
+        return
+
+    for d in digests:
+        try:
+            await send_teacher_digest_email(d["teacher_email"], d["teacher_uid"],
+                                            d["teacher_name"], d["classes"])
+        except Exception as e:
+            logger.error("teacher_digest: teacher=%s failed: %s", d["teacher_uid"], e)
+
+
 # ── Scheduled deletions (Phase 4: consent revocation grace window) ───────────
 
 async def _scheduled_deletion_dispatch() -> None:
@@ -1251,6 +1273,8 @@ def setup_scheduler() -> AsyncIOScheduler:
         (_consent_followup_dispatch, "cron", {"minute": 10},              "consent_followup_dispatch"),
         (_family_digest_dispatch,    "cron", {"day_of_week": "sun",
                                               "hour": 17, "minute": 0},   "family_digest_dispatch"),
+        (_teacher_digest_dispatch,   "cron", {"day_of_week": "sun",
+                                              "hour": 16, "minute": 0},   "teacher_digest_dispatch"),
         (_scheduled_deletion_dispatch, "cron", {"hour": 3, "minute": 30}, "scheduled_deletion_dispatch"),
         (_family_lifecycle_dispatch,   "cron", {"hour": 4, "minute": 0},  "family_lifecycle_dispatch"),
         (_marketplace_popularity_scan, "cron", {"hour": "*/6"},           "marketplace_popularity_scan"),

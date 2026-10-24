@@ -609,7 +609,7 @@ async def generate_hero(ctx: SchoolCtx, journey_id: str) -> dict:
                         description=meta.get("description") or "", tags=[], age_group="all")
     data, model, content_type = await image_service.generate_hero_image(j)
     url = await image_service.upload_journey_image(journey_id, data, content_type)
-    subscription_service.record_school_image_usage(ctx.school_id, model)
+    subscription_service.record_school_image_usage(ctx.school_id, model, journey_id=journey_id)
 
     if draft:
         _set_meta(journey_id, {**meta, "hero_image_url": url})

@@ -396,6 +396,58 @@ async def send_family_digest_email(parent_email: str, parent_uid: str,
     )
 
 
+async def send_teacher_digest_email(teacher_email: str, teacher_uid: str,
+                                    teacher_name: Optional[str], classes: list[dict]) -> bool:
+    """Weekly teacher digest (schools, SC-705): one row per class with its
+    students, assigned courses, and how many assignments are overdue."""
+    school_url = f"{settings.FRONTEND_URL}/school/classes"
+    subject = "This week in your classes on ECALT"
+    greeting = f"Hi {teacher_name.split()[0]}," if teacher_name else "Hi,"
+
+    rows, text_rows = "", []
+    for c in classes:
+        overdue = c.get("overdue_count", 0)
+        overdue_html = (f' · <span style="color:#dc2626">{overdue} overdue</span>' if overdue else "")
+        rows += f"""\
+<tr>
+  <td style="font-family:sans-serif;padding:12px 16px;border-bottom:1px solid #eee">
+    <strong>{c['class_name']}</strong><br>
+    <span style="color:#555;font-size:14px">
+      {c.get('student_count', 0)} students · {c.get('course_count', 0)} courses{overdue_html}
+    </span>
+  </td>
+</tr>"""
+        text_rows.append(
+            f"- {c['class_name']}: {c.get('student_count', 0)} students, "
+            f"{c.get('course_count', 0)} courses"
+            + (f", {overdue} overdue" if overdue else "")
+        )
+
+    html_body = f"""\
+<p style="font-family:sans-serif;font-size:16px">{greeting}</p>
+<p style="font-family:sans-serif">Here's how your classes are doing on ECALT this week:</p>
+<table style="border-collapse:collapse;width:100%">{rows}</table>
+<p style="font-family:sans-serif;margin-top:16px">
+  <a href="{school_url}"
+     style="display:inline-block;padding:10px 20px;background:#4f46e5;color:#fff;
+            border-radius:6px;text-decoration:none;font-weight:bold;font-family:sans-serif">
+    Open your classes
+  </a>
+</p>"""
+    text_body = (
+        f"{greeting}\n\nHere's how your classes are doing on ECALT this week:\n\n"
+        + "\n".join(text_rows)
+        + f"\n\nYour classes: {school_url}"
+    )
+    return await send_email(
+        to=teacher_email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+        uid=teacher_uid,
+    )
+
+
 async def send_link_approved_email(parent_email: str, child_name: str, parent_uid: str) -> bool:
     """Receipt after a parent approves a child-initiated consent request."""
     family_url = f"{settings.FRONTEND_URL}/family"
