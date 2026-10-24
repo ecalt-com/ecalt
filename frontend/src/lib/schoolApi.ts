@@ -840,6 +840,8 @@ export const getClassProgressCsv = async (schoolId: string, classId: string, tok
 
 export interface UsageStudentToday { student_uid: string; display_name: string | null; tutor_messages: number; quiz_sets: number }
 export interface UsageMonth { period_start: string; cost_cents: number; input_tokens: number; output_tokens: number }
+export interface UsageByCourse { journey_id: string; title: string; icon: string; cost_cents: number }
+export interface UsageByClass { class_id: string; class_name: string; cost_cents: number }
 export interface SchoolUsage {
   period_start: string
   budget_cents: number
@@ -848,6 +850,8 @@ export interface SchoolUsage {
   caps: { student_daily_tutor_messages: number; student_daily_quiz_sets: number }
   today: UsageStudentToday[]
   history: UsageMonth[]
+  by_course: UsageByCourse[]
+  by_class: UsageByClass[]
 }
 
 export const getSchoolUsage = (schoolId: string, token: string): Promise<SchoolUsage> =>

@@ -91,6 +91,40 @@ export default function SchoolUsage() {
         )}
       </div>
 
+      {/* Spend by course (SC-706) */}
+      {usage.by_course.length > 0 && (
+        <div className="glass-card rounded-2xl p-5">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-3">Spend by course this month</h3>
+          <ul className="divide-y divide-slate-100/70 dark:divide-slate-800/60">
+            {usage.by_course.map(c => (
+              <li key={c.journey_id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                <span className="flex items-center gap-2 min-w-0">
+                  <span aria-hidden="true">{c.icon}</span>
+                  <span className="text-slate-700 dark:text-slate-200 truncate">{c.title}</span>
+                </span>
+                <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">{dollars(c.cost_cents)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Spend by class (rollup of each class's assigned courses) */}
+      {usage.by_class.length > 0 && (
+        <div className="glass-card rounded-2xl p-5">
+          <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1">Spend by class this month</h3>
+          <p className="text-xs text-slate-400 dark:text-slate-500 mb-3">Sum of each class's assigned courses — a course shared across classes counts in each.</p>
+          <ul className="divide-y divide-slate-100/70 dark:divide-slate-800/60">
+            {usage.by_class.map(c => (
+              <li key={c.class_id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                <span className="text-slate-700 dark:text-slate-200 truncate">{c.class_name}</span>
+                <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">{dollars(c.cost_cents)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Monthly history */}
       {usage.history.length > 0 && (
         <div className="glass-card rounded-2xl p-5">
