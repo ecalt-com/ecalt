@@ -511,7 +511,6 @@ AVAILABLE_MODELS: dict[str, list[dict]] = {
         {"id": "claude-opus-4-7",            "label": "Claude Opus 4.7 (powerful)"},
     ],
     "openai": [
-        {"id": "gpt-4.1-nano", "label": "GPT-4.1 Nano (fastest, cheapest)"},
         {"id": "gpt-4o-mini",  "label": "GPT-4o Mini (fast, cheap)"},
         {"id": "gpt-4.1-mini", "label": "GPT-4.1 Mini (balanced, efficient)"},
         {"id": "gpt-4o",       "label": "GPT-4o (capable)"},
@@ -522,21 +521,21 @@ AVAILABLE_MODELS: dict[str, list[dict]] = {
 
 # Default config used when DB has no row for an interaction type
 DEFAULT_CONFIG: dict[str, dict] = {
-    "daily_chat":           {"provider": "openai", "model": "gpt-4.1-nano"},
-    "nudge":                {"provider": "openai", "model": "gpt-4.1-nano"},
+    "daily_chat":           {"provider": "openai", "model": "gpt-4o-mini"},
+    "nudge":                {"provider": "openai", "model": "gpt-4o-mini"},
     "onboarding":           {"provider": "openai", "model": "gpt-4o-mini"},
     "fingerprint":          {"provider": "openai", "model": "gpt-4o-mini"},
     "mind_signature":       {"provider": "openai", "model": "gpt-4o-mini"},
     "spark":                {"provider": "openai", "model": "gpt-4.1-mini"},
-    "daily_spark":          {"provider": "openai", "model": "gpt-4.1-nano"},
-    "knowledge_extraction": {"provider": "openai", "model": "gpt-4.1-nano"},
+    "daily_spark":          {"provider": "openai", "model": "gpt-4o-mini"},
+    "knowledge_extraction": {"provider": "openai", "model": "gpt-4o-mini"},
     "journey":              {"provider": "openai", "model": "gpt-4.1"},
     "step_content":         {"provider": "openai", "model": "gpt-4.1-mini"},
-    "content_critic":       {"provider": "openai", "model": "gpt-4.1-nano"},
+    "content_critic":       {"provider": "openai", "model": "gpt-4o-mini"},
     "quiz":                 {"provider": "openai", "model": "gpt-4o-mini"},
-    "journey_tutor":        {"provider": "openai", "model": "gpt-4.1-nano"},
+    "journey_tutor":        {"provider": "openai", "model": "gpt-4o-mini"},
     "journey_image":        {"provider": "openai", "model": "gpt-image-1-mini"},
-    "visual_planner":       {"provider": "openai", "model": "gpt-4.1-nano"},
+    "visual_planner":       {"provider": "openai", "model": "gpt-4o-mini"},
     "visual_recipe":        {"provider": "openai", "model": "gpt-4.1-mini"},
     "visual_image":         {"provider": "openai", "model": "gpt-image-1-mini"},
     # School course builder (M4)
