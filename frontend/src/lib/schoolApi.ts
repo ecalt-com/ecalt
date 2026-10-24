@@ -1,7 +1,7 @@
 // Typed wrappers for the schools API (backend/plans/school-courses, M1:
 // schools, staff, invites, settings, DPA, ECALT-admin school management).
 // Contract: backend/plans/school-courses/frontend-changes.md.
-import { request } from './api'
+import { authHeaders, request } from './api'
 
 export type StaffRole = 'owner' | 'admin' | 'teacher'
 export type SchoolStatus = 'onboarding' | 'active' | 'suspended' | 'terminated'
@@ -788,3 +788,67 @@ export const getClassProgress = (
   schoolId: string, classId: string, token: string,
 ): Promise<{ students: ProgressStudentRow[]; courses: ProgressCourseCol[] }> =>
   request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/progress`, undefined, token)
+
+// ── Teacher analytics (M7, SC-701/704/706) ───────────────────────────────────
+
+export interface DrilldownStep {
+  step_id: string
+  title: string | null
+  completed: boolean
+  completed_at: string | null
+  quiz_attempts: number
+  quiz_correct: number
+  hints_used: number
+  last_answered: string | null
+}
+
+export interface DrilldownCourse {
+  assignment_id: string
+  journey_id: string
+  title: string
+  icon: string
+  total_steps: number
+  done_steps: number
+  percent: number
+  completed: boolean
+  overdue: boolean
+  due_at: string | null
+  last_active: string | null
+  quiz_accuracy: number | null
+  flags: string[]
+  steps: DrilldownStep[]
+}
+
+export interface StudentDrilldown {
+  student: { uid: string; display_name: string; avatar: string | null; grade: number | null }
+  courses: DrilldownCourse[]
+}
+
+export const getStudentDrilldown = (
+  schoolId: string, classId: string, studentUid: string, token: string,
+): Promise<StudentDrilldown> =>
+  request(`/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/students/${enc(studentUid)}/progress`, undefined, token)
+
+// CSV is a file download, so fetch the text directly (request() parses JSON).
+export const getClassProgressCsv = async (schoolId: string, classId: string, token: string): Promise<string> => {
+  const base = import.meta.env.VITE_API_URL || ''
+  const res = await fetch(`${base}/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/progress/export`,
+    { headers: authHeaders(token) })
+  if (!res.ok) throw new Error('export_failed')
+  return res.text()
+}
+
+export interface UsageStudentToday { student_uid: string; display_name: string | null; tutor_messages: number; quiz_sets: number }
+export interface UsageMonth { period_start: string; cost_cents: number; input_tokens: number; output_tokens: number }
+export interface SchoolUsage {
+  period_start: string
+  budget_cents: number
+  spent_cents: number
+  percent: number
+  caps: { student_daily_tutor_messages: number; student_daily_quiz_sets: number }
+  today: UsageStudentToday[]
+  history: UsageMonth[]
+}
+
+export const getSchoolUsage = (schoolId: string, token: string): Promise<SchoolUsage> =>
+  request(`/api/v1/schools/${enc(schoolId)}/usage`, undefined, token)

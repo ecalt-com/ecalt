@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { BarChart3, CheckCircle2, Loader2, RefreshCw } from 'lucide-react'
+import { BarChart3, CheckCircle2, Download, Loader2, RefreshCw } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../lib/AuthContext'
-import { getClassProgress, type ProgressCell, type ProgressCourseCol, type ProgressStudentRow } from '../../lib/schoolApi'
+import { useToast } from '../../lib/ToastContext'
+import { getClassProgress, getClassProgressCsv, type ProgressCell, type ProgressCourseCol, type ProgressStudentRow } from '../../lib/schoolApi'
+import StudentDrilldown from './StudentDrilldown'
 
 // Colour for a cell by how far the student has got, with an overdue outline.
 function cellClasses(c: ProgressCell): string {
@@ -23,10 +25,32 @@ function dueText(iso: string | null): string | null {
 // staff member. Drill-down / CSV export / usage are a later milestone (M7).
 export default function ProgressMatrix({ schoolId, classId }: { schoolId: string; classId: string }) {
   const { getToken } = useAuth()
+  const { addToast } = useToast()
   const [students, setStudents] = useState<ProgressStudentRow[] | null>(null)
   const [courses, setCourses] = useState<ProgressCourseCol[]>([])
   const [error, setError] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [drilldown, setDrilldown] = useState<{ uid: string; name: string } | null>(null)
+
+  const exportCsv = async () => {
+    setExporting(true)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const csv = await getClassProgressCsv(schoolId, classId, token)
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'class-progress.csv'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      addToast("Couldn't export the CSV — try again.", 'error')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   const load = useCallback(async () => {
     setBusy(true)
@@ -52,10 +76,18 @@ export default function ProgressMatrix({ schoolId, classId }: { schoolId: string
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
           <BarChart3 size={15} className="text-violet-500" /> Progress
         </h3>
-        <button
-          onClick={load} disabled={busy}
-          className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 disabled:opacity-50" aria-label="Refresh progress"
-        ><RefreshCw size={14} className={clsx(busy && 'animate-spin')} /></button>
+        <div className="flex items-center gap-1">
+          {students && courses.length > 0 && students.length > 0 && (
+            <button
+              onClick={exportCsv} disabled={exporting}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-violet-600 border border-slate-200 dark:border-slate-700 disabled:opacity-50"
+            >{exporting ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />} CSV</button>
+          )}
+          <button
+            onClick={load} disabled={busy}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-violet-600 disabled:opacity-50" aria-label="Refresh progress"
+          ><RefreshCw size={14} className={clsx(busy && 'animate-spin')} /></button>
+        </div>
       </div>
 
       {students === null ? (
@@ -86,7 +118,12 @@ export default function ProgressMatrix({ schoolId, classId }: { schoolId: string
             <tbody>
               {students.map(s => (
                 <tr key={s.uid}>
-                  <td className="text-slate-700 dark:text-slate-200 px-2 py-1 whitespace-nowrap sticky left-0 bg-[var(--card-bg)] z-10">{s.display_name}</td>
+                  <td className="px-2 py-1 whitespace-nowrap sticky left-0 bg-[var(--card-bg)] z-10">
+                    <button
+                      onClick={() => setDrilldown({ uid: s.uid, name: s.display_name })}
+                      className="text-slate-700 dark:text-slate-200 hover:text-violet-600 dark:hover:text-violet-400 hover:underline"
+                    >{s.display_name}</button>
+                  </td>
                   {courses.map(c => {
                     const cell = s.cells[c.journey_id]
                     if (!cell) return <td key={c.journey_id} className="px-2 py-1 text-center text-slate-300">–</td>
@@ -106,6 +143,14 @@ export default function ProgressMatrix({ schoolId, classId }: { schoolId: string
             </tbody>
           </table>
         </div>
+      )}
+
+      {drilldown && (
+        <StudentDrilldown
+          schoolId={schoolId} classId={classId}
+          studentUid={drilldown.uid} studentName={drilldown.name}
+          onClose={() => setDrilldown(null)}
+        />
       )}
     </div>
   )
