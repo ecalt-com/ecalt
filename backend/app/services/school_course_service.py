@@ -76,7 +76,7 @@ def create_course(ctx: SchoolCtx, title: str, document_ids: list) -> dict:
                 INSERT INTO course_versions (journey_id, version, state, revision, meta, steps, created_by)
                 VALUES (%s, 1, 'draft', 0, %s::jsonb, '[]'::jsonb, %s)
                 """,
-                (journey_id, json.dumps({"status": "empty"}), ctx.uid),
+                (journey_id, json.dumps({"status": "empty", "title": title}), ctx.uid),
             )
             for d in doc_ids:
                 cur.execute(

@@ -63,7 +63,28 @@ def test_outline_happy_path(client, world, db, monkeypatch):
     assert draft["steps"][0]["origin"] == "ai"
     # cite_ids were mapped to real chunk UUIDs (grounding is preserved on disk).
     assert len(draft["steps"][0]["chunk_ids"]) == 2 and all(draft["steps"][0]["chunk_ids"])
-    assert draft["meta"]["title"] == "The Water Cycle"
+    # The teacher's title is kept; the model's title is offered as a suggestion.
+    assert draft["meta"]["title"] == "Draft Course"
+    assert draft["meta"]["suggested_title"] == "The Water Cycle"
+
+
+def test_outline_keeps_the_teachers_title(client, world, db, monkeypatch):
+    """Creating a course with a title and then outlining never overwrites that
+    title with the model's (#15) — and publishing keeps the teacher's title."""
+    ready = f.make_document(db, world.school_a, status="ready")["id"]
+    f.add_chunks(db, ready, ["Rivers and rain and oceans move water around.",
+                             "The sun drives evaporation.", "Clouds form and precipitation falls."])
+    created = client.post(f"/api/v1/schools/{_sid(world)}/courses",
+                          json={"title": "My Water Course", "document_ids": [ready]},
+                          headers=world.headers("SA")).json()
+    jid = created["journey_id"]
+    FakeProvider().respond("school_course_outline", _GOOD_OUTLINE).install(monkeypatch)
+    client.post(f"/api/v1/schools/{_sid(world)}/courses/{jid}/outline", json={}, headers=world.headers("SA"))
+    assert sj.process_one("w1") is True
+
+    draft = client.get(f"/api/v1/schools/{_sid(world)}/courses/{jid}", headers=world.headers("SA")).json()["draft"]
+    assert draft["meta"]["title"] == "My Water Course"          # not "The Water Cycle"
+    assert draft["meta"]["suggested_title"] == "The Water Cycle"
 
 
 def test_outline_rejects_hallucinated_chunk_ids(client, world, db, monkeypatch):

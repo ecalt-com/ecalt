@@ -286,8 +286,8 @@ def make_course_draft(conn, school: dict, *, creator: Optional[str] = None,
         )
         cur.execute(
             "INSERT INTO course_versions (journey_id, version, state, revision, meta, steps) "
-            "VALUES (%s, 1, 'draft', 0, '{\"status\":\"empty\"}'::jsonb, '[]'::jsonb)",
-            (journey_id,),
+            "VALUES (%s, 1, 'draft', 0, %s::jsonb, '[]'::jsonb)",
+            (journey_id, json.dumps({"status": "empty", "title": title})),
         )
         if with_source:
             cur.execute(

@@ -13,7 +13,7 @@ import { apiErrorCode } from '../../lib/api'
 import { useSchoolJob } from '../../lib/useSchoolJob'
 import {
   addCourseStep, approveOutline, cancelSchoolJob, deleteCourseStep, DRAFT_BUSY, duplicateCourse,
-  getCourse, listCourseVersions, patchCourseStep, publishCourse,
+  getCourse, listCourseVersions, patchCourseMeta, patchCourseStep, publishCourse,
   regenerateCourseStep, reorderCourseSteps, restoreCourseVersion, schoolErrorMessage,
   type Course, type CourseStep, type CourseVersion,
 } from '../../lib/schoolApi'
@@ -236,6 +236,13 @@ export default function SchoolCourseBuilder() {
         <div>
           <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">{draft.meta.title || c.title}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">Review the outline. Reorder, rename, add or remove steps, then approve to write the content.</p>
+          {draft.meta.suggested_title && draft.meta.suggested_title !== (draft.meta.title || c.title) && (
+            <button
+              onClick={() => run((t, rev) => patchCourseMeta(school.id, c.journey_id, { title: draft.meta.suggested_title, expected_revision: rev }, t))}
+              disabled={working}
+              className="mt-2 text-xs text-violet-600 dark:text-violet-400 hover:underline disabled:opacity-50"
+            >Use AI-suggested title: “{draft.meta.suggested_title}”</button>
+          )}
         </div>
 
         <ul className="space-y-2">

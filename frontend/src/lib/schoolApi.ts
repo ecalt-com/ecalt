@@ -554,6 +554,7 @@ export interface CourseDraft {
   meta: {
     status?: DraftStatus
     title?: string
+    suggested_title?: string
     description?: string
     estimated_hours?: number
     inputs?: OutlineInputs
