@@ -153,7 +153,8 @@ def test_student_home_shows_class_without_courses(client, world):
 
 
 def test_student_home_empty_for_non_students(client, world):
-    assert client.get("/api/v1/school-student/home", headers=world.headers("OUT")).json() == {"classes": []}
+    assert client.get("/api/v1/school-student/home", headers=world.headers("OUT")).json() == {
+        "classes": [], "transcripts_visible_to_teacher": False}
 
 
 # ── SC-503: settings enforcement ──────────────────────────────────────────────
