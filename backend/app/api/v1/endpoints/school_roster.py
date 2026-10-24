@@ -277,3 +277,16 @@ def export_class_progress(class_id: str, ctx: SchoolCtx = Depends(school_member(
 @router.get("/{school_id}/usage", summary="School AI budget + usage overview (admins)")
 def school_usage(ctx: SchoolCtx = Depends(school_member(*ADMIN_ROLES))):
     return analytics.school_usage_overview(ctx)
+
+
+@router.get("/{school_id}/classes/{class_id}/students/{student_uid}/transcripts",
+            summary="A student's tutor conversations (D4; 403 if the school disabled it)")
+def list_transcripts(class_id: str, student_uid: str, ctx: SchoolCtx = Depends(school_member())):
+    return analytics.list_student_transcripts(ctx, class_id, student_uid)
+
+
+@router.get("/{school_id}/classes/{class_id}/students/{student_uid}/transcripts/{conversation_id}",
+            summary="One tutor conversation's messages (audited)")
+def read_transcript(class_id: str, student_uid: str, conversation_id: str,
+                    ctx: SchoolCtx = Depends(school_member())):
+    return analytics.read_student_transcript(ctx, class_id, student_uid, conversation_id)

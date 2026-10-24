@@ -347,9 +347,17 @@ def student_home(uid: str) -> dict:
     completion ratio, due date and the lead teacher's name. Empty for anyone
     who isn't an active school student."""
     if not is_school_student_uid(uid):
-        return {"classes": []}
+        return {"classes": [], "transcripts_visible_to_teacher": False}
     with get_db() as conn:
         with conn.cursor() as cur:
+            # Disclosure (D4): does this student's school let teachers read tutor chats?
+            from app.services.school_service import effective_settings
+            cur.execute(
+                "SELECT s.settings FROM school_students st JOIN schools s ON s.id = st.school_id WHERE st.uid = %s",
+                (uid,),
+            )
+            srow = cur.fetchone()
+            disclose = bool(effective_settings(srow["settings"] if srow else {})["teacher_transcript_access"])
             cur.execute(
                 """
                 SELECT c.id AS class_id, c.name AS class_name, c.grade,
@@ -412,7 +420,7 @@ def student_home(uid: str) -> dict:
             "due_at": _iso(r["due_at"]),
             "tutor_enabled": _clean_settings(r["settings"])["tutor_enabled"],
         })
-    return {"classes": list(classes.values())}
+    return {"classes": list(classes.values()), "transcripts_visible_to_teacher": disclose}
 
 
 # ── Settings enforcement (SC-503) ─────────────────────────────────────────────

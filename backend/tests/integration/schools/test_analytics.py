@@ -82,6 +82,63 @@ def test_usage_is_admin_only(client, world):
     assert client.get(f"/api/v1/schools/{world.school_a['id']}/usage", headers=world.headers("T")).status_code == 403
 
 
+# ── SC-703: tutor transcript visibility (D4) ─────────────────────────────────
+
+def _transcripts_url(w, class_id, uid):
+    return f"/api/v1/schools/{w.school_a['id']}/classes/{class_id}/students/{uid}/transcripts"
+
+
+def _set_transcript_access(db, school, on: bool):
+    f.fetch(db, "UPDATE schools SET settings = settings || %s::jsonb WHERE id = %s",
+            (f'{{"teacher_transcript_access": {str(on).lower()}}}', school["id"]))
+
+
+def _seed_conversation(db, uid):
+    conv = f.fetch(db, "INSERT INTO conversations (uid, title) VALUES (%s, %s) RETURNING id::text AS id",
+                   (uid, "Tutor chat"))[0]["id"]
+    for role, content in [("user", "help with step 1"), ("assistant", "Sure — here's a hint.")]:
+        f.fetch(db, "INSERT INTO conversation_messages (conversation_id, role, content) VALUES (%s,%s,%s)",
+                (conv, role, content))
+    return conv
+
+
+def test_transcripts_list_and_read_when_enabled(client, world, db):
+    _set_transcript_access(db, world.school_a, True)
+    conv = _seed_conversation(db, world.S)
+    r = client.get(_transcripts_url(world, world.A1["id"], world.S), headers=world.headers("T"))
+    assert r.status_code == 200
+    assert any(c["id"] == conv and c["message_count"] == 2 for c in r.json()["conversations"])
+    rr = client.get(f"{_transcripts_url(world, world.A1['id'], world.S)}/{conv}", headers=world.headers("T"))
+    assert rr.status_code == 200
+    assert [m["role"] for m in rr.json()["messages"]] == ["user", "assistant"]
+    # The view is audited (D4).
+    audit = f.fetch(db, "SELECT target_id FROM school_audit_log "
+                        "WHERE school_id = %s AND action = 'student.transcript_viewed'", (world.school_a["id"],))
+    assert audit and audit[0]["target_id"] == world.S
+
+
+def test_transcripts_403_when_school_disables(client, world, db):
+    _set_transcript_access(db, world.school_a, False)
+    r = client.get(_transcripts_url(world, world.A1["id"], world.S), headers=world.headers("T"))
+    assert r.status_code == 403 and r.json()["detail"]["error"] == "transcript_access_disabled"
+
+
+def test_transcript_read_404_for_another_students_conversation(client, world, db):
+    _set_transcript_access(db, world.school_a, True)
+    other = _seed_conversation(db, world.S2)  # S2 is not in A1
+    r = client.get(f"{_transcripts_url(world, world.A1['id'], world.S)}/{other}", headers=world.headers("T"))
+    assert r.status_code == 404 and r.json()["detail"]["error"] == "conversation_not_found"
+
+
+def test_student_home_discloses_transcript_access(client, world, db):
+    _set_transcript_access(db, world.school_a, True)
+    on = client.get("/api/v1/school-student/home", headers=world.headers("S"))
+    assert on.status_code == 200 and on.json()["transcripts_visible_to_teacher"] is True
+    _set_transcript_access(db, world.school_a, False)
+    off = client.get("/api/v1/school-student/home", headers=world.headers("S"))
+    assert off.json()["transcripts_visible_to_teacher"] is False
+
+
 def test_usage_overview(client, world, db):
     f.fetch(db, "UPDATE schools SET monthly_ai_budget_cents = 1000 WHERE id = %s", (world.school_a["id"],))
     period = date.today().replace(day=1)

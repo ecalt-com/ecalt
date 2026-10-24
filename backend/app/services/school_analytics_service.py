@@ -20,7 +20,7 @@ from fastapi import HTTPException
 
 from app.core.database import get_db
 from app.core.school_auth import SchoolCtx, load_class
-from app.services.school_service import effective_settings
+from app.services.school_service import effective_settings, school_audit
 
 
 def _iso(value) -> Optional[str]:
@@ -276,4 +276,105 @@ def school_usage_overview(ctx: SchoolCtx) -> dict:
         },
         "today": today_usage,
         "history": history,
+    }
+
+
+# ── SC-703: tutor transcript visibility (decision D4) ────────────────────────
+#
+# A school student may only ever use the in-course AI tutor (the student route
+# allowlist blocks the open-ended chat), so every one of their conversations is
+# a tutor transcript. A teacher of the school may read them when the school's
+# ``teacher_transcript_access`` setting is on (D4); every view is audited and the
+# student is told on their home screen that this is possible (disclosure).
+
+def _transcript_access(cur, school_id: str) -> bool:
+    cur.execute("SELECT settings FROM schools WHERE id = %s", (school_id,))
+    row = cur.fetchone()
+    return bool(effective_settings(row["settings"] if row else {})["teacher_transcript_access"])
+
+
+def _enrolled_or_404(cur, class_id: str, student_uid: str) -> dict:
+    cur.execute(
+        """
+        SELECT s.uid, s.display_name
+          FROM class_enrollments e
+          JOIN school_students s ON s.uid = e.student_uid AND s.status = 'active'
+         WHERE e.class_id = %s AND e.student_uid = %s AND e.removed_at IS NULL
+        """,
+        (class_id, student_uid),
+    )
+    student = cur.fetchone()
+    if not student:
+        raise HTTPException(status_code=404, detail={
+            "error": "student_not_found", "message": "This student isn't in this class."})
+    return student
+
+
+def _transcript_disabled() -> HTTPException:
+    return HTTPException(status_code=403, detail={
+        "error": "transcript_access_disabled",
+        "message": "Your school has turned off teacher access to tutor conversations."})
+
+
+def list_student_transcripts(ctx: SchoolCtx, class_id: str, student_uid: str) -> dict:
+    """The student's tutor conversations (titles + timestamps, no bodies).
+    403 ``transcript_access_disabled`` when the school has D4 turned off."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cls = load_class(ctx, class_id, cur=cur)
+            if not _transcript_access(cur, ctx.school_id):
+                raise _transcript_disabled()
+            student = _enrolled_or_404(cur, cls["id"], student_uid)
+            cur.execute(
+                """
+                SELECT c.id, c.title, c.started_at, c.last_active,
+                       (SELECT COUNT(*) FROM conversation_messages m WHERE m.conversation_id = c.id) AS message_count
+                  FROM conversations c
+                 WHERE c.uid = %s
+                 ORDER BY c.last_active DESC NULLS LAST
+                 LIMIT 100
+                """,
+                (student_uid,),
+            )
+            conversations = [{
+                "id": str(r["id"]),
+                "title": r["title"],
+                "started_at": _iso(r["started_at"]),
+                "last_active": _iso(r["last_active"]),
+                "message_count": int(r["message_count"]),
+            } for r in cur.fetchall()]
+    return {"student": {"uid": student["uid"], "display_name": student["display_name"]},
+            "conversations": conversations}
+
+
+def read_student_transcript(ctx: SchoolCtx, class_id: str, student_uid: str, conversation_id: str) -> dict:
+    """One conversation's messages. Audited (D4). 403 when D4 is off, 404 when
+    the conversation isn't this student's."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cls = load_class(ctx, class_id, cur=cur)
+            if not _transcript_access(cur, ctx.school_id):
+                raise _transcript_disabled()
+            _enrolled_or_404(cur, cls["id"], student_uid)
+            cur.execute(
+                "SELECT id, title, started_at FROM conversations WHERE id = %s AND uid = %s",
+                (conversation_id, student_uid),
+            )
+            conv = cur.fetchone()
+            if not conv:
+                raise HTTPException(status_code=404, detail={
+                    "error": "conversation_not_found", "message": "This conversation no longer exists."})
+            cur.execute(
+                "SELECT role, content, created_at FROM conversation_messages "
+                "WHERE conversation_id = %s ORDER BY created_at",
+                (conversation_id,),
+            )
+            messages = [{"role": r["role"], "content": r["content"], "created_at": _iso(r["created_at"])}
+                        for r in cur.fetchall()]
+            # Audit the view (D4): who looked at which student's conversation.
+            school_audit(cur, ctx.school_id, ctx.uid, "student.transcript_viewed",
+                         "student", student_uid, {"conversation_id": str(conversation_id)})
+    return {
+        "conversation": {"id": str(conv["id"]), "title": conv["title"], "started_at": _iso(conv["started_at"])},
+        "messages": messages,
     }

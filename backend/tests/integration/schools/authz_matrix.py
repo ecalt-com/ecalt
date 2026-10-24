@@ -81,6 +81,11 @@ def _a1_c1_assignment(w, db) -> str:
     )[0]["id"]
 
 
+def _s_conversation(w, db) -> str:
+    """A tutor conversation owned by student S (for the transcript-read route)."""
+    return f.fetch(db, "INSERT INTO conversations (uid) VALUES (%s) RETURNING id::text AS id", (w.S,))[0]["id"]
+
+
 def _open_invite(w, db) -> str:
     rows = f.fetch(
         db,
@@ -198,6 +203,10 @@ MATRIX: list[Case] = [
          lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/progress/export"),
     Case("GET", "/api/v1/schools/{school_id}/usage", "school_admin",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/usage"),
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/students/{student_uid}/transcripts", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts"),
+    Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/students/{student_uid}/transcripts/{conversation_id}", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts/{_s_conversation(w, db)}"),
     # ── M3: documents (any staff member) ──
     Case("POST", "/api/v1/schools/{school_id}/documents/upload-url", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/upload-url",
