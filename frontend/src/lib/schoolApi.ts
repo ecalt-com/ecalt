@@ -754,7 +754,7 @@ export interface StudentClass {
   courses: StudentCourse[]
 }
 
-export const getStudentHome = (token: string): Promise<{ classes: StudentClass[] }> =>
+export const getStudentHome = (token: string): Promise<{ classes: StudentClass[]; transcripts_visible_to_teacher: boolean }> =>
   request('/api/v1/school-student/home', undefined, token)
 
 // ── Class progress matrix (M5 §10, SC-505) ───────────────────────────────────
@@ -852,3 +852,21 @@ export interface SchoolUsage {
 
 export const getSchoolUsage = (schoolId: string, token: string): Promise<SchoolUsage> =>
   request(`/api/v1/schools/${enc(schoolId)}/usage`, undefined, token)
+
+// Tutor transcripts (M7, SC-703; decision D4). 403 `transcript_access_disabled`
+// when the school has turned teacher access off.
+export interface TranscriptSummary { id: string; title: string | null; started_at: string | null; last_active: string | null; message_count: number }
+export interface TranscriptMessage { role: string; content: string; created_at: string | null }
+
+const transcriptsPath = (schoolId: string, classId: string, studentUid: string) =>
+  `/api/v1/schools/${enc(schoolId)}/classes/${enc(classId)}/students/${enc(studentUid)}/transcripts`
+
+export const getStudentTranscripts = (
+  schoolId: string, classId: string, studentUid: string, token: string,
+): Promise<{ student: { uid: string; display_name: string }; conversations: TranscriptSummary[] }> =>
+  request(transcriptsPath(schoolId, classId, studentUid), undefined, token)
+
+export const getStudentTranscript = (
+  schoolId: string, classId: string, studentUid: string, conversationId: string, token: string,
+): Promise<{ conversation: { id: string; title: string | null; started_at: string | null }; messages: TranscriptMessage[] }> =>
+  request(`${transcriptsPath(schoolId, classId, studentUid)}/${enc(conversationId)}`, undefined, token)

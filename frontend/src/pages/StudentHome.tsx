@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { BookOpen, CheckCircle2, ChevronRight, Loader2 } from 'lucide-react'
+import { BookOpen, CheckCircle2, ChevronRight, Loader2, MessageSquare } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import PageMeta from '../components/PageMeta'
 import { isStudentUid, useAuth } from '../lib/AuthContext'
@@ -26,6 +26,7 @@ export default function StudentHome() {
   const navigate = useNavigate()
   const [profile, setProfile] = useState<StudentProfile | null>(null)
   const [classes, setClasses] = useState<StudentClass[] | null>(null)
+  const [disclose, setDisclose] = useState(false)
   const [error, setError] = useState(false)
 
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function StudentHome() {
         const [me, home] = await Promise.all([getUserProfile(token), getStudentHome(token)])
         setProfile(me as unknown as StudentProfile)
         setClasses(home.classes)
+        setDisclose(home.transcripts_visible_to_teacher)
       } catch {
         setError(true)
       }
@@ -62,6 +64,11 @@ export default function StudentHome() {
         <div className="max-w-3xl mx-auto">
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">{firstName ? `Hi ${firstName}!` : 'My classes'}</h1>
           {profile?.school && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{profile.school.name}</p>}
+          {disclose && (
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 flex items-center gap-1.5">
+              <MessageSquare size={12} /> Your teacher can see your chats with the tutor.
+            </p>
+          )}
 
           {error && <p className="mt-6 text-sm text-rose-600 dark:text-rose-400" role="alert">Couldn't load your courses. Refresh the page to try again.</p>}
           {classes === null && !error && <div className="flex justify-center py-16"><Loader2 className="animate-spin text-violet-500" /></div>}

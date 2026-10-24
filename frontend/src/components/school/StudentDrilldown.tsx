@@ -1,8 +1,14 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Circle, Loader2, X } from 'lucide-react'
+import { CheckCircle2, Circle, Loader2, MessageSquare, X } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../../lib/AuthContext'
-import { getStudentDrilldown, type StudentDrilldown as Drilldown } from '../../lib/schoolApi'
+import { apiErrorCode } from '../../lib/api'
+import {
+  getStudentDrilldown, getStudentTranscript, getStudentTranscripts,
+  type StudentDrilldown as Drilldown, type TranscriptMessage, type TranscriptSummary,
+} from '../../lib/schoolApi'
+
+const fmtWhen = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '')
 
 const FLAG_LABEL: Record<string, string> = {
   overdue: 'Overdue',
@@ -20,6 +26,10 @@ export default function StudentDrilldown({ schoolId, classId, studentUid, studen
   const { getToken } = useAuth()
   const [data, setData] = useState<Drilldown | null>(null)
   const [error, setError] = useState(false)
+  // Tutor transcripts (D4): null = loading, 'disabled' = school turned it off.
+  const [transcripts, setTranscripts] = useState<TranscriptSummary[] | 'disabled' | null>(null)
+  const [openConv, setOpenConv] = useState<string | null>(null)
+  const [messages, setMessages] = useState<TranscriptMessage[] | null>(null)
 
   useEffect(() => {
     let live = true
@@ -33,8 +43,32 @@ export default function StudentDrilldown({ schoolId, classId, studentUid, studen
         if (live) setError(true)
       }
     })()
+    ;(async () => {
+      try {
+        const token = await getToken()
+        if (!token) return
+        const t = await getStudentTranscripts(schoolId, classId, studentUid, token)
+        if (live) setTranscripts(t.conversations)
+      } catch (err) {
+        if (live) setTranscripts(apiErrorCode(err) === 'transcript_access_disabled' ? 'disabled' : [])
+      }
+    })()
     return () => { live = false }
   }, [schoolId, classId, studentUid, getToken])
+
+  const openConversation = async (id: string) => {
+    if (openConv === id) { setOpenConv(null); return }
+    setOpenConv(id)
+    setMessages(null)
+    try {
+      const token = await getToken()
+      if (!token) return
+      const t = await getStudentTranscript(schoolId, classId, studentUid, id, token)
+      setMessages(t.messages)
+    } catch {
+      setMessages([])
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-20 bg-slate-900/70 backdrop-blur-sm overflow-y-auto"
@@ -86,6 +120,45 @@ export default function StudentDrilldown({ schoolId, classId, studentUid, studen
             </section>
           ))}
         </div>
+
+        {/* Tutor transcripts (D4) — shown only when the school allows it. */}
+        {Array.isArray(transcripts) && transcripts.length > 0 && (
+          <section className="mt-5 pt-4 border-t border-slate-200/70 dark:border-slate-700/50">
+            <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2 mb-2">
+              <MessageSquare size={14} className="text-violet-500" /> Tutor conversations
+            </h3>
+            <ul className="space-y-1">
+              {transcripts.map(t => (
+                <li key={t.id} className="rounded-lg border border-slate-200/70 dark:border-slate-700/50">
+                  <button
+                    onClick={() => openConversation(t.id)}
+                    className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-xs hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                  >
+                    <span className="truncate text-slate-700 dark:text-slate-200">{t.title || 'Tutor chat'}</span>
+                    <span className="text-slate-400 dark:text-slate-500 shrink-0">{t.message_count} msg · {fmtWhen(t.last_active)}</span>
+                  </button>
+                  {openConv === t.id && (
+                    <div className="px-3 pb-3 pt-1 space-y-2 border-t border-slate-100/70 dark:border-slate-800/60">
+                      {messages === null ? (
+                        <div className="flex justify-center py-3"><Loader2 size={14} className="animate-spin text-violet-500" /></div>
+                      ) : messages.length === 0 ? (
+                        <p className="text-xs text-slate-400 py-2">No messages.</p>
+                      ) : messages.map((m, i) => (
+                        <div key={i} className={clsx('text-xs rounded-lg px-2.5 py-1.5',
+                          m.role === 'user'
+                            ? 'bg-violet-50 dark:bg-violet-500/10 text-slate-700 dark:text-slate-200'
+                            : 'bg-slate-100 dark:bg-slate-800/60 text-slate-600 dark:text-slate-300')}>
+                          <span className="block text-[10px] uppercase tracking-wide text-slate-400 mb-0.5">{m.role === 'user' ? 'Student' : 'Tutor'}</span>
+                          {m.content}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </div>
   )
