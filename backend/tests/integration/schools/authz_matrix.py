@@ -86,6 +86,20 @@ def _s_conversation(w, db) -> str:
     return f.fetch(db, "INSERT INTO conversations (uid) VALUES (%s) RETURNING id::text AS id", (w.S,))[0]["id"]
 
 
+def _apply_url(w, db) -> str:
+    """A published course with one ACCEPTED proposal, so apply returns 2xx."""
+    jid = f.make_published_course(db, w.school_a)
+    f.make_update_proposal(db, w.school_a, journey_id=jid, op="modify", step_id="s1", status="accepted")
+    return f"/api/v1/schools/{_sid(w)}/courses/{jid}/proposals/apply"
+
+
+def _decide_url(w, db) -> str:
+    """A published course with one PENDING proposal to decide on."""
+    jid = f.make_published_course(db, w.school_a)
+    pid = f.make_update_proposal(db, w.school_a, journey_id=jid, op="modify", step_id="s1", status="pending")
+    return f"/api/v1/schools/{_sid(w)}/courses/{jid}/proposals/{pid}/decide"
+
+
 def _open_invite(w, db) -> str:
     rows = f.fetch(
         db,
@@ -262,6 +276,16 @@ MATRIX: list[Case] = [
          lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/archive", body=lambda w, db: {}),
     Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/hero-image", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/hero-image", body=lambda w, db: {}),
+    # ── M6: update a published course from a new document (any staff member) ──
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/update", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_published_course(db, w.school_a)}/update",
+         body=lambda w, db: {"document_id": f.make_document(db, w.school_a, status="ready")["id"], "mode": "revise"}),
+    Case("GET", "/api/v1/schools/{school_id}/courses/{journey_id}/proposals", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_published_course(db, w.school_a)}/proposals"),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/proposals/apply", "member",
+         lambda w, db: _apply_url(w, db), body=lambda w, db: {}),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/proposals/{proposal_id}/decide", "member",
+         lambda w, db: _decide_url(w, db), body=lambda w, db: {"decision": "reject"}),
     Case("GET", "/api/v1/schools/{school_id}/jobs/{job_id}", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/jobs/{f.enqueue_job(db, w.school_a)}"),
     Case("POST", "/api/v1/schools/{school_id}/jobs/{job_id}/cancel", "member",

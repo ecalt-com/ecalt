@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.core.school_auth import SchoolCtx, school_member, uuid_or_404
 from app.services import school_course_service as courses, school_jobs
+from app.services import school_course_update_service as updates
 
 router = APIRouter()
 
@@ -71,6 +72,15 @@ class RegenerateRequest(BaseModel):
 class PublishRequest(BaseModel):
     expected_revision: Optional[int] = Field(None, ge=0)
     change_summary: Optional[str] = Field(None, max_length=500)
+
+
+class UpdateRequest(BaseModel):
+    document_id: str = Field(..., min_length=1, max_length=64)
+    mode: str = Field("revise", pattern="^(revise|supplement)$")
+
+
+class DecisionRequest(BaseModel):
+    decision: str = Field(..., pattern="^(accept|reject)$")
 
 
 _STEP_EDIT_KEYS = ("title", "description", "type", "estimated_minutes",
@@ -169,6 +179,32 @@ def restore_version(journey_id: str, version: int, ctx: SchoolCtx = Depends(scho
 @router.post("/{school_id}/courses/{journey_id}/duplicate", summary="Duplicate the course into a new draft")
 def duplicate_course(journey_id: str, ctx: SchoolCtx = Depends(school_member())):
     return courses.duplicate_course(ctx, journey_id)
+
+
+# ── Update from a new document (M6 SC-601..604) ───────────────────────────────
+
+@router.post("/{school_id}/courses/{journey_id}/update",
+             summary="Propose an update from a new document (async job)")
+def start_update(journey_id: str, body: UpdateRequest, ctx: SchoolCtx = Depends(school_member())):
+    return updates.start_update(ctx, journey_id, body.document_id, body.mode)
+
+
+@router.get("/{school_id}/courses/{journey_id}/proposals", summary="List proposed changes to review")
+def list_proposals(journey_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return updates.list_proposals(ctx, journey_id)
+
+
+@router.post("/{school_id}/courses/{journey_id}/proposals/apply",
+             summary="Apply the accepted proposals into a new draft")
+def apply_update(journey_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return updates.apply_update(ctx, journey_id)
+
+
+@router.post("/{school_id}/courses/{journey_id}/proposals/{proposal_id}/decide",
+             summary="Accept or reject one proposed change")
+def decide_proposal(journey_id: str, proposal_id: str, body: DecisionRequest,
+                    ctx: SchoolCtx = Depends(school_member())):
+    return updates.decide_proposal(ctx, journey_id, proposal_id, body.decision)
 
 
 @router.post("/{school_id}/courses/{journey_id}/archive", summary="Archive the course (hide from students)")
