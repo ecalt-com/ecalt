@@ -67,6 +67,9 @@ test('student home — assigned course visible, student journey hides social', a
   await expect(courseCard.first()).toBeVisible({ timeout: 15_000 })
   await expect(page.getByText(/\d+ steps/).first()).toBeVisible()
 
+  // SC-703 disclosure: the school has teacher transcript access on (D4).
+  await expect(page.getByText(/Your teacher can see your chats with the tutor/)).toBeVisible()
+
   // Open the student Journey view — social/marketplace actions must be hidden.
   await courseCard.first().click()
   await expect(page).toHaveURL(/\/journey\//, { timeout: 20_000 })
