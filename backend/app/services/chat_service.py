@@ -431,6 +431,12 @@ async def _post_stream_bg(
         record_usage(uid, input_tokens, output_tokens, model, interaction_type=interaction_type, cached_input_tokens=cached_input_tokens, journey_id=journey_id)
     except Exception:
         pass
+    # School students: usage metering only. No knowledge-node extraction,
+    # cognitive fingerprint or re-engagement nudges — the school authorised
+    # tutoring inside its courses, not profiling a child (DPDP s. 9(3)).
+    from app.core.school_auth import is_school_student_uid
+    if is_school_student_uid(uid):
+        return
     try:
         await extract_knowledge_nodes(uid, user_message, assistant_response)
     except Exception:
