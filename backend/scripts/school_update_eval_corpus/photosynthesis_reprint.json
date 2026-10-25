@@ -1,0 +1,37 @@
+{
+  "name": "photosynthesis_reprint",
+  "mode": "revise",
+  "note": "A reprint with only typographic fixes: nothing may be proposed, and the teacher's own step must never be auto-rewritten.",
+  "steps": [
+    {
+      "id": "s1",
+      "title": "Light reactions",
+      "origin": "ai",
+      "top_headings": ["Light reactions"],
+      "source_text": "Chlorophyll in the thylakoid membrane absorbs light and splits water, releasing oxygen and storing energy in ATP and NADPH for later use."
+    },
+    {
+      "id": "s2",
+      "title": "The Calvin cycle",
+      "origin": "teacher",
+      "top_headings": ["The Calvin cycle"],
+      "source_text": "In the stroma the enzyme rubisco fixes carbon dioxide onto a five carbon sugar, and the ATP made earlier drives the loop that builds glucose."
+    }
+  ],
+  "new_chunks": [
+    {
+      "heading_path": ["Light reactions"],
+      "text": "Chlorophyll in the thylakoid membrane absorbs light and splits water, releasing oxygen and storing energy in ATP and NADPH for later use."
+    },
+    {
+      "heading_path": ["The Calvin cycle"],
+      "text": "In the stroma the enzyme rubisco fixes carbon dioxide onto a five-carbon sugar, and the ATP made earlier drives the loop that builds glucose."
+    }
+  ],
+  "expect": {
+    "unchanged": ["s1", "s2"],
+    "changed": [],
+    "removed": [],
+    "new_sections": []
+  }
+}

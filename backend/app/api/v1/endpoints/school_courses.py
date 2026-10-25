@@ -76,7 +76,7 @@ class PublishRequest(BaseModel):
 
 class UpdateRequest(BaseModel):
     document_id: str = Field(..., min_length=1, max_length=64)
-    mode: str = Field("revise", pattern="^(revise|supplement)$")
+    mode: str = Field("revise", pattern="^(revise|supplement|replace)$")
 
 
 class DecisionRequest(BaseModel):

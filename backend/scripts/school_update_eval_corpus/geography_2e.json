@@ -1,0 +1,38 @@
+{
+  "name": "geography_2e",
+  "mode": "revise",
+  "note": "A new edition revises the chapter a teacher wrote her own step from: the change must reach her as a suggestion, never an automatic rewrite.",
+  "steps": [
+    {
+      "id": "s1",
+      "title": "Monsoon winds",
+      "origin": "teacher",
+      "top_headings": ["Monsoon winds"],
+      "source_text": "In summer the land heats faster than the sea, so moist air is drawn inland from the ocean and brings the rains that most farming depends on."
+    },
+    {
+      "id": "s2",
+      "title": "Rivers of the north",
+      "origin": "ai",
+      "top_headings": ["Rivers of the north"],
+      "source_text": "Snowmelt in the mountains feeds rivers that run all year, carrying silt that settles on the plains and makes the soil fertile."
+    }
+  ],
+  "new_chunks": [
+    {
+      "heading_path": ["Monsoon winds"],
+      "text": "In summer the land heats faster than the sea, so moist air is drawn inland from the ocean and brings the rains that most farming depends on. The retreating monsoon of October then turns the winds around, and the east coast takes a second, shorter wet season from them."
+    },
+    {
+      "heading_path": ["Rivers of the north"],
+      "text": "Snowmelt in the mountains feeds rivers that run all year, carrying silt that settles on the plains and makes the soil fertile."
+    }
+  ],
+  "expect": {
+    "unchanged": ["s2"],
+    "changed": ["s1"],
+    "removed": [],
+    "new_sections": [],
+    "suggestion_only": ["s1"]
+  }
+}

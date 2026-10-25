@@ -1,0 +1,48 @@
+{
+  "name": "water_cycle_2e",
+  "mode": "revise",
+  "note": "Second edition: evaporation untouched, condensation rewritten with new detail, groundwater dropped, transpiration added.",
+  "steps": [
+    {
+      "id": "s1",
+      "title": "Evaporation",
+      "origin": "ai",
+      "top_headings": ["Evaporation"],
+      "source_text": "The sun heats water in oceans, rivers and lakes. The warmed water turns into an invisible gas called water vapour and rises into the air."
+    },
+    {
+      "id": "s2",
+      "title": "Condensation",
+      "origin": "ai",
+      "top_headings": ["Condensation"],
+      "source_text": "As water vapour rises it cools down. The cooling vapour condenses into tiny droplets, and billions of these droplets together form clouds."
+    },
+    {
+      "id": "s3",
+      "title": "Groundwater",
+      "origin": "ai",
+      "top_headings": ["Groundwater"],
+      "source_text": "Some rain soaks down through soil and porous rock until it reaches an aquifer, where it is stored underground for years before wells or springs bring it back."
+    }
+  ],
+  "new_chunks": [
+    {
+      "heading_path": ["Evaporation"],
+      "text": "The sun heats water in oceans, rivers and lakes. The warmed water turns into an invisible gas called water vapour and rises into the air."
+    },
+    {
+      "heading_path": ["Condensation"],
+      "text": "As water vapour rises it cools down. The cooling vapour condenses into tiny droplets around specks of dust, and billions of these droplets together form clouds. Near the ground the same process makes fog, and on a cold window it makes mist you can draw in."
+    },
+    {
+      "heading_path": ["Transpiration"],
+      "text": "Leaves release moisture through tiny pores called stomata. A single large tree can give off hundreds of litres on a hot day, so forests add a great deal of humidity to the sky above them."
+    }
+  ],
+  "expect": {
+    "unchanged": ["s1"],
+    "changed": ["s2"],
+    "removed": ["s3"],
+    "new_sections": ["Transpiration"]
+  }
+}

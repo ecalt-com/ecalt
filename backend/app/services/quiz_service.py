@@ -565,12 +565,33 @@ def record_quiz_skip(uid: str, journey_id: str, step_id: str) -> None:
         raise
 
 
+def _published_content_changed_at(cur, journey_id: str, step_id: str):
+    """When a *school-published* step's content last changed, or None.
+
+    School courses can be republished from a revised document (M6 SC-604). A
+    quiz set drawn from the old body may ask about material that is no longer in
+    the course, so sets generated before the change no longer count towards the
+    step's pass — the student takes a fresh quiz on the content they can read.
+    Only `school_published` content is stamped this way; ordinary journeys
+    regenerate step content for other reasons and are left alone.
+    """
+    cur.execute(
+        "SELECT generated_at FROM step_content "
+        " WHERE journey_id = %s AND step_id = %s AND source = 'school_published'",
+        (journey_id, step_id),
+    )
+    row = cur.fetchone()
+    return row["generated_at"] if row else None
+
+
 def step_quiz_status(uid: str, journey_id: str, step_id: str) -> dict:
     """Return {passed, skipped, correct, total} for a journey step.
 
     A step is passed when the user explicitly skipped its quiz, or when any
     quiz set for it has every question answered and at least
-    pass_threshold(total) correct.
+    pass_threshold(total) correct. On a republished school course, sets
+    generated before the step's content changed are ignored
+    (see :func:`_published_content_changed_at`).
     """
     try:
         with get_db() as conn:
@@ -585,6 +606,7 @@ def step_quiz_status(uid: str, journey_id: str, step_id: str) -> dict:
                 )
                 if cur.fetchone():
                     return {"passed": True, "skipped": True, "correct": 0, "total": 0}
+                cutoff = _published_content_changed_at(cur, journey_id, step_id)
                 cur.execute(
                     """
                     SELECT s.quiz_set_id,
@@ -596,9 +618,10 @@ def step_quiz_status(uid: str, journey_id: str, step_id: str) -> dict:
                     JOIN quiz_sessions s ON s.id = r.session_id
                     WHERE r.uid = %s AND r.journey_id = %s AND r.step_id = %s
                       AND s.quiz_set_id IS NOT NULL
+                      AND (%s::timestamptz IS NULL OR s.created_at >= %s)
                     GROUP BY s.quiz_set_id
                     """,
-                    (uid, journey_id, step_id),
+                    (uid, journey_id, step_id, cutoff, cutoff),
                 )
                 rows = cur.fetchall()
     except Exception as e:

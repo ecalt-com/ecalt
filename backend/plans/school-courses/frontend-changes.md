@@ -148,6 +148,20 @@ Errors: `invalid_student_secret` ("That's not quite right — try again"), `423 
 - Accepted proposals open in the editor as a new draft → publish as v(n+1).
 - Student side: steps changed since the student completed them show an **"Updated"** badge on `StepNode`.
 
+#### 8.6a As built — update modes + the student "Updated" badge (SC-604/605, 2026-10-25)
+
+**Teacher side — one new mode to add to `UpdateFromDocument.tsx` (which today offers only Revise and Supplement).**
+- `POST /schools/{id}/courses/{jid}/update` now accepts `mode: "replace"` alongside `revise` and `supplement` (422 `invalid_mode` otherwise). Copy for the picker: **Rebuild from this document** — "Throw away the old plan and build the course again from this document. Steps whose title still matches keep their progress."
+- `replace` produces **no proposals**. The job polls to `status: "replaced"` with `{steps, kept_step_ids, failed}` and the complete new draft is already there, so on completion go straight to the step editor (`/school/courses/:id`) rather than the proposal review screen — `GET …/courses/{jid}` returns `draft.version = n+1`, `draft.meta.rebuilt_from_document = true`, `draft.meta.updated_from_version`. `draft.change_summary` reads "Rebuilt from a new document (N steps, K kept from vM)". A step whose body failed to generate comes back with `build_status: "failed"` and an empty `body_md`, exactly as after a normal build — publish stays blocked (409 `steps_incomplete`) until the teacher fills or regenerates it.
+- If the model's outline is rejected twice the job finishes `status: "update_failed"`, `reason: "outline_invalid"` and **nothing changes** — no draft, published course untouched. Show "We couldn't rebuild the course from that document" and keep the teacher on the published view.
+
+**Student side — the badge. This is the only new UI work.**
+- No new endpoint. `GET /progress/{journey_id}` now returns `updated_step_ids: string[]` next to `completed_step_ids`: the steps this student **finished** whose content changed afterwards. It is empty for every ordinary journey and for any student who hasn't finished a changed step, so it is safe to read unconditionally.
+- Render an **"Updated"** badge (subtle accent pill, dark-mode token like every other badge) on `StepNode` for each id in `updated_step_ids`. The step stays **completed** — the badge invites a re-read, it does not reopen the gate or change the progress ring. Suggested title attribute: "Your teacher updated this step after you finished it."
+- Also available per step if a view needs it without the progress call: each public step in `GET /journeys/{journey_id}` now carries `content_updated_at` (ISO-8601, absent when the step has never changed). Compare it against the student's completion time yourself only if `updated_step_ids` doesn't fit the screen's data flow — prefer the list.
+- Added steps are **not** badged (nobody finished them); they simply appear as not done. Removed steps disappear from the journey and their old progress rows stop counting.
+- Quiz: a quiz the student passed on the old body no longer counts for a **changed** step, so `GET /quiz/step-status/{journey_id}/{step_id}` can flip back to `passed: false` after a republish. Nothing to build — just don't cache the pass across a page load.
+
 ### 8.7 As-built backend contract (M4 SC-402..409) — authoritative
 
 All routes are under `/api/v1/schools/{sid}` and need a staff member (any role).

@@ -15,6 +15,11 @@ normal publish path.
 Modes:
   * ``revise``     — reclassify every step (modify / remove) and add new sections.
   * ``supplement`` — only add new sections; existing steps are left untouched.
+  * ``replace``    — outline and build a fresh course from the new document
+    alone, keeping a published step's id wherever a new step's title matches it
+    (so that step's progress survives). There is nothing to review item by item,
+    so the job lands a complete new draft directly; the teacher reviews and
+    publishes it like any other draft.
 
 Teacher-authored steps are never auto-modified or auto-removed: a change to one
 is flagged ``suggestion_only`` so the teacher decides explicitly.
@@ -40,7 +45,7 @@ from app.services.school_service import school_audit
 
 logger = logging.getLogger(__name__)
 
-_MODES = ("revise", "supplement")
+_MODES = ("revise", "supplement", "replace")
 
 # Fields of a generated/replacement step that we persist in a proposal and later
 # copy into the new draft. Mirrors what the builder produces.
@@ -58,7 +63,8 @@ def start_update(ctx: SchoolCtx, journey_id: str, document_id: str, mode: str = 
     document_id = uuid_or_404(document_id, "document_not_found")
     if mode not in _MODES:
         raise HTTPException(status_code=422, detail={
-            "error": "invalid_mode", "message": "Update mode must be 'revise' or 'supplement'."})
+            "error": "invalid_mode",
+            "message": "Update mode must be 'revise', 'supplement' or 'replace'."})
     course = _load_course(ctx.school_id, journey_id)
     if course["status"] != "published":
         raise HTTPException(status_code=409, detail={
@@ -121,6 +127,9 @@ def propose_update_handler(job: dict) -> dict:
     new_chunks = _document_chunks(document_id)
     if not new_chunks:
         return {"status": "update_failed", "reason": "no_source_text"}
+
+    if mode == "replace":
+        return _replace_from_document(job, published, new_chunks)
 
     old_text, old_heads = _old_sources(steps)
     step_views = [align.StepView(
@@ -196,6 +205,110 @@ def _build_body(synth: dict, chunks_by_id: dict, school_id: str, journey_id: str
     except Exception:   # a bad single body never sinks the whole proposal run
         logger.warning("update body generation failed for a step in %s", journey_id, exc_info=True)
         return None
+
+
+# ── Replace mode (SC-605) ─────────────────────────────────────────────────────
+
+def _replace_from_document(job: dict, published: dict, new_chunks: list) -> dict:
+    """Outline + build a fresh course from the new document alone and land it as
+    a new draft, keeping published step ids wherever titles match."""
+    school_id, job_id = job["school_id"], str(job["id"])
+    journey_id = job["payload"]["journey_id"]
+    old_steps = published["steps"] or []
+
+    data, last_err = None, None
+    cfg = provider_service.get_config("school_course_outline")
+    user = builder._outline_user((published["meta"] or {}).get("inputs") or {}, new_chunks)
+    for _ in range(2):
+        school_jobs.raise_if_cancelled(job_id)
+        try:
+            text, in_tok, out_tok, _ = asyncio.run(provider_service.complete_text(
+                "school_course_outline", cfg["style_prompt"], user, max_tokens=2000))
+            subscription_service.record_school_usage(school_id, in_tok, out_tok, cfg["model"],
+                                                     journey_id=journey_id)
+            data = builder._parse_outline(text, len(new_chunks))
+            builder._check_coverage(data, new_chunks)
+            break
+        except Exception as exc:
+            data, last_err = None, str(exc)[:300]
+            logger.warning("replace outline rejected for %s: %s", journey_id, last_err)
+            user += (f"\n\nYour previous answer was rejected: {last_err}. Return valid JSON that "
+                     "follows the schema exactly and cites only real chunk ids.")
+    if not data:
+        return {"status": "update_failed", "reason": "outline_invalid", "error": last_err}
+
+    steps = _reuse_step_ids(builder._materialize_steps(data, new_chunks), old_steps)
+    chunks_by_id = {c["chunk_id"]: c for c in new_chunks}
+    cfg_body = provider_service.get_config("school_step_content")
+    cfg_critic = provider_service.get_config("school_faithfulness_critic")
+
+    built = []
+    for i, step in enumerate(steps):
+        school_jobs.raise_if_cancelled(job_id)
+        school_jobs.update_progress(job_id, {"steps_done": i, "steps_total": len(steps)})
+        new_step = _build_body(step, chunks_by_id, school_id, journey_id, cfg_body, cfg_critic)
+        built.append(new_step or builder._failed_step(step, "the step body could not be generated"))
+
+    old_ids = {s["id"] for s in old_steps}
+    kept = sum(1 for s in built if s["id"] in old_ids)
+    _write_replacement_draft(journey_id, school_id, published, built, kept, job.get("created_by"))
+    school_jobs.update_progress(job_id, {"steps_done": len(steps), "steps_total": len(steps)})
+    n_failed = sum(1 for s in built if s.get("build_status") == "failed")
+    logger.info("replaced %s from a new document: %s steps, %s ids kept, %s failed",
+                journey_id, len(built), kept, n_failed)
+    return {"status": "replaced", "steps": len(built), "kept_step_ids": kept, "failed": n_failed}
+
+
+def _reuse_step_ids(new_steps: list, old_steps: list) -> list:
+    """Give each freshly outlined step the id of the published step with the same
+    title, so progress on that step survives the replace. An unmatched step gets
+    a fresh id that collides with no published one — a removed step's id is never
+    handed to different material."""
+    old_by_title: dict = {}
+    for o in old_steps:
+        old_by_title.setdefault(builder._norm(o.get("title")), o["id"])
+    reserved = {o["id"] for o in old_steps}
+    out, taken = [], set()
+    for step in new_steps:
+        match = old_by_title.get(builder._norm(step.get("title")))
+        out.append({**step, "id": match if match and match not in taken else None})
+        if out[-1]["id"]:
+            taken.add(out[-1]["id"])
+    for step in out:
+        if step["id"]:
+            continue
+        sid = "s" + uuid.uuid4().hex[:8]
+        while sid in reserved:
+            sid = "s" + uuid.uuid4().hex[:8]
+        step["id"] = sid
+        reserved.add(sid)
+    return out
+
+
+def _write_replacement_draft(journey_id: str, school_id: str, published: dict, steps: list,
+                             kept: int, created_by) -> None:
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1 FROM course_versions WHERE journey_id = %s AND state = 'draft' FOR UPDATE",
+                        (journey_id,))
+            if cur.fetchone():
+                raise RuntimeError("a draft appeared while the replacement was building")
+            cur.execute("SELECT COALESCE(MAX(version), 0) + 1 AS v FROM course_versions WHERE journey_id = %s",
+                        (journey_id,))
+            new_version = cur.fetchone()["v"]
+            meta = {**(published["meta"] or {}), "status": "built",
+                    "updated_from_version": published["version"], "rebuilt_from_document": True}
+            meta.pop("error", None)
+            summary = f"Rebuilt from a new document ({len(steps)} steps, {kept} kept from v{published['version']})"
+            cur.execute(
+                """INSERT INTO course_versions
+                       (journey_id, version, state, revision, meta, steps, base_version, change_summary, created_by)
+                   VALUES (%s, %s, 'draft', 0, %s::jsonb, %s::jsonb, %s, %s, %s)""",
+                (journey_id, new_version, json.dumps(meta), json.dumps(steps),
+                 published["version"], summary, created_by))
+            school_audit(cur, school_id, created_by, "course.update_applied", "course", journey_id,
+                         {"from_version": published["version"], "new_version": new_version,
+                          "mode": "replace", "steps": len(steps), "kept_step_ids": kept})
 
 
 # ── Review + apply ────────────────────────────────────────────────────────────
