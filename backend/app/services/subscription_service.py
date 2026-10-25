@@ -1,4 +1,6 @@
+import asyncio
 import logging
+import threading
 import time
 from datetime import date
 from typing import Optional
@@ -7,6 +9,10 @@ from app.core.database import get_db
 from app.services.provider_service import cost_for_tokens, cost_for_images
 
 logger = logging.getLogger(__name__)
+
+# Budget-alert thresholds (fraction of the school's monthly pool) → the column
+# on school_usage that dedupes each one per month (stamped once when crossed).
+_BUDGET_ALERT_THRESHOLDS = ((1.0, 100, "alert_100_at"), (0.8, 80, "alert_80_at"))
 
 
 # ── School students ───────────────────────────────────────────────────────────
@@ -168,6 +174,7 @@ def record_school_usage(school_id: str, input_tokens: int, output_tokens: int, m
     a course is in context) to that course's per-course spend (SC-706)."""
     cost_cents = cost_for_tokens(model, input_tokens, output_tokens)
     period_start = date.today().replace(day=1)
+    alerts: list = []
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -179,14 +186,18 @@ def record_school_usage(school_id: str, input_tokens: int, output_tokens: int, m
                         cost_cents    = school_usage.cost_cents + EXCLUDED.cost_cents,
                         input_tokens  = school_usage.input_tokens + EXCLUDED.input_tokens,
                         output_tokens = school_usage.output_tokens + EXCLUDED.output_tokens
+                    RETURNING cost_cents
                     """,
                     (school_id, period_start, cost_cents, input_tokens, output_tokens),
                 )
+                total = float(cur.fetchone()["cost_cents"])
                 if journey_id:
                     _accrue_course_usage(cur, school_id, journey_id, period_start,
                                          cost_cents, input_tokens, output_tokens)
+                alerts = _school_budget_alerts(cur, school_id, period_start, total)
     except Exception:
         logger.warning("record_school_usage failed for %s", school_id, exc_info=True)
+    _send_budget_alerts(alerts)
 
 
 def record_school_image_usage(school_id: str, model: str, count: int = 1,
@@ -195,6 +206,7 @@ def record_school_image_usage(school_id: str, model: str, count: int = 1,
     monthly pool (and the course's per-course spend when known, SC-706)."""
     cost_cents = cost_for_images(model, count)
     period_start = date.today().replace(day=1)
+    alerts: list = []
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -204,13 +216,87 @@ def record_school_image_usage(school_id: str, model: str, count: int = 1,
                     VALUES (%s, %s, %s, 0, 0)
                     ON CONFLICT (school_id, period_start) DO UPDATE SET
                         cost_cents = school_usage.cost_cents + EXCLUDED.cost_cents
+                    RETURNING cost_cents
                     """,
                     (school_id, period_start, cost_cents),
                 )
+                total = float(cur.fetchone()["cost_cents"])
                 if journey_id:
                     _accrue_course_usage(cur, school_id, journey_id, period_start, cost_cents, 0, 0)
+                alerts = _school_budget_alerts(cur, school_id, period_start, total)
     except Exception:
         logger.warning("record_school_image_usage failed for %s", school_id, exc_info=True)
+    _send_budget_alerts(alerts)
+
+
+# ── Budget alert emails (SC-504) ──────────────────────────────────────────────
+# When the month's school spend crosses 80% or 100% of the pool, email the
+# school admins — once per threshold per month. The crossing is detected inside
+# the usage-recording transaction (so the dedup is atomic) and the email is sent
+# after commit, off the request path.
+
+def _school_budget_alerts(cur, school_id: str, period_start, new_cost_cents: float) -> list:
+    """Claim any newly-crossed budget threshold for the month (atomic + deduped)
+    and return the alert payloads to email after the transaction commits."""
+    cur.execute("SELECT name, monthly_ai_budget_cents FROM schools WHERE id = %s", (school_id,))
+    row = cur.fetchone()
+    if not row or not row["monthly_ai_budget_cents"]:
+        return []
+    budget = float(row["monthly_ai_budget_cents"])
+    if budget <= 0:
+        return []
+    pct = new_cost_cents / budget
+    fired = []
+    for frac, percent, col in _BUDGET_ALERT_THRESHOLDS:
+        if pct < frac:
+            continue
+        # Stamp the marker only if it's still null — the row that wins sends the
+        # email. Lower thresholds are stamped too (subsumed) so they never fire
+        # afterwards, but only the highest crossed threshold emails.
+        cur.execute(
+            f"UPDATE school_usage SET {col} = now() "
+            f"WHERE school_id = %s AND period_start = %s AND {col} IS NULL RETURNING 1",
+            (school_id, period_start))
+        claimed = cur.fetchone() is not None
+        if claimed and not fired:   # email only the highest threshold crossed now
+            fired.append(percent)
+    if not fired:
+        return []
+    cur.execute(
+        """SELECT u.uid, u.email FROM school_members sm JOIN users u ON u.uid = sm.uid
+            WHERE sm.school_id = %s AND sm.status = 'active'
+              AND sm.role IN ('owner', 'admin') AND u.email IS NOT NULL""",
+        (school_id,))
+    recipients = [(r["uid"], r["email"]) for r in cur.fetchall()]
+    return [{"school_name": row["name"], "percent": max(fired), "spent_cents": new_cost_cents,
+             "budget_cents": budget, "recipients": recipients}]
+
+
+def _send_budget_alerts(alerts: list) -> None:
+    """Deliver budget-alert emails off the request path. Runs in a daemon thread
+    with its own event loop, so it works whether the caller is the sync job
+    worker or an async endpoint, and never blocks or fails usage recording."""
+    if not alerts:
+        return
+
+    def _run():
+        from app.services import email_service
+
+        async def _go():
+            for a in alerts:
+                for uid, email in a["recipients"]:
+                    try:
+                        await email_service.send_school_budget_alert_email(
+                            email, uid, a["school_name"], a["percent"], a["spent_cents"], a["budget_cents"])
+                    except Exception:
+                        logger.warning("budget alert email failed for %s", a["school_name"], exc_info=True)
+
+        try:
+            asyncio.run(_go())
+        except Exception:
+            logger.warning("budget alert delivery failed", exc_info=True)
+
+    threading.Thread(target=_run, name="budget-alert", daemon=True).start()
 
 
 def get_user_plan(uid: str) -> dict:
@@ -437,6 +523,7 @@ def record_usage(
     """Upsert token_usage for the current billing month and log budget status."""
     cost_cents = cost_for_tokens(model, input_tokens, output_tokens)
     period_start = date.today().replace(day=1)
+    school_alerts: list = []
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -491,12 +578,15 @@ def record_usage(
                                 cost_cents    = school_usage.cost_cents + EXCLUDED.cost_cents,
                                 input_tokens  = school_usage.input_tokens + EXCLUDED.input_tokens,
                                 output_tokens = school_usage.output_tokens + EXCLUDED.output_tokens
+                            RETURNING cost_cents
                             """,
                             (school[0], period_start, cost_cents, input_tokens, output_tokens),
                         )
+                        school_total = float(cur.fetchone()["cost_cents"])
                         if journey_id:
                             _accrue_course_usage(cur, school[0], journey_id, period_start,
                                                  cost_cents, input_tokens, output_tokens)
+                        school_alerts = _school_budget_alerts(cur, school[0], period_start, school_total)
                         col = ("tutor_messages" if interaction_type in ("journey_tutor", "daily_chat")
                                else "quiz_sets" if interaction_type == "quiz" else None)
                         if col:
@@ -510,6 +600,8 @@ def record_usage(
                                 """,
                                 (uid, school[0]),
                             )
+
+        _send_budget_alerts(school_alerts)
 
         try:
             plan = get_user_plan(uid)
