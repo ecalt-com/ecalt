@@ -65,10 +65,11 @@ def register_handler(kind: str, fn: JobHandler) -> None:
 def _load_handlers() -> None:
     """Import the modules that register handlers. Imported lazily (not at module
     load) to avoid a circular import with the services that enqueue jobs."""
-    try:  # handlers land with M3/M4; tolerate their absence so the queue still runs
-        import app.services.school_ingest_service  # noqa: F401  (registers 'extract')
-        import app.services.school_course_builder   # noqa: F401  (registers 'outline')
-    except Exception:  # pragma: no cover - defensive until M3/M4 lands
+    try:  # handlers land with M3/M4/M6; tolerate their absence so the queue still runs
+        import app.services.school_ingest_service       # noqa: F401  (registers 'extract')
+        import app.services.school_course_builder        # noqa: F401  (registers 'outline'/'build')
+        import app.services.school_course_update_service  # noqa: F401  (registers 'propose_update')
+    except Exception:  # pragma: no cover - defensive until the handlers land
         logger.debug("some school job handlers not available yet", exc_info=True)
 
 

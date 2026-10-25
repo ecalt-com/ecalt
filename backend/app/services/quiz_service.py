@@ -42,8 +42,23 @@ def _progression_difficulties(base: str, n: int) -> list[str]:
     return [_DIFFICULTY_ORDER[min(idx + i, len(_DIFFICULTY_ORDER) - 1)] for i in range(n)]
 
 
-def _get_user_age_context(uid: str) -> str:
-    """Fetch birth_year / age_group_flag and return an age-calibration line for the prompt."""
+_SCHOOL_AGE_QUIZ = {
+    "kids": "Learner group: kids (primary school). Use simple, playful words and concrete everyday examples. No jargon.",
+    "teens": "Learner group: teens (secondary school). Energetic, relatable language. Introduce technical terms with a brief natural explanation.",
+}
+
+
+def _get_user_age_context(uid: str, journey_id: str | None = None) -> str:
+    """Fetch birth_year / age_group_flag and return an age-calibration line for the prompt.
+
+    School students are pitched to their class grade (SC-503)."""
+    try:
+        from app.core.school_auth import is_school_student_uid
+        if is_school_student_uid(uid):
+            from app.services.school_assignment_service import student_age_band
+            return _SCHOOL_AGE_QUIZ.get(student_age_band(uid, journey_id) or "", "")
+    except Exception:
+        pass
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -322,7 +337,7 @@ async def generate_quiz_set(
             base_depth = floor
 
     difficulty  = get_adaptive_difficulty(uid, base_depth)
-    age_context = _get_user_age_context(uid)
+    age_context = _get_user_age_context(uid, journey_id)
 
     # Clamp difficulty to the step-type ceiling — first-exposure steps
     # should not receive mastery-level questions even if the user is on a streak
@@ -550,12 +565,33 @@ def record_quiz_skip(uid: str, journey_id: str, step_id: str) -> None:
         raise
 
 
+def _published_content_changed_at(cur, journey_id: str, step_id: str):
+    """When a *school-published* step's content last changed, or None.
+
+    School courses can be republished from a revised document (M6 SC-604). A
+    quiz set drawn from the old body may ask about material that is no longer in
+    the course, so sets generated before the change no longer count towards the
+    step's pass — the student takes a fresh quiz on the content they can read.
+    Only `school_published` content is stamped this way; ordinary journeys
+    regenerate step content for other reasons and are left alone.
+    """
+    cur.execute(
+        "SELECT generated_at FROM step_content "
+        " WHERE journey_id = %s AND step_id = %s AND source = 'school_published'",
+        (journey_id, step_id),
+    )
+    row = cur.fetchone()
+    return row["generated_at"] if row else None
+
+
 def step_quiz_status(uid: str, journey_id: str, step_id: str) -> dict:
     """Return {passed, skipped, correct, total} for a journey step.
 
     A step is passed when the user explicitly skipped its quiz, or when any
     quiz set for it has every question answered and at least
-    pass_threshold(total) correct.
+    pass_threshold(total) correct. On a republished school course, sets
+    generated before the step's content changed are ignored
+    (see :func:`_published_content_changed_at`).
     """
     try:
         with get_db() as conn:
@@ -570,6 +606,7 @@ def step_quiz_status(uid: str, journey_id: str, step_id: str) -> dict:
                 )
                 if cur.fetchone():
                     return {"passed": True, "skipped": True, "correct": 0, "total": 0}
+                cutoff = _published_content_changed_at(cur, journey_id, step_id)
                 cur.execute(
                     """
                     SELECT s.quiz_set_id,
@@ -581,9 +618,10 @@ def step_quiz_status(uid: str, journey_id: str, step_id: str) -> dict:
                     JOIN quiz_sessions s ON s.id = r.session_id
                     WHERE r.uid = %s AND r.journey_id = %s AND r.step_id = %s
                       AND s.quiz_set_id IS NOT NULL
+                      AND (%s::timestamptz IS NULL OR s.created_at >= %s)
                     GROUP BY s.quiz_set_id
                     """,
-                    (uid, journey_id, step_id),
+                    (uid, journey_id, step_id, cutoff, cutoff),
                 )
                 rows = cur.fetchall()
     except Exception as e:

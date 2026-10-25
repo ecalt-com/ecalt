@@ -1,5 +1,7 @@
 import json
 import logging
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
@@ -145,6 +147,48 @@ class ProgressResponse(BaseModel):
 class JourneyProgressResponse(BaseModel):
     journey_id: str
     completed_step_ids: list[str]
+    updated_step_ids: list[str] = []   # finished steps whose content changed since (SC-604)
+
+
+def _updated_since_completed(journey_id: str, completed: list[dict]) -> list[str]:
+    """Of the steps this user finished, those whose content changed afterwards.
+
+    A school course republished from a revised document stamps every changed
+    step with `content_updated_at` (see `school_course_service.publish_course`),
+    so a student who already finished the old version gets the "updated since
+    you finished" badge on exactly those steps. Best-effort: anything
+    unparseable simply yields no badge.
+    """
+    done_at = {r["step_id"]: r["completed_at"] for r in completed if r.get("completed_at")}
+    if not done_at:
+        return []
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT steps FROM journeys WHERE id = %s", (journey_id,))
+                row = cur.fetchone()
+        steps = (row or {}).get("steps") or []
+        if isinstance(steps, str):
+            steps = json.loads(steps)
+    except Exception:
+        return []
+
+    out = []
+    for step in steps:
+        stamp, finished = step.get("content_updated_at"), done_at.get(step.get("id"))
+        if not stamp or not finished:
+            continue
+        try:
+            changed_at = datetime.fromisoformat(str(stamp))
+        except ValueError:
+            continue
+        if changed_at.tzinfo is None:
+            changed_at = changed_at.replace(tzinfo=timezone.utc)
+        if finished.tzinfo is None:
+            finished = finished.replace(tzinfo=timezone.utc)
+        if changed_at > finished:
+            out.append(step["id"])
+    return out
 
 
 def _update_streak(uid: str) -> None:
@@ -177,13 +221,14 @@ async def get_progress(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT step_id FROM user_progress WHERE uid = %s AND journey_id = %s",
+                "SELECT step_id, completed_at FROM user_progress WHERE uid = %s AND journey_id = %s",
                 (uid, journey_id),
             )
-            rows = cur.fetchall()
+            rows = [dict(r) for r in cur.fetchall()]
     return JourneyProgressResponse(
         journey_id=journey_id,
         completed_step_ids=[r["step_id"] for r in rows],
+        updated_step_ids=_updated_since_completed(journey_id, rows),
     )
 
 

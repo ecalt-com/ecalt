@@ -76,7 +76,7 @@ def create_course(ctx: SchoolCtx, title: str, document_ids: list) -> dict:
                 INSERT INTO course_versions (journey_id, version, state, revision, meta, steps, created_by)
                 VALUES (%s, 1, 'draft', 0, %s::jsonb, '[]'::jsonb, %s)
                 """,
-                (journey_id, json.dumps({"status": "empty"}), ctx.uid),
+                (journey_id, json.dumps({"status": "empty", "title": title}), ctx.uid),
             )
             for d in doc_ids:
                 cur.execute(
@@ -423,6 +423,37 @@ def regenerate_step(ctx: SchoolCtx, journey_id: str, step_id: str, expected_revi
 _PUBLIC_STEP_FIELDS = ("id", "title", "description", "type", "estimated_minutes", "core_question")
 
 
+def _public_steps(cur, journey_id: str, steps: list) -> tuple:
+    """Public (student-facing) steps + the ids whose body actually changed.
+
+    A step whose body differs from the content students are reading right now is
+    stamped with ``content_updated_at`` so the student Journey view can show the
+    "updated since you finished" badge (SC-604); an unchanged step keeps whatever
+    stamp it already carried. Brand-new steps get no stamp — nobody finished them.
+    """
+    cur.execute("SELECT step_id, content FROM step_content WHERE journey_id = %s", (journey_id,))
+    prior_content = {r["step_id"]: (r["content"] or "") for r in cur.fetchall()}
+    cur.execute("SELECT steps FROM journeys WHERE id = %s", (journey_id,))
+    row = cur.fetchone()
+    prior_public = {s["id"]: s for s in ((row or {}).get("steps") or []) if s.get("id")}
+    cur.execute("SELECT now() AS t")
+    now_iso = cur.fetchone()["t"].isoformat()
+
+    changed, public = [], []
+    for s in steps:
+        step = {k: s.get(k) for k in _PUBLIC_STEP_FIELDS}
+        was = prior_content.get(s["id"])
+        if was is not None and was != (s.get("body_md") or ""):
+            changed.append(s["id"])
+            step["content_updated_at"] = now_iso
+        else:
+            stamp = (prior_public.get(s["id"]) or {}).get("content_updated_at")
+            if stamp:
+                step["content_updated_at"] = stamp
+        public.append(step)
+    return public, changed
+
+
 def publish_course(ctx: SchoolCtx, journey_id: str, expected_revision=None, change_summary=None) -> dict:
     """Publish the built draft: write the student-facing journey + locked step
     content, promote the version, supersede the prior one — all in one txn."""
@@ -471,7 +502,7 @@ def publish_course(ctx: SchoolCtx, journey_id: str, expected_revision=None, chan
                     WHERE id = %s""",
                 (json.dumps({**meta, "status": "published"}), ctx.uid, change_summary, draft["id"]))
 
-            public_steps = [{k: s.get(k) for k in _PUBLIC_STEP_FIELDS} for s in steps]
+            public_steps, changed_ids = _public_steps(cur, journey_id, steps)
             cur.execute(
                 """UPDATE journeys
                       SET title = %s, description = %s, estimated_hours = %s, steps = %s::jsonb,
@@ -493,13 +524,15 @@ def publish_course(ctx: SchoolCtx, journey_id: str, expected_revision=None, chan
                        ON CONFLICT (journey_id, step_id) DO UPDATE SET
                            content = EXCLUDED.content, quiz_anchors = EXCLUDED.quiz_anchors,
                            model = EXCLUDED.model, source = 'school_published', locked = true,
-                           generated_at = now()""",
+                           generated_at = CASE
+                               WHEN step_content.content IS DISTINCT FROM EXCLUDED.content THEN now()
+                               ELSE step_content.generated_at END""",
                     (journey_id, s["id"], s.get("body_md") or "", json.dumps(s.get("quiz_anchors") or []), model))
 
             cur.execute("UPDATE school_courses SET status = 'published', published_version = %s, updated_at = now() "
                         "WHERE journey_id = %s AND school_id = %s", (version, journey_id, ctx.school_id))
             school_audit(cur, ctx.school_id, ctx.uid, "course.published", "course", journey_id,
-                         {"version": version, "steps": len(steps)})
+                         {"version": version, "steps": len(steps), "changed_steps": len(changed_ids)})
     invalidate_journey_access(journey_id=journey_id)
     return get_course(ctx, journey_id)
 

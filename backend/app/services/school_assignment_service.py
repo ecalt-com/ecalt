@@ -455,6 +455,51 @@ def student_assignment_settings(uid: str, journey_id: str) -> dict:
     }
 
 
+# ── Age band from grade (SC-503) ──────────────────────────────────────────────
+# The class grade drives how the tutor and quizzes pitch their language. The
+# class that assigned the course is authoritative; the student's own grade is
+# the fallback when the course context isn't known. School minors are never
+# pitched as adults — grade 6+ maps to "teens", grade ≤5 to "kids".
+
+def age_band_for_grade(grade: Optional[int]) -> Optional[str]:
+    if grade is None:
+        return None
+    return "kids" if grade <= 5 else "teens"
+
+
+def student_age_band(uid: str, journey_id: Optional[str] = None) -> Optional[str]:
+    """Age band ('kids' | 'teens') for a school student, from the grade of the
+    class that assigned this course (lowest, if several), else the student's own
+    grade. None for non-students or when no grade is recorded."""
+    if not is_school_student_uid(uid):
+        return None
+    grade = None
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            if journey_id:
+                cur.execute(
+                    """
+                    SELECT c.grade
+                      FROM course_assignments a
+                      JOIN class_enrollments e
+                        ON e.class_id = a.class_id AND e.removed_at IS NULL
+                      JOIN classes c ON c.id = a.class_id AND c.archived_at IS NULL
+                     WHERE a.journey_id = %s AND a.status = 'active' AND e.student_uid = %s
+                       AND c.grade IS NOT NULL
+                     ORDER BY c.grade
+                     LIMIT 1
+                    """,
+                    (journey_id, uid),
+                )
+                row = cur.fetchone()
+                grade = row["grade"] if row else None
+            if grade is None:
+                cur.execute("SELECT grade FROM school_students WHERE uid = %s", (uid,))
+                row = cur.fetchone()
+                grade = row["grade"] if row else None
+    return age_band_for_grade(grade)
+
+
 def student_tutor_allowed(uid: str, journey_id: str) -> bool:
     return student_assignment_settings(uid, journey_id)["tutor_enabled"]
 

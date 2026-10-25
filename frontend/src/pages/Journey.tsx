@@ -111,7 +111,7 @@ function CompletionOverlay({ journey, onDismiss }: { journey: JourneyType; onDis
 export default function Journey() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  const { user, getToken } = useAuth()
+  const { user, loading: authLoading, getToken } = useAuth()
   // School students get a focused view: no marketplace/social actions, and the
   // tutor only when the teacher left it on for their assignment (§9).
   const isStudent = !!user && isStudentUid(user.uid)
@@ -131,7 +131,9 @@ export default function Journey() {
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
-    if (!id) return
+    // Wait for Firebase to restore the session: on a hard load getToken() is
+    // null until then, and a guest fetch 404s a private or school journey.
+    if (!id || authLoading) return
     // Reset page state — the completion overlay navigates between journeys
     // on this same route, so the component instance survives the id change.
     setJourney(null)
@@ -166,14 +168,20 @@ export default function Journey() {
         const token = await getToken()
         const j = await getJourney(id, token ?? undefined)
         let completedIds: string[] = []
+        let updatedIds: string[] = []
         if (token) {
           try {
             const prog = await getProgress(id, token)
             completedIds = prog.completed_step_ids
+            updatedIds = prog.updated_step_ids ?? []
           } catch { /* guest — no progress */ }
         }
         setJourney(j)
-        setSteps(j.steps.map(s => ({ ...s, completed: completedIds.includes(s.id) })))
+        setSteps(j.steps.map(s => ({
+          ...s,
+          completed: completedIds.includes(s.id),
+          updated: updatedIds.includes(s.id),
+        })))
         setLikeCount(j.like_count)
 
         // The hero image lands async ~5–30s after journey creation. For a
@@ -209,7 +217,7 @@ export default function Journey() {
       }
     }
     load()
-  }, [id])
+  }, [id, authLoading])
 
   // Step i is locked until every earlier step is complete (matches the backend
   // 409 gate, which checks all prior steps — not just the previous one).

@@ -1,0 +1,37 @@
+{
+  "name": "civics_supplement",
+  "mode": "supplement",
+  "note": "A second handout added alongside the original: existing steps must be left alone even though none of their source is in this document, and both of its sections become new steps.",
+  "steps": [
+    {
+      "id": "s1",
+      "title": "How a bill becomes law",
+      "origin": "ai",
+      "top_headings": ["How a bill becomes law"],
+      "source_text": "A bill is introduced in either house, debated in committee, voted on clause by clause, and sent to the other house before it reaches the president for assent."
+    },
+    {
+      "id": "s2",
+      "title": "Fundamental rights",
+      "origin": "teacher",
+      "top_headings": ["Fundamental rights"],
+      "source_text": "Part III guarantees equality before the law, freedom of speech and expression, and the right to constitutional remedies when a right is denied."
+    }
+  ],
+  "new_chunks": [
+    {
+      "heading_path": ["Local government"],
+      "text": "Panchayats run villages and municipalities run towns. Elected ward members choose a chairperson, and a share of every state budget is reserved for these councils to spend on roads, water and sanitation."
+    },
+    {
+      "heading_path": ["Elections"],
+      "text": "An independent commission draws the roll, fixes polling dates and runs the count. Any citizen over eighteen may vote, and candidates must file their assets before nomination."
+    }
+  ],
+  "expect": {
+    "unchanged": ["s1", "s2"],
+    "changed": [],
+    "removed": [],
+    "new_sections": ["Local government", "Elections"]
+  }
+}

@@ -209,10 +209,12 @@ def _materialize_steps(data: dict, chunks: list) -> list:
 
 def _write_outline(journey_id: str, steps: list, data: dict) -> None:
     meta = data.get("meta") or {}
+    # The teacher's entered title is authoritative — never silently replace it
+    # with the model's. Keep the AI's as a one-click suggestion instead.
+    ai_title = (meta.get("title") or "").strip()
     patch = {
         "status": "outline_ready",
         "skipped_sections": data.get("skipped_sections", []),
-        "title": meta.get("title"),
         "description": meta.get("description"),
         "estimated_hours": meta.get("estimated_hours"),
     }
@@ -224,6 +226,10 @@ def _write_outline(journey_id: str, steps: list, data: dict) -> None:
             for k, v in patch.items():
                 if v is not None or k in ("status", "skipped_sections"):
                     merged[k] = v
+            if ai_title and ai_title != (merged.get("title") or "").strip():
+                merged["suggested_title"] = ai_title
+            else:
+                merged.pop("suggested_title", None)
             cur.execute(
                 """UPDATE course_versions
                       SET steps = %s::jsonb, meta = %s::jsonb, revision = revision + 1, updated_at = now()

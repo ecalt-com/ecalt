@@ -195,8 +195,28 @@ def _get_journey_context(journey_id: str | None, step_id: str | None) -> tuple[s
         return "this learning journey", None
 
 
-def _get_chat_age_context(uid: str) -> str:
-    """Return a one-line age calibration string for the chat system prompt."""
+_SCHOOL_AGE_CHAT = {
+    "kids": ("Learner group: a primary-school class (roughly ages 6–10). Use simple, concrete, "
+             "playful language and everyday examples; avoid jargon. Keep all content strictly "
+             "child-appropriate."),
+    "teens": ("Learner group: a secondary-school class (roughly ages 11–18). Energetic and "
+              "relatable; introduce technical terms with a brief plain explanation. Keep content "
+              "age-appropriate for teens."),
+}
+
+
+def _get_chat_age_context(uid: str, journey_id: str | None = None) -> str:
+    """Return a one-line age calibration string for the chat system prompt.
+
+    School students are pitched to their class grade (SC-503); everyone else is
+    calibrated from their birth year / age-group flag."""
+    try:
+        from app.core.school_auth import is_school_student_uid
+        if is_school_student_uid(uid):
+            from app.services.school_assignment_service import student_age_band
+            return _SCHOOL_AGE_CHAT.get(student_age_band(uid, journey_id) or "", "")
+    except Exception:
+        pass
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -360,7 +380,7 @@ async def stream_chat(
     else:
         base_system = inject_fingerprint(uid, cfg["style_prompt"])
 
-    age_context = _get_chat_age_context(uid)
+    age_context = _get_chat_age_context(uid, journey_id)
     system = f"{base_system}\n\n[AGE CONTEXT]: {age_context}" if age_context else base_system
 
     full_response = ""

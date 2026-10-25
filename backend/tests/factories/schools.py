@@ -286,8 +286,8 @@ def make_course_draft(conn, school: dict, *, creator: Optional[str] = None,
         )
         cur.execute(
             "INSERT INTO course_versions (journey_id, version, state, revision, meta, steps) "
-            "VALUES (%s, 1, 'draft', 0, '{\"status\":\"empty\"}'::jsonb, '[]'::jsonb)",
-            (journey_id,),
+            "VALUES (%s, 1, 'draft', 0, %s::jsonb, '[]'::jsonb)",
+            (journey_id, json.dumps({"status": "empty", "title": title})),
         )
         if with_source:
             cur.execute(
@@ -373,6 +373,30 @@ def make_published_course(conn, school: dict, *, creator: Optional[str] = None) 
         cur.execute("UPDATE school_courses SET status = 'published', published_version = 1 WHERE journey_id = %s",
                     (journey_id,))
     return journey_id
+
+
+def make_update_proposal(conn, school: dict, *, journey_id: str, op: str = "modify",
+                         step_id: str = "s1", status: str = "pending",
+                         payload: Optional[dict] = None, reason: str = "source changed") -> str:
+    """A `course_change_proposals` row for update-flow tests. Defaults build a
+    valid modify/add payload so an accepted proposal applies cleanly."""
+    if payload is None:
+        _step = {"id": step_id, "title": "Updated step", "description": "", "type": "concept",
+                 "estimated_minutes": 10, "core_question": "", "learning_objective": "",
+                 "body_md": "## Updated\n\nA fresh grounded body.", "citations": [], "key_facts": [],
+                 "quiz_anchors": [], "chunk_ids": [], "origin": "ai"}
+        if op == "modify":
+            payload = {"step": _step, "old_body": "old body", "new_body": _step["body_md"],
+                       "diff": {"added": 2, "removed": 1}, "old_title": "Introduction"}
+        elif op == "add":
+            payload = {"after_step_id": None, "step": {**_step, "id": "snew1", "title": "New section"}}
+        else:  # remove
+            payload = {"suggestion_only": False}
+    row = fetch(conn, """INSERT INTO course_change_proposals
+                             (journey_id, version, op, step_id, payload, reason, status)
+                         VALUES (%s, 1, %s, %s, %s::jsonb, %s, %s) RETURNING id::text""",
+                (journey_id, op, step_id, json.dumps(payload), reason, status))
+    return row[0]["id"]
 
 
 def enqueue_job(conn, school: dict, kind: str = "outline", status: str = "queued") -> str:

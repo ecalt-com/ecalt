@@ -19,6 +19,7 @@ class JourneyStep(BaseModel):
     content: Optional[str] = Field(None, description="Full step content / lesson body (populated on demand)")
     core_question: Optional[str] = Field(None, description="The one question this step answers (seeds content generation)")
     seed_facts: Optional[List[str]] = Field(None, description="Specific facts/examples the step content is built around")
+    content_updated_at: Optional[str] = Field(None, description="When this step's content last changed (school courses republished from a revised document); drives the 'updated since you finished' badge")
 
     model_config = {
         "json_schema_extra": {

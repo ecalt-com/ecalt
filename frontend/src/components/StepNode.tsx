@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
-import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2, Lock } from 'lucide-react'
+import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2, Lock, RefreshCw } from 'lucide-react'
 import type { JourneyStep, StepVisualResponse } from '../lib/types'
 import { getStepContent, getStepVisual } from '../lib/api'
 import MarkdownContent from './MarkdownContent'
@@ -162,6 +162,15 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
                 {!step.completed && (
                   <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400">
                     Quiz · 2/3 to pass
+                  </span>
+                )}
+                {step.completed && step.updated && (
+                  <span
+                    data-testid="step-updated-badge"
+                    title="Your teacher updated this step after you finished it."
+                    className="inline-flex items-center gap-1 text-xs font-semibold px-1.5 py-0.5 rounded-full bg-sky-50 dark:bg-sky-400/10 text-sky-600 dark:text-sky-400"
+                  >
+                    <RefreshCw size={10} />Updated
                   </span>
                 )}
               </div>

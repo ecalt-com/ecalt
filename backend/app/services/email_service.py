@@ -448,6 +448,47 @@ async def send_teacher_digest_email(teacher_email: str, teacher_uid: str,
     )
 
 
+async def send_school_budget_alert_email(admin_email: str, admin_uid: str, school_name: str,
+                                         percent: int, spent_cents: float, budget_cents: float) -> bool:
+    """Alert a school admin that the month's AI budget crossed 80% or 100%
+    (schools, SC-504). Spend is shown in dollars; the pool refreshes next month."""
+    usage_url = f"{settings.FRONTEND_URL}/school/usage"
+    spent = f"${spent_cents / 100:,.2f}"
+    budget = f"${budget_cents / 100:,.2f}"
+    if percent >= 100:
+        subject = f"{school_name}: AI budget used up for this month"
+        lead = (f"<strong>{school_name}</strong> has used its entire AI budget for this month "
+                f"({spent} of {budget}). Students will see \"ask your teacher\" until the pool "
+                f"refreshes next month or an admin raises the budget.")
+        text_lead = (f"{school_name} has used its entire monthly AI budget ({spent} of {budget}). "
+                     f"Students are blocked until the pool refreshes next month or the budget is raised.")
+    else:
+        subject = f"{school_name}: AI budget {percent}% used"
+        lead = (f"<strong>{school_name}</strong> has used {percent}% of its monthly AI budget "
+                f"({spent} of {budget}). Course building and student tutoring keep working until "
+                f"it's fully spent.")
+        text_lead = (f"{school_name} has used {percent}% of its monthly AI budget ({spent} of {budget}).")
+
+    html_body = f"""\
+<p style="font-family:sans-serif;font-size:16px">Hi,</p>
+<p style="font-family:sans-serif">{lead}</p>
+<p style="font-family:sans-serif;margin-top:16px">
+  <a href="{usage_url}"
+     style="display:inline-block;padding:10px 20px;background:#4f46e5;color:#fff;
+            border-radius:6px;text-decoration:none;font-weight:bold;font-family:sans-serif">
+    View AI usage
+  </a>
+</p>"""
+    text_body = f"Hi,\n\n{text_lead}\n\nView AI usage: {usage_url}"
+    return await send_email(
+        to=admin_email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+        uid=admin_uid,
+    )
+
+
 async def send_link_approved_email(parent_email: str, child_name: str, parent_uid: str) -> bool:
     """Receipt after a parent approves a child-initiated consent request."""
     family_url = f"{settings.FRONTEND_URL}/family"
