@@ -39,7 +39,7 @@ No cross-tenant access was found: every M6/M7 call with school-B objects returne
 
 | Item | Why it matters | Owner / when |
 |---|---|---|
-| **CSP `script-src 'unsafe-inline'`** | It's what made F1 exploitable. Removing it (Vite emits no inline scripts; check Firebase/Stripe/Razorpay loaders) turns any future HTML-injection bug into a non-event. | Before GA |
+| **CSP `script-src 'unsafe-inline'`** | It's what made F1 exploitable. Removing it (Vite emits no inline scripts; check Firebase/Stripe/Razorpay loaders) turns any future HTML-injection bug into a non-event. | ✅ Done 2026-10-26 (#25): removed, plus `object-src 'none'` and `base-uri 'self'`; `e2e/csp.authed.spec.ts` |
 | SEC-08 rate-limit keying | slowapi keys on remote IP; a school behind one NAT shares limits. | #19 |
 | SEC-15 admin impersonation of a student | Not covered by a test yet (staff routes resolve the admin's own uid, so they 404, but it's unasserted). | Next security pass |
 | Class progress / drill-down visible to every staff member | Design choice (D4 only covers transcripts). Confirm with the pilot school; tighten like transcripts if wanted. | Product decision |

@@ -15,7 +15,7 @@ How to switch the schools feature on in **production** — first for one pilot s
 | Sentry scrubbing + no analytics on student sessions | memo G4/G5 | ⬜ |
 | Prod AI config rows for school interaction types | #18 | ⬜ (code defaults work meanwhile) |
 | Rate-limit keying verified behind Railway's proxy | #19 | ⬜ |
-| CSP `'unsafe-inline'` removed | #25 | before **GA** only |
+| CSP `'unsafe-inline'` removed | #25 | ✅ done 2026-10-26 (reaches prod with the `master` merge) |
 
 ## 2. Preflight (prod, read-only checks)
 
@@ -69,7 +69,8 @@ How to switch the schools feature on in **production** — first for one pilot s
 ## 6. GA (after the pilot)
 
 - [ ] Pilot success measures met (`pilot-kit.md` §6) and feedback addressed.
-- [ ] CSP tightened (#25), load tests (#17 / SC-802), support runbook (SC-806).
+- [x] CSP tightened (#25).
+- [ ] Load tests (#17 / SC-802), support runbook (SC-806).
 - [ ] Microsoft staff sign-in (D8) — Firebase `microsoft.com` provider + a button on the staff sign-in; many schools use Microsoft 365. **Not built yet.**
 - [ ] Decide self-serve vs sales-led onboarding (D2).
 
