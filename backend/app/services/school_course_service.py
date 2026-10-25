@@ -11,6 +11,7 @@ generation lives in `school_course_builder`.
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from typing import Optional
 
@@ -220,6 +221,20 @@ def start_build(ctx: SchoolCtx, journey_id: str) -> dict:
 # draft (outlining/building). Hand edits are tracked (`origin`/`edited_by_teacher`)
 # so step regeneration (SC-405) can protect them.
 
+_SCRIPT_BLOCK_RE = re.compile(r"<script\b.*?</script\s*>", re.IGNORECASE | re.DOTALL)
+
+
+def _safe_body(text):
+    """Make teacher-written markdown safe to show students. The renderer
+    (MarkdownContent) injects an inline <svg> block as raw HTML, so any SVG must
+    pass the same allowlist as AI diagrams (unsafe ones are dropped); scripts
+    are removed. Everything else renders as plain text."""
+    if not text:
+        return text
+    from app.services.ai_service import sanitize_step_diagrams
+    return sanitize_step_diagrams(_SCRIPT_BLOCK_RE.sub("", text))
+
+
 _STEP_PATCH_FIELDS = ("title", "description", "type", "estimated_minutes",
                       "core_question", "learning_objective", "body_md")
 _BUSY_STATUSES = ("outlining", "building")
@@ -266,7 +281,7 @@ def patch_step(ctx: SchoolCtx, journey_id: str, step_id: str, expected_revision,
                 continue
             if field == "type" and patch["type"] not in _STEP_TYPES:
                 raise HTTPException(status_code=422, detail={"error": "invalid_step_type", "message": "Unknown step type."})
-            step[field] = patch[field]
+            step[field] = _safe_body(patch[field]) if field == "body_md" else patch[field]
         step["edited_by_teacher"] = True
         if "body_md" in patch:
             step["flags"] = []
@@ -302,7 +317,7 @@ def _new_step(step: dict) -> dict:
     stype = step.get("type")
     if stype is not None and stype not in _STEP_TYPES:
         raise HTTPException(status_code=422, detail={"error": "invalid_step_type", "message": "Unknown step type."})
-    body = (step.get("body_md") or "").strip() or None
+    body = _safe_body((step.get("body_md") or "").strip()) or None
     return {
         "id": "s" + uuid.uuid4().hex[:8],
         "title": title[:200],
@@ -473,7 +488,9 @@ def publish_course(ctx: SchoolCtx, journey_id: str, expected_revision=None, chan
                 raise HTTPException(status_code=409, detail={
                     "error": "no_draft", "message": "There's nothing to publish — the course has no draft."})
             meta = draft["meta"] or {}
-            steps = draft["steps"] or []
+            # Re-check every body at the door to students (covers restored
+            # versions and anything stored before _safe_body existed).
+            steps = [{**s, "body_md": _safe_body(s.get("body_md"))} for s in (draft["steps"] or [])]
             if meta.get("status") in _BUSY_STATUSES:
                 raise HTTPException(status_code=409, detail={
                     "error": "course_busy", "message": "The course is still generating. Wait for it to finish."})

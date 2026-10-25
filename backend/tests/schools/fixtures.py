@@ -129,10 +129,14 @@ def fake_storage(monkeypatch):
         return {"upload_url": f"https://fake.storage.invalid/{object_path}",
                 "token": "fake-token", "path": object_path}
 
-    def _download(object_path):
+    def _download(object_path, *, max_bytes=None):
         if object_path in store:
-            return store[object_path]
-        return _minimal_docx() if object_path.endswith(".docx") else canned_pdf
+            data = store[object_path]
+        else:
+            data = _minimal_docx() if object_path.endswith(".docx") else canned_pdf
+        if max_bytes is not None and len(data) > max_bytes:
+            raise storage.ObjectTooLarge(f"object exceeds {max_bytes} bytes")
+        return data
 
     monkeypatch.setattr(storage, "storage_enabled", lambda: True)
     monkeypatch.setattr(storage, "signed_upload_url", _signed)

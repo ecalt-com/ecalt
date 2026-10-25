@@ -19,7 +19,7 @@ from typing import Optional
 from fastapi import HTTPException
 
 from app.core.database import get_db
-from app.core.school_auth import SchoolCtx, load_class
+from app.core.school_auth import SchoolCtx, load_class, uuid_or_404
 from app.services.school_service import effective_settings, school_audit
 
 
@@ -416,10 +416,11 @@ def _transcript_disabled() -> HTTPException:
 
 def list_student_transcripts(ctx: SchoolCtx, class_id: str, student_uid: str) -> dict:
     """The student's tutor conversations (titles + timestamps, no bodies).
-    403 ``transcript_access_disabled`` when the school has D4 turned off."""
+    403 ``transcript_access_disabled`` when the school has D4 turned off.
+    D4: only school admins and this class's own teachers."""
     with get_db() as conn:
         with conn.cursor() as cur:
-            cls = load_class(ctx, class_id, cur=cur)
+            cls = load_class(ctx, class_id, manage=True, cur=cur)
             if not _transcript_access(cur, ctx.school_id):
                 raise _transcript_disabled()
             student = _enrolled_or_404(cur, cls["id"], student_uid)
@@ -447,10 +448,12 @@ def list_student_transcripts(ctx: SchoolCtx, class_id: str, student_uid: str) ->
 
 def read_student_transcript(ctx: SchoolCtx, class_id: str, student_uid: str, conversation_id: str) -> dict:
     """One conversation's messages. Audited (D4). 403 when D4 is off, 404 when
-    the conversation isn't this student's."""
+    the conversation isn't this student's. D4: only school admins and this
+    class's own teachers."""
+    conversation_id = uuid_or_404(conversation_id, "conversation_not_found")
     with get_db() as conn:
         with conn.cursor() as cur:
-            cls = load_class(ctx, class_id, cur=cur)
+            cls = load_class(ctx, class_id, manage=True, cur=cur)
             if not _transcript_access(cur, ctx.school_id):
                 raise _transcript_disabled()
             _enrolled_or_404(cur, cls["id"], student_uid)

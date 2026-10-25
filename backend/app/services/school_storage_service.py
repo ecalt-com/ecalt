@@ -14,6 +14,7 @@ are only ever reached with the service-role key or a signed URL).
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 import httpx
 
@@ -76,15 +77,27 @@ def signed_upload_url(object_path: str, *, upsert: bool = True) -> dict:
     return {"upload_url": f"{_base()}/storage/v1{signed}", "token": token, "path": object_path}
 
 
-def download(object_path: str) -> bytes:
-    """Fetch the stored object's bytes (used by `complete` to verify the file)."""
+class ObjectTooLarge(StorageError):
+    """The stored object is bigger than the caller allows."""
+
+
+def download(object_path: str, *, max_bytes: Optional[int] = None) -> bytes:
+    """Fetch the stored object's bytes (used by `complete` to verify the file
+    and by extraction). With `max_bytes`, the body is streamed and the download
+    aborts with ObjectTooLarge as soon as it passes the limit, so an oversized
+    object never lands in memory."""
     _require()
     url = f"{_base()}/storage/v1/object/{_bucket()}/{object_path}"
     try:
         with httpx.Client(timeout=_TIMEOUT) as http:
-            resp = http.get(url, headers=_auth())
-            resp.raise_for_status()
-            return resp.content
+            with http.stream("GET", url, headers=_auth()) as resp:
+                resp.raise_for_status()
+                buf = bytearray()
+                for chunk in resp.iter_bytes():
+                    buf.extend(chunk)
+                    if max_bytes is not None and len(buf) > max_bytes:
+                        raise ObjectTooLarge(f"object exceeds {max_bytes} bytes")
+                return bytes(buf)
     except httpx.HTTPError as exc:
         raise StorageError(f"download failed: {exc}") from exc
 

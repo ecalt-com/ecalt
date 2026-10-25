@@ -139,8 +139,14 @@ def get_db():
         raise
     except Exception as e:
         conn.rollback()
+        # A NUL byte in a path or body string can never be stored in Postgres
+        # text: that's bad input, not a server fault.
+        if isinstance(e, ValueError) and "NUL (0x00)" in str(e):
+            raise HTTPException(status_code=400, detail={
+                "error": "invalid_input", "message": "The request contains an invalid character."})
         logger.error("DB error (%s): %s", type(e).__name__, e)
-        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
+        # Details stay in the log: the client never sees SQL or constraint names.
+        raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         # Discard broken connections so the pool never reuses a dead socket.
         pool.putconn(conn, close=bool(conn.closed))

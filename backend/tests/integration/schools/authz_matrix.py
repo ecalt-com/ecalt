@@ -218,9 +218,11 @@ MATRIX: list[Case] = [
     Case("GET", "/api/v1/schools/{school_id}/usage", "school_admin",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/usage"),
     Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/students/{student_uid}/transcripts", "member",
-         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts"),
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts",
+         expect={"T2": "role"}),  # D4: own classes only
     Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/students/{student_uid}/transcripts/{conversation_id}", "member",
-         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts/{_s_conversation(w, db)}"),
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts/{_s_conversation(w, db)}",
+         expect={"T2": "role"}),
     # ── M3: documents (any staff member) ──
     Case("POST", "/api/v1/schools/{school_id}/documents/upload-url", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/upload-url",

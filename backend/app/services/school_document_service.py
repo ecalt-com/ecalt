@@ -135,7 +135,9 @@ def complete(ctx: SchoolCtx, document_id: str) -> dict:
         return _view(doc)  # already processed — nothing to do
 
     try:
-        data = storage.download(doc["storage_path"])
+        data = storage.download(doc["storage_path"], max_bytes=_max_bytes())
+    except storage.ObjectTooLarge:
+        raise _rejected("too_large", f"Files must be {settings.SCHOOL_DOC_MAX_MB} MB or smaller.")
     except storage.StorageError:
         raise _rejected("upload_missing", "We couldn't find the uploaded file. Please try the upload again.", 409)
 
