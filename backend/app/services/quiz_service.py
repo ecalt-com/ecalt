@@ -42,8 +42,23 @@ def _progression_difficulties(base: str, n: int) -> list[str]:
     return [_DIFFICULTY_ORDER[min(idx + i, len(_DIFFICULTY_ORDER) - 1)] for i in range(n)]
 
 
-def _get_user_age_context(uid: str) -> str:
-    """Fetch birth_year / age_group_flag and return an age-calibration line for the prompt."""
+_SCHOOL_AGE_QUIZ = {
+    "kids": "Learner group: kids (primary school). Use simple, playful words and concrete everyday examples. No jargon.",
+    "teens": "Learner group: teens (secondary school). Energetic, relatable language. Introduce technical terms with a brief natural explanation.",
+}
+
+
+def _get_user_age_context(uid: str, journey_id: str | None = None) -> str:
+    """Fetch birth_year / age_group_flag and return an age-calibration line for the prompt.
+
+    School students are pitched to their class grade (SC-503)."""
+    try:
+        from app.core.school_auth import is_school_student_uid
+        if is_school_student_uid(uid):
+            from app.services.school_assignment_service import student_age_band
+            return _SCHOOL_AGE_QUIZ.get(student_age_band(uid, journey_id) or "", "")
+    except Exception:
+        pass
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
@@ -322,7 +337,7 @@ async def generate_quiz_set(
             base_depth = floor
 
     difficulty  = get_adaptive_difficulty(uid, base_depth)
-    age_context = _get_user_age_context(uid)
+    age_context = _get_user_age_context(uid, journey_id)
 
     # Clamp difficulty to the step-type ceiling — first-exposure steps
     # should not receive mastery-level questions even if the user is on a streak
