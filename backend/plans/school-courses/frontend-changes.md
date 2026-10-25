@@ -162,6 +162,8 @@ Errors: `invalid_student_secret` ("That's not quite right — try again"), `423 
 - Added steps are **not** badged (nobody finished them); they simply appear as not done. Removed steps disappear from the journey and their old progress rows stop counting.
 - Quiz: a quiz the student passed on the old body no longer counts for a **changed** step, so `GET /quiz/step-status/{journey_id}/{step_id}` can flip back to `passed: false` after a republish. Nothing to build — just don't cache the pass across a page load.
 
+**Built 2026-10-25 (#21).** The Rebuild option and the replaced/update_failed handling are in `components/school/UpdateFromDocument.tsx`; the pill is in `components/StepNode.tsx` (`data-testid="step-updated-badge"`), fed by `pages/Journey.tsx` setting `step.updated` from `updated_step_ids`. E2E: `e2e/course-replace-ui.authed.spec.ts`.
+
 ### 8.7 As-built backend contract (M4 SC-402..409) — authoritative
 
 All routes are under `/api/v1/schools/{sid}` and need a staff member (any role).

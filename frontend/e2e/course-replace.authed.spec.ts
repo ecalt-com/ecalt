@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
 import { call } from './adminctl.mjs'
 
-// M6 SC-605/604 against the dev deployment, driven through the real API (the
-// teacher UI has no Rebuild option and `StepNode` has no Updated pill yet —
-// both are specced in backend/plans/school-courses/frontend-changes.md §8.6a).
+// M6 SC-605/604 against the dev deployment, driven through the real API. The
+// same flow through the UI (Rebuild option + the student's Updated pill) is
+// course-replace-ui.authed.spec.ts.
 //
 // Duplicate a published course, publish the copy, rebuild it from a document in
 // `replace` mode, and check what the student-facing side ends up with:
