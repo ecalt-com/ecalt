@@ -10,6 +10,10 @@ export interface JourneyStep {
   estimated_minutes: number
   completed: boolean
   content?: string
+  // School courses: set when the teacher changed this step after the student
+  // finished it (from GET /progress `updated_step_ids`).
+  updated?: boolean
+  content_updated_at?: string
 }
 
 export type MarketplaceStatus = 'private' | 'pending_review' | 'published' | 'rejected'

@@ -8,7 +8,7 @@ import { useToast } from '../../lib/ToastContext'
 import { apiErrorCode } from '../../lib/api'
 import { useSchoolJob } from '../../lib/useSchoolJob'
 import {
-  applyProposals, decideProposal, getCourseProposals, listDocuments, schoolErrorMessage,
+  applyProposals, decideProposal, getCourse, getCourseProposals, listDocuments, schoolErrorMessage,
   startCourseUpdate,
   type Course, type CourseProposal, type SchoolDocument, type UpdateMode,
 } from '../../lib/schoolApi'
@@ -26,6 +26,8 @@ const OP = {
 // Teacher update-from-document flow (M6 SC-606): pick a ready document + mode,
 // run the propose-update job, review each proposed change side-by-side, then
 // apply the accepted ones into a new draft the teacher reviews and publishes.
+// `replace` mode (SC-605) skips review: the job builds the whole new draft, so
+// on completion we load the course and hand it straight to the step editor.
 export default function UpdateFromDocument({ schoolId, jid, onClose, onApplied }: {
   schoolId: string
   jid: string
@@ -42,6 +44,7 @@ export default function UpdateFromDocument({ schoolId, jid, onClose, onApplied }
   const [jobId, setJobId] = useState<string | null>(null)
   const [proposals, setProposals] = useState<CourseProposal[]>([])
   const [working, setWorking] = useState(false)
+  const [failMsg, setFailMsg] = useState<string | null>(null)
   const didLoad = useRef(false)
 
   useEffect(() => {
@@ -64,10 +67,29 @@ export default function UpdateFromDocument({ schoolId, jid, onClose, onApplied }
     setPhase(list.length ? 'review' : 'empty')
   }, [schoolId, jid, getToken])
 
-  useSchoolJob(schoolId, jobId, (job) => {
+  const fail = (msg: string | null) => { setFailMsg(msg); setPhase('failed') }
+
+  useSchoolJob(schoolId, jobId, async (job) => {
     setJobId(null)
-    if (job.status === 'succeeded') loadProposals()
-    else setPhase('failed')
+    if (job.status !== 'succeeded') return fail(null)
+    const result = (job.result ?? {}) as { status?: string; reason?: string; failed?: number }
+    if (result.status === 'update_failed') {
+      return fail(mode === 'replace' || result.reason === 'outline_invalid'
+        ? "We couldn't rebuild the course from that document. The published course is unchanged."
+        : null)
+    }
+    if (result.status === 'replaced') {
+      const token = await getToken(); if (!token) return
+      try {
+        const course = await getCourse(schoolId, jid, token)
+        addToast(result.failed
+          ? `Course rebuilt — ${result.failed} step${result.failed === 1 ? '' : 's'} need content before you can publish.`
+          : 'Course rebuilt — review the new draft, then publish ✓', result.failed ? 'info' : undefined)
+        onApplied(course)
+      } catch (err) { fail(schoolErrorMessage(apiErrorCode(err))) }
+      return
+    }
+    try { await loadProposals() } catch (err) { fail(schoolErrorMessage(apiErrorCode(err))) }
   })
 
   const start = async () => {
@@ -138,6 +160,7 @@ export default function UpdateFromDocument({ schoolId, jid, onClose, onApplied }
                   {([
                     ['revise', 'Revise', 'A new edition of the same material — update changed steps and add new sections.'],
                     ['supplement', 'Supplement', 'Extra material — only add new steps, leave the existing ones alone.'],
+                    ['replace', 'Rebuild from this document', 'Throw away the old plan and build the course again from this document. Steps whose title still matches keep their progress.'],
                   ] as const).map(([val, label, desc]) => (
                     <label key={val} className={clsx('flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer',
                       mode === val ? 'border-violet-400 bg-violet-50/50 dark:bg-violet-500/5' : 'border-slate-200 dark:border-slate-700')}>
@@ -151,7 +174,7 @@ export default function UpdateFromDocument({ schoolId, jid, onClose, onApplied }
                 </fieldset>
                 <div className="flex justify-end">
                   <button onClick={start} disabled={!docId || working} className="btn-primary flex items-center gap-2 disabled:opacity-50">
-                    {working ? <Loader2 size={16} className="animate-spin" /> : <FilePlus2 size={16} />} Propose changes
+                    {working ? <Loader2 size={16} className="animate-spin" /> : <FilePlus2 size={16} />} {mode === 'replace' ? 'Rebuild course' : 'Propose changes'}
                   </button>
                 </div>
               </>
@@ -163,7 +186,9 @@ export default function UpdateFromDocument({ schoolId, jid, onClose, onApplied }
         {phase === 'working' && (
           <div className="py-12 text-center space-y-3">
             <Loader2 size={28} className="animate-spin text-violet-500 mx-auto" />
-            <p className="text-sm text-slate-600 dark:text-slate-300">Comparing the document to the course and drafting changes…</p>
+            <p className="text-sm text-slate-600 dark:text-slate-300">
+              {mode === 'replace' ? 'Building a new version of the course from the document…' : 'Comparing the document to the course and drafting changes…'}
+            </p>
             <p className="text-xs text-slate-400">This can take a minute. You can close this and come back.</p>
           </div>
         )}
@@ -181,8 +206,8 @@ export default function UpdateFromDocument({ schoolId, jid, onClose, onApplied }
         {phase === 'failed' && (
           <div className="py-12 text-center space-y-3">
             <AlertTriangle size={26} className="text-rose-500 mx-auto" />
-            <p className="text-sm text-rose-600 dark:text-rose-400">Couldn't propose an update. Check the document is readable and try again.</p>
-            <button onClick={() => setPhase('pick')} className="btn-ghost">Try again</button>
+            <p className="text-sm text-rose-600 dark:text-rose-400">{failMsg ?? "Couldn't propose an update. Check the document is readable and try again."}</p>
+            <button onClick={() => { setFailMsg(null); setPhase('pick') }} className="btn-ghost">Try again</button>
           </div>
         )}
 

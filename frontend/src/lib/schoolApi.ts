@@ -690,7 +690,7 @@ export const archiveCourse = (schoolId: string, jid: string, token: string): Pro
 
 // ── Updates from a new document (M6: propose → review → apply) ────────────────
 
-export type UpdateMode = 'revise' | 'supplement'
+export type UpdateMode = 'revise' | 'supplement' | 'replace'
 
 export interface UpdateHandle { job_id: string; status: string; mode: UpdateMode }
 

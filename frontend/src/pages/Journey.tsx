@@ -166,14 +166,20 @@ export default function Journey() {
         const token = await getToken()
         const j = await getJourney(id, token ?? undefined)
         let completedIds: string[] = []
+        let updatedIds: string[] = []
         if (token) {
           try {
             const prog = await getProgress(id, token)
             completedIds = prog.completed_step_ids
+            updatedIds = prog.updated_step_ids ?? []
           } catch { /* guest — no progress */ }
         }
         setJourney(j)
-        setSteps(j.steps.map(s => ({ ...s, completed: completedIds.includes(s.id) })))
+        setSteps(j.steps.map(s => ({
+          ...s,
+          completed: completedIds.includes(s.id),
+          updated: updatedIds.includes(s.id),
+        })))
         setLikeCount(j.like_count)
 
         // The hero image lands async ~5–30s after journey creation. For a
