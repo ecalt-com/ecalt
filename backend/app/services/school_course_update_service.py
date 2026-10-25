@@ -149,27 +149,34 @@ def propose_update_handler(job: dict) -> dict:
     rows: list = []
     built = {"modify": 0, "add": 0, "remove": 0, "skipped": 0}
     total = len(changes)
+
+    # Every modify / add needs a freshly generated, grounded body. They are all
+    # generated in ONE event loop (see `_build_bodies`).
+    synths: dict = {}
+    for i, ch in enumerate(changes):
+        if ch.op == "remove":
+            continue
+        if ch.op == "modify":
+            base = steps_by_id.get(ch.step_id, {})
+            synths[i] = {**{k: base.get(k) for k in ("title", "description", "type", "estimated_minutes",
+                                                     "core_question", "learning_objective")},
+                         "id": ch.step_id, "chunk_ids": ch.matched_chunk_ids}
+        else:  # add
+            synths[i] = {"id": "s" + uuid.uuid4().hex[:8], "title": ch.title, "description": "",
+                         "type": "concept", "estimated_minutes": 10, "core_question": "",
+                         "learning_objective": "", "chunk_ids": ch.matched_chunk_ids}
+    bodies = _build_bodies(synths, chunks_by_id, school_id, journey_id, cfg_body, cfg_critic,
+                           job_id, total)
+
     for i, ch in enumerate(changes):
         school_jobs.raise_if_cancelled(job_id)
-        school_jobs.update_progress(job_id, {"steps_done": i, "steps_total": total})
 
         if ch.op == "remove":
             rows.append(("remove", ch.step_id, {"suggestion_only": ch.suggestion_only}, ch.reason))
             built["remove"] += 1
             continue
 
-        # modify / add both need a freshly generated, grounded body.
-        if ch.op == "modify":
-            base = steps_by_id.get(ch.step_id, {})
-            synth = {**{k: base.get(k) for k in ("title", "description", "type", "estimated_minutes",
-                                                 "core_question", "learning_objective")},
-                     "id": ch.step_id, "chunk_ids": ch.matched_chunk_ids}
-        else:  # add
-            synth = {"id": "s" + uuid.uuid4().hex[:8], "title": ch.title, "description": "",
-                     "type": "concept", "estimated_minutes": 10, "core_question": "",
-                     "learning_objective": "", "chunk_ids": ch.matched_chunk_ids}
-
-        new_step = _build_body(synth, chunks_by_id, school_id, journey_id, cfg_body, cfg_critic)
+        new_step = bodies.get(i)
         if not new_step or not (new_step.get("body_md") or "").strip():
             built["skipped"] += 1
             continue
@@ -195,64 +202,121 @@ def propose_update_handler(job: dict) -> dict:
             "unchanged": plan["summary"]["unchanged"]}
 
 
-def _build_body(synth: dict, chunks_by_id: dict, school_id: str, journey_id: str,
-                cfg_body: dict, cfg_critic: dict) -> Optional[dict]:
-    """Generate one grounded step body via the builder (async → fresh loop)."""
-    async def _run():
-        return await builder._build_step(synth, chunks_by_id, school_id, journey_id, cfg_body, cfg_critic)
-    try:
-        return asyncio.run(_run())
-    except Exception:   # a bad single body never sinks the whole proposal run
-        logger.warning("update body generation failed for a step in %s", journey_id, exc_info=True)
-        return None
+def _build_bodies(synths: dict, chunks_by_id: dict, school_id: str, journey_id: str,
+                  cfg_body: dict, cfg_critic: dict, job_id: str, total: int) -> dict:
+    """Generate the grounded step bodies for ``{key: step}``, bounded-concurrently.
+
+    All of them share **one** event loop: the provider's async clients are
+    module-level singletons bound to the loop that first used them, so one
+    `asyncio.run` per step would reuse a closed loop and every later body would
+    fail to generate. A single bad body yields None for that key and never sinks
+    the run.
+    """
+    if not synths:
+        return {}
+    done = {"n": 0}
+
+    async def _run() -> dict:
+        sem = asyncio.Semaphore(builder._BUILD_CONCURRENCY)
+
+        async def _one(key, step):
+            async with sem:
+                school_jobs.raise_if_cancelled(job_id)
+                try:
+                    built = await builder._build_step(step, chunks_by_id, school_id, journey_id,
+                                                      cfg_body, cfg_critic)
+                except school_jobs.JobCancelled:
+                    raise
+                except Exception:
+                    logger.warning("update body generation failed for a step in %s",
+                                   journey_id, exc_info=True)
+                    built = None
+                done["n"] += 1   # single-threaded event loop → safe between awaits
+                school_jobs.update_progress(job_id, {"steps_done": done["n"], "steps_total": total})
+                return key, built
+
+        return dict(await asyncio.gather(*[_one(k, v) for k, v in synths.items()]))
+
+    return asyncio.run(_run())
 
 
 # ── Replace mode (SC-605) ─────────────────────────────────────────────────────
 
 def _replace_from_document(job: dict, published: dict, new_chunks: list) -> dict:
     """Outline + build a fresh course from the new document alone and land it as
-    a new draft, keeping published step ids wherever titles match."""
+    a new draft, keeping published step ids wherever titles match.
+
+    The whole pipeline runs in **one** event loop: the provider's async clients
+    are module-level singletons bound to the loop that first used them, so a
+    second `asyncio.run` in the same job would reuse a closed loop and every
+    later step would fail to generate.
+    """
     school_id, job_id = job["school_id"], str(job["id"])
     journey_id = job["payload"]["journey_id"]
     old_steps = published["steps"] or []
-
-    data, last_err = None, None
-    cfg = provider_service.get_config("school_course_outline")
-    user = builder._outline_user((published["meta"] or {}).get("inputs") or {}, new_chunks)
-    for _ in range(2):
-        school_jobs.raise_if_cancelled(job_id)
-        try:
-            text, in_tok, out_tok, _ = asyncio.run(provider_service.complete_text(
-                "school_course_outline", cfg["style_prompt"], user, max_tokens=2000))
-            subscription_service.record_school_usage(school_id, in_tok, out_tok, cfg["model"],
-                                                     journey_id=journey_id)
-            data = builder._parse_outline(text, len(new_chunks))
-            builder._check_coverage(data, new_chunks)
-            break
-        except Exception as exc:
-            data, last_err = None, str(exc)[:300]
-            logger.warning("replace outline rejected for %s: %s", journey_id, last_err)
-            user += (f"\n\nYour previous answer was rejected: {last_err}. Return valid JSON that "
-                     "follows the schema exactly and cites only real chunk ids.")
-    if not data:
-        return {"status": "update_failed", "reason": "outline_invalid", "error": last_err}
-
-    steps = _reuse_step_ids(builder._materialize_steps(data, new_chunks), old_steps)
-    chunks_by_id = {c["chunk_id"]: c for c in new_chunks}
+    cfg_outline = provider_service.get_config("school_course_outline")
     cfg_body = provider_service.get_config("school_step_content")
     cfg_critic = provider_service.get_config("school_faithfulness_critic")
+    chunks_by_id = {c["chunk_id"]: c for c in new_chunks}
+    inputs = (published["meta"] or {}).get("inputs") or {}
+    state: dict = {"error": None, "steps": None}
 
-    built = []
-    for i, step in enumerate(steps):
-        school_jobs.raise_if_cancelled(job_id)
-        school_jobs.update_progress(job_id, {"steps_done": i, "steps_total": len(steps)})
-        new_step = _build_body(step, chunks_by_id, school_id, journey_id, cfg_body, cfg_critic)
-        built.append(new_step or builder._failed_step(step, "the step body could not be generated"))
+    async def _outline() -> Optional[dict]:
+        user, last_err = builder._outline_user(inputs, new_chunks), None
+        for _ in range(2):
+            school_jobs.raise_if_cancelled(job_id)
+            try:
+                text, in_tok, out_tok, _ = await provider_service.complete_text(
+                    "school_course_outline", cfg_outline["style_prompt"], user, max_tokens=2000)
+                subscription_service.record_school_usage(school_id, in_tok, out_tok,
+                                                         cfg_outline["model"], journey_id=journey_id)
+                data = builder._parse_outline(text, len(new_chunks))
+                builder._check_coverage(data, new_chunks)
+                return data
+            except school_jobs.JobCancelled:
+                raise
+            except Exception as exc:
+                last_err = str(exc)[:300]
+                logger.warning("replace outline rejected for %s: %s", journey_id, last_err)
+                user += (f"\n\nYour previous answer was rejected: {last_err}. Return valid JSON that "
+                         "follows the schema exactly and cites only real chunk ids.")
+        state["error"] = last_err
+        return None
+
+    async def _run() -> Optional[list]:
+        data = await _outline()
+        if not data:
+            return None
+        steps = _reuse_step_ids(builder._materialize_steps(data, new_chunks), old_steps)
+        state["steps"] = len(steps)
+        done = {"n": 0}
+        sem = asyncio.Semaphore(builder._BUILD_CONCURRENCY)
+
+        async def _one(step: dict) -> dict:
+            async with sem:
+                school_jobs.raise_if_cancelled(job_id)
+                try:
+                    built = await builder._build_step(step, chunks_by_id, school_id, journey_id,
+                                                      cfg_body, cfg_critic)
+                except school_jobs.JobCancelled:
+                    raise
+                except Exception:
+                    logger.warning("replace body generation failed for a step in %s",
+                                   journey_id, exc_info=True)
+                    built = builder._failed_step(step, "the step body could not be generated")
+                done["n"] += 1   # single-threaded event loop → safe between awaits
+                school_jobs.update_progress(job_id, {"steps_done": done["n"], "steps_total": len(steps)})
+                return built
+
+        return list(await asyncio.gather(*[_one(s) for s in steps]))
+
+    built = asyncio.run(_run())
+    if built is None:
+        return {"status": "update_failed", "reason": "outline_invalid", "error": state["error"]}
 
     old_ids = {s["id"] for s in old_steps}
     kept = sum(1 for s in built if s["id"] in old_ids)
     _write_replacement_draft(journey_id, school_id, published, built, kept, job.get("created_by"))
-    school_jobs.update_progress(job_id, {"steps_done": len(steps), "steps_total": len(steps)})
     n_failed = sum(1 for s in built if s.get("build_status") == "failed")
     logger.info("replaced %s from a new document: %s steps, %s ids kept, %s failed",
                 journey_id, len(built), kept, n_failed)
