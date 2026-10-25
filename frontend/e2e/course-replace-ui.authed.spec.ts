@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import { cert, getApps, initializeApp } from 'firebase-admin/app'
 import { getAuth } from 'firebase-admin/auth'
 import { call } from './adminctl.mjs'
-import { bypassHeaders, loadE2EEnv } from './env'
+import { loadE2EEnv } from './env'
 
 // #21 frontend (SC-604/605 §8.6a), recorded, against dev:
 //   1. Teacher: on a published course, "Update from a document" → "Rebuild from
@@ -88,7 +88,8 @@ test('teacher rebuilds a published course from a document (recorded)', async ({ 
   for (const sid of steps) {
     const r = await fetch(`${env.baseURL}/api/v1/progress/${jid}/${sid}`, {
       method: 'POST',
-      headers: { authorization: `Bearer ${stuToken}`, ...bypassHeaders(env) },
+      // Only the secret: the set-bypass-cookie flag redirects plain Node fetch.
+      headers: { authorization: `Bearer ${stuToken}`, 'x-vercel-protection-bypass': env.bypassSecret },
     })
     expect(r.ok, `student completes ${sid} → ${r.status} ${await r.text()}`).toBeTruthy()
     finished.push(sid)
