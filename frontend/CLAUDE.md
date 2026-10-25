@@ -318,7 +318,7 @@ Stripe/Razorpay public keys are **not** env vars — they come from `/api/v1/sub
 
 Branches: `feature/dev` → dev preview + dev backend; `master` → production.
 
-Security headers on all routes: `X-Frame-Options: DENY`, `nosniff`, strict referrer, Permissions-Policy, and a strict **CSP**. **Any new third-party script, API host, iframe or backend domain must be added to the CSP in `vercel.json`** (`script-src`, `connect-src`, `frame-src`) or it will silently fail in prod. It currently allows Google/Firebase, Stripe, Razorpay, Vercel analytics/live, and both Railway backends.
+Security headers on all routes: `X-Frame-Options: DENY`, `nosniff`, strict referrer, Permissions-Policy, and a strict **CSP**. **Any new third-party script, API host, iframe or backend domain must be added to the CSP in `vercel.json`** (`script-src`, `connect-src`, `frame-src`) or it will silently fail in prod. It currently allows Google/Firebase, Stripe, Razorpay, Vercel analytics/live, and both Railway backends. `script-src` has **no `'unsafe-inline'`** (#25): no inline `<script>` in `index.html`, no `on*=` attributes in injected HTML, no `eval`/`new Function` — load scripts from an allowed host instead. `e2e/csp.authed.spec.ts` fails on any blocked script.
 
 ---
 
