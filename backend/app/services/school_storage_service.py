@@ -102,16 +102,32 @@ def download(object_path: str, *, max_bytes: Optional[int] = None) -> bytes:
         raise StorageError(f"download failed: {exc}") from exc
 
 
-def delete(object_path: str) -> None:
-    """Remove the stored object. A missing object is treated as already gone."""
+def object_missing(resp: httpx.Response) -> bool:
+    """Supabase Storage answers a missing object or bucket with HTTP 400 and
+    {"statusCode": "404"} in the body (some versions send a plain 404)."""
+    if resp.status_code == 404:
+        return True
+    if resp.status_code != 400:
+        return False
+    try:
+        return str(resp.json().get("statusCode")) == "404"
+    except ValueError:
+        return False
+
+
+def delete(object_path: str, *, strict: bool = False) -> None:
+    """Remove the stored object. A missing object is treated as already gone.
+    strict=True raises StorageError on failure (offboarding must know)."""
     _require()
     url = f"{_base()}/storage/v1/object/{_bucket()}/{object_path}"
     try:
         with httpx.Client(timeout=_TIMEOUT) as http:
             resp = http.delete(url, headers=_auth())
-            if resp.status_code == 404:
+            if object_missing(resp):
                 return
             resp.raise_for_status()
     except httpx.HTTPError as exc:
+        if strict:
+            raise StorageError(f"delete failed: {exc}") from exc
         # A delete failure shouldn't block the DB soft-delete; log and move on.
         logger.warning("storage delete failed for %s: %s", object_path, exc)

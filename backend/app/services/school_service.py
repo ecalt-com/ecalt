@@ -117,6 +117,10 @@ def _school_out(row: dict) -> dict:
     out["monthly_ai_budget_cents"] = float(row.get("monthly_ai_budget_cents") or 0)
     out["dpa_current_version"] = settings.SCHOOL_DPA_VERSION
     out["dpa_accepted"] = row.get("dpa_version") == settings.SCHOOL_DPA_VERSION
+    out["deletion_due_at"] = None
+    if row.get("status") == "terminated" and row.get("terminated_at"):
+        due = row["terminated_at"] + timedelta(days=int(settings.SCHOOL_OFFBOARDING_GRACE_DAYS))
+        out["deletion_due_at"] = due.isoformat()
     return out
 
 

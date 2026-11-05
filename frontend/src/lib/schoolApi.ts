@@ -40,6 +40,7 @@ export interface School {
   student_count: number
   created_at: string
   terminated_at: string | null
+  deletion_due_at?: string | null   // terminated schools: when the nightly job deletes the data
   my_role?: StaffRole                // staff view only
 }
 

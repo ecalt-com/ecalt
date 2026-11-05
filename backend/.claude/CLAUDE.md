@@ -252,6 +252,7 @@ Runs only when `SCHEDULER_ENABLED=true` — **exactly one instance (prod)**. Job
 - Notifications: `queue_processor` and `daily_spark_dispatch` (every 15 min), re-engagement ladder, streak lost/risk/milestone, mind-signature nudge, journey-completion nudge, weekly learner digest.
 - Family/compliance: consent follow-ups, weekly family digest, scheduled account deletions (03:30), family lifecycle (04:00 — age-up, turning 13, expiry, retention).
 - Marketplace popularity scan (every 6 h).
+- Schools: teacher digest (Sun 16:00), audit-log pruning (04:20), **offboarding** (04:40 — deletes terminated schools after `SCHOOL_OFFBOARDING_GRACE_DAYS`, `services/school_offboarding_service.py`).
 
 Jobs must catch and log their own exceptions.
 

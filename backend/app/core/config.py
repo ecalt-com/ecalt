@@ -99,6 +99,9 @@ class Settings(BaseSettings):
     # Days to keep high-volume 'student.sign_in_failed' audit rows (the class
     # throttle only needs the last few minutes). Other audit events are kept.
     SCHOOL_SIGNIN_FAIL_RETENTION_DAYS: int = 30
+    # Days a terminated school's data is kept (for export) before the nightly
+    # offboarding job deletes it (SC-803, DPA §9.2).
+    SCHOOL_OFFBOARDING_GRACE_DAYS: int = 30
 
     # ── Document ingestion + course builder (M3/M4, README §3.6–3.14) ──────────
     # The in-process background-job worker (document extraction, course

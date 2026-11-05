@@ -1256,6 +1256,20 @@ def _prune_school_audit_log() -> None:
         logger.error("prune_school_audit_log failed: %s", e)
 
 
+async def _school_offboarding_dispatch() -> None:
+    """Delete terminated schools' data once their grace period ends (SC-803)."""
+    try:
+        from app.core.config import settings
+        if not settings.SCHOOLS_ENABLED:
+            return
+        from app.services.school_offboarding_service import run_due
+        results = await run_due()
+        if results:
+            logger.info("school_offboarding: %s", results)
+    except Exception as e:
+        logger.error("school_offboarding_dispatch failed: %s", e)
+
+
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
 def setup_scheduler() -> AsyncIOScheduler:
@@ -1279,6 +1293,7 @@ def setup_scheduler() -> AsyncIOScheduler:
         (_family_lifecycle_dispatch,   "cron", {"hour": 4, "minute": 0},  "family_lifecycle_dispatch"),
         (_marketplace_popularity_scan, "cron", {"hour": "*/6"},           "marketplace_popularity_scan"),
         (_prune_school_audit_log,      "cron", {"hour": 4, "minute": 20},  "prune_school_audit_log"),
+        (_school_offboarding_dispatch, "cron", {"hour": 4, "minute": 40},  "school_offboarding_dispatch"),
     ]
     for func, trigger, kwargs, job_id in jobs:
         scheduler.add_job(func, trigger, id=job_id, replace_existing=True, **kwargs)

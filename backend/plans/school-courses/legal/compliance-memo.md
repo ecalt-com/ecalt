@@ -7,7 +7,7 @@
 - **Roles.** The school decides why and how student data is processed (controller / Data Fiduciary / FERPA "school official" relationship). ECALT processes it only to run the service on the school's instructions (processor / Data Processor). The product is built around that split: a school can't add a student until its owner accepts the DPA (`409 dpa_required`), and every student's creation is recorded as a school authorization.
 - **Pilot jurisdiction: India** (decision D3), under the DPDP Act 2023 and the DPDP Rules 2025. US (COPPA + FERPA) and EU/UK (GDPR) come later and are covered here only to flag what would change.
 - **We believe the design fits a school-authorised model**: minimal student identity (display name, grade, optional school reference — no email, birth date or photo), no advertising, no profiling outside the course, students limited to assigned courses, staff actions audited, export and deletion per student.
-- **Before real student data**, these must be closed (details in §6): the offboarding deletion the DPA already promises isn't built yet (SC-803); the in-app DPA text is a placeholder; sub-processor terms and regions need confirming (especially the AI providers); error reporting and web analytics need tightening for student sessions.
+- **Before real student data**, these must be closed (details in §6): the in-app DPA text is a placeholder; sub-processor terms and regions need confirming (especially the AI providers); error reporting and web analytics need tightening for student sessions.
 
 ## 2. What the service does with student data
 
@@ -55,7 +55,7 @@ Teaching material: PDFs / Word files uploaded by staff, their extracted text, an
 | Delete a student (cascade incl. Firebase login) | School admin | ✅ |
 | Archive students (year end; blocks login, keeps data) | School admin | ✅ |
 | Teacher views a tutor transcript | Class teacher / admin, when enabled; each view audited | ✅ |
-| School leaves → 30-day grace → full deletion | System | ❌ **not built (SC-803)** |
+| School leaves → 30-day grace → full deletion | System | ✅ nightly job (SC-803, 2026-11-05) |
 | Breach notification runbook | ECALT | ❌ (SC-806) |
 
 ## 3. India — DPDP Act 2023 and DPDP Rules 2025
@@ -88,7 +88,7 @@ Our reading, for counsel to confirm:
 
 | ID | Gap | Why | Fix | Ticket |
 |---|---|---|---|---|
-| **G1** | Offboarding deletion not built, but the DPA modal already promises it | Erasure duty (DPDP s. 8(7)); we'd be in breach of our own terms | Build terminated → 30-day grace → deletion job (DB, storage, Firebase) and verify nothing remains | SC-803 |
+| **G1** | Offboarding deletion not built, but the DPA modal already promises it | Erasure duty (DPDP s. 8(7)); we'd be in breach of our own terms | ✅ Closed 2026-11-05: nightly job deletes DB rows, stored files and Firebase logins after 30 days, then checks nothing remains | SC-803 |
 | **G2** | In-app DPA text is a summary placeholder | Acceptance must be of the real agreement | Put counsel-approved text (or a link to it) in `DpaModal`, bump `SCHOOL_DPA_VERSION` so owners re-accept | SC-804 |
 | **G3** | Sub-processor terms and regions unconfirmed | Processor-contract chain; cross-border; children's data to AI | Confirm and record for each: Supabase (DB, storage) `[region]`, Railway (API) `[region]`, Vercel (web, analytics) `[region]`, Google Firebase Authentication, OpenAI and Anthropic (API terms: no training on inputs, retention period, zero-data-retention eligibility), Brevo (staff email only), Sentry (errors). Publish the list in the DPA annex | SC-002 |
 | **G4** | Error reports may include student data | Sentry's defaults can attach request bodies and URLs (student ids, display names, tutor text) | Server: `max_request_body_size="never"`, a `before_send` scrubber; client: no replay, strip query/body. Tag `school_id` only | SC-805 |

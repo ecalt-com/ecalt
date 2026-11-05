@@ -61,7 +61,7 @@ School Data may be processed outside India by the sub-processors in Annex C, onl
 
 9.2 When the Terms end, or the School's account is terminated, ECALT keeps School Data for a **30-day grace period** (so the School can export it or reactivate), then **deletes** it: students, staff memberships, classes, courses, uploaded documents and their stored files, usage records and sign-in credentials. ECALT keeps only: the School's audit log and pseudonymised records of school authorizations, where needed to show compliance or defend legal claims. Deleted data ages out of backups within **[backup window]**.
 
-> ⚠️ Engineering note: the automatic deletion in 9.2 is **not built yet** (SC-803). It must ship before this DPA is offered to a school with real student data.
+> Engineering note: the deletion in 9.2 runs nightly from 2026-11-05 (SC-803, `school_offboarding_service`). It deletes everything listed, then checks no rows remain and records `school.data_deleted` in the audit log.
 
 9.3 On request, ECALT will confirm deletion in writing.
 

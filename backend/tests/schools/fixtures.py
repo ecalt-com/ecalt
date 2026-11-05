@@ -141,11 +141,18 @@ def fake_storage(monkeypatch):
     monkeypatch.setattr(storage, "storage_enabled", lambda: True)
     monkeypatch.setattr(storage, "signed_upload_url", _signed)
     monkeypatch.setattr(storage, "download", _download)
-    monkeypatch.setattr(storage, "delete", lambda object_path: store.pop(object_path, None))
+    deleted: list[str] = []
+
+    def _delete(object_path, *, strict=False):
+        deleted.append(object_path)
+        store.pop(object_path, None)
+
+    monkeypatch.setattr(storage, "delete", _delete)
 
     class _Fake:
         def __init__(self):
             self.store = store
+            self.deleted = deleted
             self.minimal_docx = staticmethod(_minimal_docx)
         def put(self, path: str, data: bytes) -> None:
             store[path] = data
@@ -169,6 +176,9 @@ def fake_images(monkeypatch):
     monkeypatch.setattr(image_service, "images_enabled", lambda: True)
     monkeypatch.setattr(image_service, "generate_hero_image", _gen)
     monkeypatch.setattr(image_service, "upload_journey_image", _upload)
+    image_service.deleted_urls = []
+    monkeypatch.setattr(image_service, "delete_journey_image",
+                        lambda url: image_service.deleted_urls.append(url) or True)
     return image_service
 
 

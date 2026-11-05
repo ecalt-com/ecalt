@@ -11,7 +11,7 @@ How to switch the schools feature on in **production** — first for one pilot s
 | Legal: counsel-approved terms, DPA, privacy notice; DPA text in app + `SCHOOL_DPA_VERSION` bumped | #7 | 🟨 drafts ready, awaiting counsel |
 | Security review | #8 | ✅ done (`SECURITY-REVIEW.md`) |
 | Pilot school recruited | #9 | ⬜ kit ready (`pilot-kit.md`) |
-| Offboarding deletion job (DPA promises it) | #17 / SC-803 | ⬜ |
+| Offboarding deletion job (DPA promises it) | #17 / SC-803 | ✅ 2026-11-05 (verified on dev) |
 | Sentry scrubbing + no analytics on student sessions | memo G4/G5 | ⬜ |
 | Prod AI config rows for school interaction types | #18 | ⬜ (code defaults work meanwhile) |
 | Rate-limit keying verified behind Railway's proxy | #19 | ⬜ |
@@ -63,8 +63,16 @@ How to switch the schools feature on in **production** — first for one pilot s
 ## 5. Switch off (rollback)
 
 - **Whole feature:** unset `SCHOOLS_ENABLED` (or `false`) → redeploy. All school routes (staff, admin, student sign-in, student home) 404 at once; data stays in the database untouched. ⚠️ Students **already signed in** can still open their assigned courses (journey/progress/quiz/tutor routes aren't behind the flag) until their 12-hour session ends — to cut them off immediately, also suspend the school. Switch back on to resume.
-- **One school:** ECALT admin → Schools → set the school `suspended` (staff and students get 403 `school_access_suspended`; data kept) or `terminated` (starts the 30-day deletion once SC-803 ships).
+- **One school:** ECALT admin → Schools → set the school `suspended` (staff and students get 403 `school_access_suspended`; data kept) or `terminated` (the admin tab shows the deletion date; the nightly job deletes everything 30 days later — see §5a).
 - **Bad release:** redeploy the previous Railway deployment; migrations are additive, so the old code runs on the new schema.
+
+## 5a. Offboarding a school
+
+1. ECALT admin → Schools → set the school `terminated` (type its name to confirm). Staff and students lose access at once; nothing is deleted yet.
+2. The school has **30 days** (`SCHOOL_OFFBOARDING_GRACE_DAYS`) to export data. The admin tab shows the deletion date.
+3. The nightly `school_offboarding_dispatch` job (04:40, prod scheduler, only while `SCHOOLS_ENABLED`) then deletes students (accounts, learner data, Firebase logins), courses, documents and stored files, classes, staff memberships and usage. It stops before touching the database if any stored file fails to delete, and retries the next night.
+4. It keeps the audit log, ending with a `school.data_deleted` row (counts, name, termination date), and pseudonymised consent events.
+5. Check or force it (e.g. a school asks for early deletion in writing): `python scripts/purge_school.py <school_id>` shows what's left; add `--delete` (after the grace period) or `--delete --ignore-grace`.
 
 ## 6. GA (after the pilot)
 
