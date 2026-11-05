@@ -163,13 +163,13 @@ function AccountNavigation() {
             ) : (
               <>
                 <button
-                  onClick={signIn}
+                  onClick={() => signIn()}
                   className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
                 >
                   Sign In
                 </button>
                 <button
-                  onClick={signIn}
+                  onClick={() => signIn()}
                   className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors ml-1"
                 >
                   Start Free

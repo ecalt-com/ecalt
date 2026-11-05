@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Loader2, School as SchoolIcon } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import PageMeta from '../components/PageMeta'
+import StaffSignIn from '../components/school/StaffSignIn'
 import { useAuth } from '../lib/AuthContext'
 import { useSchool } from '../lib/SchoolContext'
 import { useToast } from '../lib/ToastContext'
@@ -120,7 +121,7 @@ export default function SchoolInviteAccept() {
         {authLoading ? (
           <Loader2 className="animate-spin text-violet-500 mx-auto" />
         ) : !user ? (
-          <button onClick={signIn} className="w-full btn-primary">Sign in with Google</button>
+          <StaffSignIn />
         ) : postSignInPhase !== 'none' ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">Finish setting up your account, then come back to this page.</p>
         ) : (

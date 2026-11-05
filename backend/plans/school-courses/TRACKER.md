@@ -152,7 +152,7 @@ Last updated: 2026-10-12
 | SC-804 | Legal copy live (school terms, DPA, privacy policy), DPIA schools section (`docs/children-data-dpia.md`) | LEGAL | M | SC-002 | — | ⬜ | |
 | SC-805 | Observability: job metrics/failure alerts, cost per course, Sentry tag `school_id` (no PII) | OPS | S | SC-302 | — | ✅ | Done 2026-11-05. `school_job_metric` log line per finished attempt; permanent failures to Sentry tagged `school_id` + `school_job_kind`; scheduler `school_jobs_health` (every 15 min) logs ERROR on stuck/failed jobs; Sentry scrubbing + `school_id` tag (G4). Cost per course already in SC-706 |
 | SC-806 | Support runbook + admin tools (reset secret, restore version, stuck job, cancel) | PM/BE | M | M5 | — | ✅ | Done 2026-11-05. `pilot/support-runbook.md`; admin Background jobs panel + `GET/POST /admin/schools/jobs[/{id}/retry|cancel]` (audited). Reset secret / restore version / cancel already in the product |
-| SC-807 | Rollout: dev → prod pilot school → GA; Microsoft staff sign-in (D8) | OPS/FE | M | G8 | E2E-* on prod pilot | ⬜ | |
+| SC-807 | Rollout: dev → prod pilot school → GA; Microsoft staff sign-in (D8) | OPS/FE | M | G8 | E2E-* on prod pilot | ⬜ | 2026-11-05: Microsoft staff sign-in (D8) built behind `VITE_MICROSOFT_SIGNIN` (off); `/school` signed-out now shows staff sign-in. Enabling steps in `pilot/rollout-runbook.md` §6 |
 | SC-808 | Update `backend/.claude/CLAUDE.md`, `frontend/CLAUDE.md`, plans index | PM | S | — | — | ✅ | Done 2026-11-05. backend/frontend CLAUDE.md updated (settings, services, scheduler, telemetry, builder extras) |
 
 ## Backlog (not scheduled)

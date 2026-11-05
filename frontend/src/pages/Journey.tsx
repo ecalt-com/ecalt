@@ -353,7 +353,7 @@ export default function Journey() {
 
       <Navigation />
 
-      <div className="relative min-h-screen pt-20 sm:pt-24 pb-24 px-4 sm:px-6">
+      <div className="relative min-h-screen pt-20 sm:pt-24 pb-24 lg:pb-6 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto flex gap-6 items-start">
         {/* Journey content column */}
         <div className="flex-1 min-w-0 max-w-3xl">
@@ -609,7 +609,9 @@ export default function Journey() {
 
         {/* Tutor sidebar — desktop/large iPad */}
         {user && journey && journey.tutor_enabled !== false && (
-          <div className="hidden lg:flex flex-col w-80 xl:w-96 shrink-0 sticky top-24 h-[calc(100dvh-7rem)]">
+          {/* Height + the page's lg:pb-6 keep the panel below the fixed nav even at the
+            end of a short journey (sticky stops at the row's bottom). */}
+          <div className="hidden lg:flex flex-col w-80 xl:w-96 shrink-0 sticky top-24 h-[calc(100dvh-8rem)]">
             <JourneyTutor
               journeyId={id!}
               journeyTitle={journey.title}

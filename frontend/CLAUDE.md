@@ -15,7 +15,7 @@ ECALT is a React + TypeScript SPA built with Vite and deployed on Vercel. It is 
 | Build tool | Vite 8, dev port 3000 |
 | Routing | React Router v6 (`v7_startTransition` + `v7_relativeSplatPath` future flags) |
 | Styling | Tailwind CSS v3 (`darkMode: 'class'`) + CSS vars in `index.css` |
-| Auth | Firebase v12 — Google popup sign-in only. Children use **profiles** on the parent's login (see Family profiles) |
+| Auth | Firebase v12 — Google popup sign-in; school staff can also use Microsoft when `VITE_MICROSOFT_SIGNIN=true`. Children use **profiles** on the parent's login (see Family profiles) |
 | Payments | Stripe (global, redirect checkout) + Razorpay (India, in-page checkout.js) |
 | Diagrams | mermaid v11 (step diagrams, `securityLevel: 'strict'`), D3 v7 (constellation map) |
 | Icons / classes | lucide-react, clsx |
@@ -305,6 +305,7 @@ Children use ECALT as **profiles on the parent's Google login** — no child ema
 | `VITE_FIREBASE_PROJECT_ID` | Yes | Firebase project ID (must match backend `FIREBASE_PROJECT_ID`) |
 | `VITE_API_URL` | No | API base / Vite proxy target. Empty in prod (same-origin) |
 | `VITE_SENTRY_DSN` | No | Sentry not initialised if absent |
+| `VITE_MICROSOFT_SIGNIN` | No | `true` shows **Continue with Microsoft** for school staff (`components/school/StaffSignIn.tsx`). Needs the `microsoft.com` provider enabled in the Firebase project first |
 
 Stripe/Razorpay public keys are **not** env vars — they come from `/api/v1/subscriptions/config` at runtime.
 

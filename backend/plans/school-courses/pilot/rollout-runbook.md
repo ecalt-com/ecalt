@@ -79,7 +79,7 @@ How to switch the schools feature on in **production** — first for one pilot s
 - [ ] Pilot success measures met (`pilot-kit.md` §6) and feedback addressed.
 - [x] CSP tightened (#25).
 - [ ] Load tests (#17 / SC-802), support runbook (SC-806).
-- [ ] Microsoft staff sign-in (D8) — Firebase `microsoft.com` provider + a button on the staff sign-in; many schools use Microsoft 365. **Not built yet.**
+- [ ] Microsoft staff sign-in (D8) — **code built (2026-11-05), off by default.** To switch on: (1) Azure portal → App registrations → new app, supported accounts "any organizational directory" (+ personal if wanted), redirect URI `https://<firebase authDomain>/__/auth/handler`; create a client secret. (2) Firebase console → Authentication → Sign-in method → Microsoft → paste the app id + secret. (3) Vercel → `VITE_MICROSOFT_SIGNIN=true` → redeploy. (4) Check: `/school` signed out shows **Continue with Microsoft**; invite a test address on a Microsoft 365 tenant and accept it. Firebase allows one account per email, so staff who already use Google with the same address keep using Google (the button says so).
 - [ ] Decide self-serve vs sales-led onboarding (D2).
 
 ## 7. Record
