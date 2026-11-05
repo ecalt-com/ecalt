@@ -10,6 +10,7 @@ import {
   type User,
 } from 'firebase/auth'
 import { firebaseAuth, googleProvider } from './firebase'
+import { setStudentSession } from './telemetryPrivacy'
 import { clearParentUnlock, setAccount as setProfileAccount } from './profileStore'
 
 // /claim is where a teen attaches their own Google login to an existing family
@@ -103,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Before any state update, so the first requests children fire already
       // carry this device's chosen family profile.
       setProfileAccount(u?.uid ?? null)
+      setStudentSession(isStudentUid(u?.uid))
       userRef.current = u
       setUser(u)
       setLoading(false)
