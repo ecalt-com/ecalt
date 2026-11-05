@@ -27,6 +27,10 @@ class Settings(BaseSettings):
 
     # Postgres — prefer DATABASE_URL (Supabase pooler); fallback to individual params
     DATABASE_URL: str = ""
+    # Connections per process, and how long a request waits for a free one
+    # before answering 503 server_busy (SC-802: a class signing in at once).
+    DB_POOL_MAX: int = 20
+    DB_POOL_WAIT_SECONDS: float = 10.0
     DB_HOST: str = ""
     DB_PORT: int = 5432
     DB_NAME: str = "postgres"

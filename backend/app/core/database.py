@@ -25,6 +25,30 @@ _pool: psycopg2.pool.ThreadedConnectionPool | None = None
 _pool_lock = threading.Lock()
 
 
+def _max_conn() -> int:
+    return max(5, int(settings.DB_POOL_MAX))
+
+
+# psycopg2's pool raises PoolError the moment it's empty. Under a burst (a whole
+# class signing in at once) that turned into 500s (SC-802 load test). A
+# semaphore per pool makes callers wait for a free connection instead, up to
+# DB_POOL_WAIT_SECONDS, then answer 503 "busy".
+_slots: dict[int, threading.BoundedSemaphore] = {}
+
+
+def _slot(pool) -> threading.BoundedSemaphore:
+    sem = _slots.get(id(pool))
+    if sem is None:
+        with _pool_lock:
+            sem = _slots.setdefault(id(pool), threading.BoundedSemaphore(pool.maxconn))
+    return sem
+
+
+def _busy() -> HTTPException:
+    return HTTPException(status_code=503, detail={
+        "error": "server_busy", "message": "We're busy right now. Please try again in a moment."})
+
+
 def _make_raw_conn() -> psycopg2.extensions.connection:
     if settings.DATABASE_URL:
         return psycopg2.connect(settings.DATABASE_URL, **_CONNECT_KWARGS)
@@ -75,12 +99,12 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
         try:
             if settings.DATABASE_URL:
                 _pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=5, maxconn=10, dsn=settings.DATABASE_URL, **_CONNECT_KWARGS
+                    minconn=5, maxconn=_max_conn(), dsn=settings.DATABASE_URL, **_CONNECT_KWARGS
                 )
             elif settings.DB_HOST and settings.DB_PASSWORD:
                 _pool = psycopg2.pool.ThreadedConnectionPool(
                     minconn=5,
-                    maxconn=10,
+                    maxconn=_max_conn(),
                     host=settings.DB_HOST,
                     port=settings.DB_PORT,
                     dbname=settings.DB_NAME,
@@ -93,7 +117,7 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
                     status_code=503,
                     detail="Database not configured. Set DATABASE_URL or DB_HOST / DB_PASSWORD.",
                 )
-            logger.info("DB connection pool created (minconn=5, maxconn=10)")
+            logger.info("DB connection pool created (minconn=5, maxconn=%d)", _max_conn())
         except HTTPException:
             raise
         except Exception as e:
@@ -122,13 +146,29 @@ def _is_conn_alive(conn) -> bool:
 @contextmanager
 def get_db():
     pool = _get_pool()
-    conn = pool.getconn()
+    slot = _slot(pool)
+    if not slot.acquire(timeout=float(settings.DB_POOL_WAIT_SECONDS)):
+        logger.error("DB pool: no free connection after %ss (maxconn=%d)", settings.DB_POOL_WAIT_SECONDS, pool.maxconn)
+        raise _busy()
+    try:
+        conn = pool.getconn()
+    except psycopg2.pool.PoolError:
+        slot.release()
+        logger.error("DB pool exhausted despite a free slot (maxconn=%d)", pool.maxconn)
+        raise _busy()
+    except Exception:
+        slot.release()
+        raise
 
     # Replace stale connections before handing them to the caller.
     if not _is_conn_alive(conn):
         logger.warning("stale DB connection detected — replacing with fresh one")
         pool.putconn(conn, close=True)
-        conn = pool.getconn()
+        try:
+            conn = pool.getconn()
+        except Exception:
+            slot.release()
+            raise
 
     conn.cursor_factory = psycopg2.extras.RealDictCursor
     try:
@@ -149,4 +189,7 @@ def get_db():
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
         # Discard broken connections so the pool never reuses a dead socket.
-        pool.putconn(conn, close=bool(conn.closed))
+        try:
+            pool.putconn(conn, close=bool(conn.closed))
+        finally:
+            slot.release()
