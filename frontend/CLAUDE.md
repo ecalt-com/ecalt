@@ -20,7 +20,7 @@ ECALT is a React + TypeScript SPA built with Vite and deployed on Vercel. It is 
 | Diagrams | mermaid v11 (step diagrams, `securityLevel: 'strict'`), D3 v7 (constellation map) |
 | Icons / classes | lucide-react, clsx |
 | SEO | react-helmet-async |
-| Observability | Sentry `@sentry/react`, Vercel Analytics + Speed Insights |
+| Observability | Sentry `@sentry/react`, Vercel Analytics + Speed Insights — both filtered by `lib/telemetryPrivacy.ts` (no events from school students or student pages; URLs lose query/fragment) |
 | Deployment | Vercel (`vercel.json`) — static `dist/` + rewrites |
 
 ---
@@ -265,6 +265,9 @@ Admin starts a session from the Users tab → `ImpersonationContext` stores it, 
 - Staff calls (everything under `/schools/{id}`) need the parent PIN unlock when the account has family profiles — `request()` prompts for it automatically.
 - `AuthContext.accountKind` (`'account' | 'profile' | 'school_student'`) comes from `POST /users`; school students skip every sign-up gate. `isStudentUid(uid)` (`stu_` prefix) is available immediately after Firebase restores a session — use it to skip parent/staff-only lookups (profiles, subscription, reconsent, schools) and to pick the student `Navigation` variant.
 - **Students:** `signInWithClassToken(customToken)` uses `browserSessionPersistence` (shared classroom devices). `StudentGuard` (`ProfileRouting.tsx`) keeps students on `/my-classes`, `/journey/:id`, `/class*` and legal pages. `request()` turns a 401 `school_session_expired` into sign-out + `/class?expired=1`. Picture-password icons live in `lib/pictureIcons.ts` — **never reorder** (the backend stores indices).
+- **Course builder** (`pages/school/SchoolCourseBuilder.tsx` + `components/school/BuilderExtras.tsx`): outline review (drag reorder, cited sources, Not covered → step), 3-pane step editor with **autosave** (1.5 s; on `draft_conflict` it reloads and keeps the unsaved text beside the editor), quiz preview, course details (icon/tags/cover), preview as student. `run()` always uses the latest draft revision.
+- Admin → Schools has a **Background jobs** panel (`pages/admin/tabs/SchoolJobsPanel.tsx`): failed/stuck jobs across schools, retry/cancel.
+- E2E for schools lives in `e2e/*.authed.spec.ts`; `e2e/mobile-375.authed.spec.ts` checks phone width; `e2e/load_classroom.mjs` is the SC-802 load test (dev only).
 - Full contract and what's built vs planned: `../backend/plans/school-courses/frontend-changes.md`.
 
 ### Family profiles
