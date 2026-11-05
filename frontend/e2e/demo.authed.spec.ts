@@ -170,6 +170,8 @@ test('3 teacher sees progress and the tutor chat', async ({ page }) => {
   await hold(page, 2500)
   await card.getByRole('button', { name: STUDENT }).click()
   await hold(page, 3000)
-  const transcripts = page.getByRole('button', { name: /tutor|transcript|chat/i }).first()
-  if (await transcripts.isVisible().catch(() => false)) { await transcripts.click(); await hold(page, 4000) }
+  const convo = page.getByRole('dialog').getByText('Why does Mercury have the shortest year?').first()
+  await expect(convo).toBeVisible({ timeout: 15_000 })
+  await convo.click()
+  await hold(page, 5000)
 })

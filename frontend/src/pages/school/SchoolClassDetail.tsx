@@ -19,6 +19,7 @@ const fieldCls = 'px-3 py-2 rounded-xl border border-slate-200 dark:border-slate
 
 // /school/classes/:classId (frontend-changes.md §5).
 export default function SchoolClassDetail() {
+  const [progressKey, setProgressKey] = useState(0)
   const { classId = '' } = useParams()
   const { school } = useSchoolPage()
   const { getToken } = useAuth()
@@ -246,9 +247,9 @@ export default function SchoolClassDetail() {
         )}
       </div>
 
-      <ClassCourses schoolId={school.id} classId={cls.id} canManage={manage} />
+      <ClassCourses schoolId={school.id} classId={cls.id} canManage={manage} onChanged={() => setProgressKey(k => k + 1)} />
 
-      <ProgressMatrix schoolId={school.id} classId={cls.id} />
+      <ProgressMatrix schoolId={school.id} classId={cls.id} refreshKey={progressKey} />
 
       {manage && (
         <div className="flex justify-end">

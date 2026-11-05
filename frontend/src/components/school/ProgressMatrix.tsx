@@ -24,7 +24,7 @@ function dueText(iso: string | null): string | null {
 // active students (rows) × its assigned courses (columns); each cell shows steps
 // done/total, coloured by progress, outlined when overdue. Read-only; open to any
 // staff member. Drill-down / CSV export / usage are a later milestone (M7).
-export default function ProgressMatrix({ schoolId, classId }: { schoolId: string; classId: string }) {
+export default function ProgressMatrix({ schoolId, classId, refreshKey = 0 }: { schoolId: string; classId: string; refreshKey?: number }) {
   const { getToken } = useAuth()
   const { addToast } = useToast()
   const [students, setStudents] = useState<ProgressStudentRow[] | null>(null)
@@ -72,7 +72,7 @@ export default function ProgressMatrix({ schoolId, classId }: { schoolId: string
     }
   }, [schoolId, classId, getToken])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, refreshKey])
 
   return (
     <div className="glass-card rounded-2xl p-5">
