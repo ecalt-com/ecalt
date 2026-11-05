@@ -309,7 +309,8 @@ def make_course_draft(conn, school: dict, *, creator: Optional[str] = None,
     return journey_id
 
 
-def make_outlined_draft(conn, school: dict, *, creator: Optional[str] = None) -> str:
+def make_outlined_draft(conn, school: dict, *, creator: Optional[str] = None,
+                        skipped: Optional[list] = None) -> str:
     """A draft course whose outline is reviewed and ready to build: two AI steps
     grounded in the source document's chunk UUIDs (for build/regenerate tests)."""
     journey_id = make_course_draft(conn, school, creator=creator)
@@ -331,10 +332,10 @@ def make_outlined_draft(conn, school: dict, *, creator: Optional[str] = None) ->
     ]
     with _cur(conn) as cur:
         cur.execute(
-            "UPDATE course_versions SET steps = %s::jsonb, "
-            "meta = '{\"status\":\"outline_ready\"}'::jsonb, revision = 1 "
+            "UPDATE course_versions SET steps = %s::jsonb, meta = %s::jsonb, revision = 1 "
             "WHERE journey_id = %s AND state = 'draft'",
-            (json.dumps(steps), journey_id))
+            (json.dumps(steps), json.dumps({"status": "outline_ready", **({"skipped_sections": skipped}
+                                                                           if skipped else {})}), journey_id))
     return journey_id
 
 

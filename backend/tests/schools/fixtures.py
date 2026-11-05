@@ -24,7 +24,8 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
 __all__ = [
     "World", "clear_caches", "client", "db", "school_db_url", "sent_emails", "world", "firebase_deletes",
-    "fake_service_account", "fake_storage", "fake_images", "_db_tables", "_no_real_email", "_school_test_env",
+    "fake_service_account", "fake_storage", "fake_images", "fake_quiz_preview", "_db_tables", "_no_real_email",
+    "_school_test_env",
 ]
 
 
@@ -180,6 +181,22 @@ def fake_images(monkeypatch):
     monkeypatch.setattr(image_service, "delete_journey_image",
                         lambda url: image_service.deleted_urls.append(url) or True)
     return image_service
+
+
+@pytest.fixture(autouse=True)
+def fake_quiz_preview(monkeypatch):
+    """Stub the course builder's quiz-preview model call (#16)."""
+    import json as _json
+    from app.services import school_course_service
+    calls: list = []
+
+    async def _call(system, user_content):
+        calls.append(user_content)
+        return _json.dumps([{"question": "What do plants make from light?", "correct_answer": "Food"},
+                            {"question": "Where does it happen?", "correct_answer": "In the leaves"}]), 120, 60
+
+    monkeypatch.setattr(school_course_service, "_quiz_model_call", _call)
+    return calls
 
 
 @pytest.fixture(scope="session")
