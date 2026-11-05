@@ -1597,4 +1597,5 @@ def client_ip_diagnostics(request: Request, _uid: str = Depends(get_admin_user))
         "x_vercel_forwarded_for": h.get("x-vercel-forwarded-for"),
         "x_envoy_external_address": h.get("x-envoy-external-address"),
         "limiter_key": client_ip(request),
+        "header_names": sorted(h.keys()),
     }
