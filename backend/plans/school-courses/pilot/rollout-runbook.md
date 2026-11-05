@@ -12,9 +12,9 @@ How to switch the schools feature on in **production** — first for one pilot s
 | Security review | #8 | ✅ done (`SECURITY-REVIEW.md`) |
 | Pilot school recruited | #9 | ⬜ kit ready (`pilot-kit.md`) |
 | Offboarding deletion job (DPA promises it) | #17 / SC-803 | ✅ 2026-11-05 (verified on dev) |
-| Sentry scrubbing + no analytics on student sessions | memo G4/G5 | ⬜ |
+| Sentry scrubbing + no analytics on student sessions | memo G4/G5 | ✅ 2026-11-05 |
 | Prod AI config rows for school interaction types | #18 | ⬜ (code defaults work meanwhile) |
-| Rate-limit keying verified behind Railway's proxy | #19 | ⬜ |
+| Rate-limit keying verified behind Railway's proxy | #19 | ✅ 2026-11-05 (measured + fixed on dev; recheck prod with `GET /api/v1/admin/diagnostics/client-ip`) |
 | CSP `'unsafe-inline'` removed | #25 | ✅ done 2026-10-26 (reaches prod with the `master` merge) |
 
 ## 2. Preflight (prod, read-only checks)

@@ -1,4 +1,5 @@
 import httpx
+from app.core.limiter import client_ip
 from fastapi import APIRouter, Request
 
 from app.core.config import settings
@@ -16,7 +17,7 @@ async def get_country(request: Request):
     if cf_country and cf_country != "XX":
         return {"country": cf_country}
 
-    ip = request.headers.get("x-forwarded-for", request.client.host).split(",")[0].strip()
+    ip = client_ip(request)
 
     # Private/loopback IPs can't be geolocated — use configured default
     if any(ip.startswith(p) for p in _PRIVATE_PREFIXES):

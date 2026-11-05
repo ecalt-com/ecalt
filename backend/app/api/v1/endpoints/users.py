@@ -20,7 +20,7 @@ from app.core.auth import (
     invalidate_status_cache,
 )
 from app.core.database import get_db
-from app.core.limiter import limiter
+from app.core.limiter import limiter, client_ip
 from app.core.school_auth import is_school_student_uid
 from app.core.jurisdiction import (
     CONSENT_POLICY_VERSION,
@@ -239,7 +239,7 @@ async def upsert_user(body: UserUpsertRequest, request: Request, uid: str = Depe
                 jurisdiction = existing.get("jurisdiction")
                 token = _issue_consent_request(
                     uid, body.parent_email, jurisdiction,
-                    hash_ip(request.client.host if request.client else None),
+                    hash_ip(client_ip(request)),
                 )
                 from app.services.email_service import send_parental_consent_email
                 asyncio.ensure_future(send_parental_consent_email(body.parent_email, uid, token))
@@ -249,7 +249,7 @@ async def upsert_user(body: UserUpsertRequest, request: Request, uid: str = Depe
     if body.birth_year is not None:
         age = age_from_birth(body.birth_year, body.birth_month)
         jurisdiction = body.country.strip().upper() if body.country else None
-        ip = hash_ip(request.client.host if request.client else None)
+        ip = hash_ip(client_ip(request))
 
         # COPPA absolute requirement: under-13 data must never be collected.
         # Google sign-in already created a Firebase Auth record (name, email,
@@ -525,7 +525,7 @@ def claim_profile(body: ClaimRequest, request: Request):
                 profile_uid, "granted",
                 parent_uid=invite["parent_uid"], method="claim",
                 jurisdiction=invite.get("jurisdiction"),
-                ip_hash=hash_ip(request.client.host if request.client else None),
+                ip_hash=hash_ip(client_ip(request)),
                 details={"trigger": "child_claimed_own_login"}, cur=cur,
             )
 
@@ -612,7 +612,7 @@ def consent_decide(body: ConsentDecisionRequest, request: Request):
         return {"status": "refused", "message": "Consent was already declined for this account."}
 
     uid = row["uid"]
-    ip = hash_ip(request.client.host if request.client else None)
+    ip = hash_ip(client_ip(request))
 
     if body.approved:
         # Jurisdictions on the 'card' tier need a verified parent — the
@@ -703,7 +703,7 @@ async def consent_resend(request: Request, uid: str = Depends(get_account_holder
             record_consent_event(
                 uid, "requested", parent_email=parent_email, method="email_link",
                 jurisdiction=row.get("jurisdiction"),
-                ip_hash=hash_ip(request.client.host if request.client else None),
+                ip_hash=hash_ip(client_ip(request)),
                 details={"resend": True}, cur=cur,
             )
 
@@ -751,7 +751,7 @@ def consent_report(body: ConsentReportRequest, request: Request):
             record_consent_event(
                 body.child_uid, "reported", method="email_plus",
                 jurisdiction=dict(jrow).get("jurisdiction"),
-                ip_hash=hash_ip(request.client.host if request.client else None),
+                ip_hash=hash_ip(client_ip(request)),
                 details={"trigger": "followup_objection"}, cur=cur,
             )
     invalidate_status_cache(body.child_uid)
@@ -805,7 +805,7 @@ def reconsent(request: Request, uid: str = Depends(get_account_holder)):
             record_consent_event(
                 uid, "reconsent", method="signup",
                 jurisdiction=row.get("jurisdiction"),
-                ip_hash=hash_ip(request.client.host if request.client else None),
+                ip_hash=hash_ip(client_ip(request)),
                 details={"from_version": row.get("consent_version")}, cur=cur,
             )
     return {"status": "reconsented", "policy_version": CONSENT_POLICY_VERSION}

@@ -17,7 +17,7 @@ Everything needed to recruit one pilot school and collect the eval-corpus docume
 
 - [ ] Counsel-approved school terms + DPA signed (#7) — the in-app DPA text replaced and version bumped.
 - [x] Offboarding deletion built (SC-803, 2026-11-05).
-- [ ] Sub-processor terms confirmed; Sentry scrubbing; analytics off for student sessions (compliance memo G3–G5).
+- [ ] Sub-processor terms confirmed (compliance memo G3). Sentry scrubbing and analytics off for students are done (G4/G5, 2026-11-05).
 - [ ] School has sent parents the privacy notice (`legal/school-privacy-notice.md`) if its rules require.
 - [ ] `SCHOOLS_ENABLED` on in prod for the pilot (runbook, #10).
 

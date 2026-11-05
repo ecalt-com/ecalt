@@ -18,7 +18,7 @@ FastAPI service behind ECALT: AI-generated learning journeys, chat, quizzes, pay
 | Payments | Stripe (global) + Razorpay (India) |
 | Notifications | Brevo email (HTTP API preferred, SMTP fallback), Twilio WhatsApp |
 | Jobs | APScheduler, in-process, only when `SCHEDULER_ENABLED=true` |
-| Rate limiting | slowapi (`app/core/limiter.py`, keyed by remote IP) |
+| Rate limiting | slowapi (`app/core/limiter.py`, keyed by `client_ip()`: Railway `X-Real-IP`, or `x-vercel-forwarded-for` on Vercel-signed proxy calls — never `request.client.host`, which is Railway's internal proxy) |
 | Observability | Sentry, structured logging (`logging_config.py`), `X-Request-Id` header |
 
 ---

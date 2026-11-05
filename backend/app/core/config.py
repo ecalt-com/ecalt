@@ -94,6 +94,9 @@ class Settings(BaseSettings):
     # classroom burst at the bell. NB (SC-009): behind Railway's proxy the
     # limiter may see the proxy IP, making these effectively shared — tune up or
     # resolve the proxy-IP keying before a large deployment.
+    # Trust Vercel's x-vercel-forwarded-for when the request carries its proxy
+    # signature (SPA calls via the /api rewrite). See core/limiter.py.
+    RATE_LIMIT_TRUST_VERCEL_HEADER: bool = True
     SCHOOL_SIGNIN_RATELIMIT: str = "240/minute"
     SCHOOL_BADGE_RATELIMIT: str = "120/minute"
     # Days to keep high-volume 'student.sign_in_failed' audit rows (the class
