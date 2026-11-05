@@ -150,6 +150,34 @@ export const adminUpdateSchool = (schoolId: string, body: AdminUpdateSchool, tok
 export const adminInviteOwner = (schoolId: string, email: string, token: string): Promise<CreatedInvite> =>
   request(`/api/v1/admin/schools/${enc(schoolId)}/owner-invite`, json('POST', { email }), token)
 
+// ECALT support: the school job queue across schools (SC-805/806).
+export type AdminJobState = 'attention' | 'failed' | 'stuck' | 'active'
+export interface AdminJob {
+  id: string
+  school_id: string
+  school_name: string
+  kind: string
+  status: string
+  attempts: number
+  max_attempts: number
+  error: string | null
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  journey_id: string | null
+  cancel_requested: boolean
+}
+export interface JobQueueHealth {
+  queued: number; running: number; stuck_queued: number; stuck_running: number
+  failed_last_hour: number; failed_last_day: number
+}
+export const adminListJobs = (state: AdminJobState, token: string): Promise<{ jobs: AdminJob[]; health: JobQueueHealth }> =>
+  request(`/api/v1/admin/schools/jobs?state=${state}`, undefined, token)
+export const adminRetryJob = (jobId: string, token: string): Promise<AdminJob> =>
+  request(`/api/v1/admin/schools/jobs/${enc(jobId)}/retry`, json('POST'), token)
+export const adminCancelJob = (jobId: string, token: string): Promise<{ id: string; status: string }> =>
+  request(`/api/v1/admin/schools/jobs/${enc(jobId)}/cancel`, json('POST'), token)
+
 // ── Permissions (mirror of TESTING.md §4; the API stays the authority) ───────
 
 export type SchoolAction = 'manage_settings' | 'manage_staff' | 'invite_owner' | 'accept_dpa' | 'view_budget'

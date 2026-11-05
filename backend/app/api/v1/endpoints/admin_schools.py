@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.core.auth import get_admin_user
 from app.core.school_auth import parse_school_id
-from app.services import school_service
+from app.services import school_job_admin, school_service
 from app.services.email_service import send_school_invite_email
 
 router = APIRouter()
@@ -44,6 +44,24 @@ def _invite_owner(school_id: str, admin_uid: str, email: str, background_tasks: 
         send_school_invite_email, invite["email"], school_name, "owner", token, invite["id"],
     )
     return invite
+
+
+# ── Background jobs across schools (SC-805/806). Declared before /{school_id}. ──
+
+@router.get("/jobs", summary="Failed / stuck / active school jobs across all schools")
+def list_jobs(state: Literal["attention", "failed", "stuck", "active"] = "attention",
+              limit: int = Query(100, ge=1, le=500), _uid: str = Depends(get_admin_user)):
+    return {"jobs": school_job_admin.list_jobs(state, limit), "health": school_job_admin.queue_health()}
+
+
+@router.post("/jobs/{job_id}/retry", summary="Re-queue a failed or cancelled job")
+def retry_job(job_id: str, uid: str = Depends(get_admin_user)):
+    return school_job_admin.retry_job(uid, job_id)
+
+
+@router.post("/jobs/{job_id}/cancel", summary="Cancel a queued or running job")
+def cancel_job(job_id: str, uid: str = Depends(get_admin_user)):
+    return school_job_admin.cancel_job(uid, job_id)
 
 
 @router.post("", status_code=201, summary="Create a school (optionally inviting its first owner)")

@@ -322,4 +322,11 @@ MATRIX: list[Case] = [
     Case("POST", "/api/v1/admin/schools/{school_id}/owner-invite", "ecalt_admin",
          lambda w, db: f"/api/v1/admin/schools/{_sid(w)}/owner-invite",
          body=lambda w, db: {"email": "owner2@school.example"}),
+    Case("GET", "/api/v1/admin/schools/jobs", "ecalt_admin", lambda w, db: "/api/v1/admin/schools/jobs"),
+    Case("POST", "/api/v1/admin/schools/jobs/{job_id}/retry", "ecalt_admin",
+         lambda w, db: f"/api/v1/admin/schools/jobs/{f.enqueue_job(db, w.school_a, status='failed')}/retry",
+         body=lambda w, db: {}),
+    Case("POST", "/api/v1/admin/schools/jobs/{job_id}/cancel", "ecalt_admin",
+         lambda w, db: f"/api/v1/admin/schools/jobs/{f.enqueue_job(db, w.school_a)}/cancel",
+         body=lambda w, db: {}),
 ]

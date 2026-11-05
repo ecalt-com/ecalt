@@ -30,6 +30,7 @@ the thread pool started by :func:`start_worker` from the app lifespan.
 from __future__ import annotations
 
 import json
+import time
 import logging
 import socket
 import threading
@@ -261,6 +262,12 @@ def _retry_later(job_id: str, attempts: int, error: str) -> None:
             )
 
 
+def _metric(job: dict, status: str, started: float) -> None:
+    """One structured line per finished attempt — the job metrics (SC-805)."""
+    logger.info("school_job_metric kind=%s status=%s duration_s=%.1f attempts=%s school_id=%s",
+                job.get("kind"), status, time.monotonic() - started, job.get("attempts"), job.get("school_id"))
+
+
 def run_job(job: dict) -> str:
     """Run a claimed job's handler and record the outcome. Returns the final
     status. Never raises — a handler failure becomes a retry or a failed row."""
@@ -271,19 +278,30 @@ def run_job(job: dict) -> str:
         _finish(job_id, "failed", error=f"no handler registered for kind '{kind}'")
         logger.error("school job %s has no handler for kind %s", job_id, kind)
         return "failed"
+    started = time.monotonic()
     try:
         result = handler(job)
         _finish(job_id, "succeeded", result=result if isinstance(result, dict) else None)
+        _metric(job, "succeeded", started)
         return "succeeded"
     except JobCancelled:
         _finish(job_id, "cancelled")
         logger.info("school job %s (%s) cancelled", job_id, kind)
+        _metric(job, "cancelled", started)
         return "cancelled"
     except Exception as exc:  # handler bug or transient failure
         error = f"{type(exc).__name__}: {exc}"[:2000]
         if job["attempts"] >= job["max_attempts"]:
             _finish(job_id, "failed", error=error)
-            logger.exception("school job %s (%s) failed permanently", job_id, kind)
+            _metric(job, "failed", started)
+            try:  # tag the Sentry event so alerts group by job kind and school (no PII)
+                import sentry_sdk
+                with sentry_sdk.new_scope() as scope:
+                    scope.set_tag("school_id", str(job.get("school_id")))
+                    scope.set_tag("school_job_kind", kind)
+                    logger.exception("school job %s (%s) failed permanently", job_id, kind)
+            except Exception:  # pragma: no cover - sentry not installed/initialised
+                logger.exception("school job %s (%s) failed permanently", job_id, kind)
             return "failed"
         _retry_later(job_id, job["attempts"], error)
         logger.warning("school job %s (%s) failed, will retry (attempt %s/%s): %s",

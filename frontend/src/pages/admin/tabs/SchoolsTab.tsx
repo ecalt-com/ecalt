@@ -7,6 +7,7 @@ import {
   type School, type SchoolStatus,
 } from '../../../lib/schoolApi'
 import { inputCls, selectCls } from '../constants'
+import { SchoolJobsPanel } from './SchoolJobsPanel'
 
 interface SchoolsTabProps {
   getToken: () => Promise<string | null>
@@ -164,6 +165,8 @@ export function SchoolsTab({ getToken }: SchoolsTabProps) {
         <SchoolIcon size={14} className="text-violet-500" />
         <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">Schools ({total})</h2>
       </div>
+
+      <SchoolJobsPanel getToken={getToken} />
 
       <form onSubmit={create} className="glass-card rounded-xl p-4 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
         <label className="col-span-2 text-xs text-slate-500">School name
