@@ -609,9 +609,9 @@ export default function Journey() {
 
         {/* Tutor sidebar — desktop/large iPad */}
         {user && journey && journey.tutor_enabled !== false && (
-          {/* Height + the page's lg:pb-6 keep the panel below the fixed nav even at the
-            end of a short journey (sticky stops at the row's bottom). */}
           <div className="hidden lg:flex flex-col w-80 xl:w-96 shrink-0 sticky top-24 h-[calc(100dvh-8rem)]">
+            {/* This height + the page's lg:pb-6 keep the panel below the fixed nav
+                even at the end of a short journey (sticky stops at the row's bottom). */}
             <JourneyTutor
               journeyId={id!}
               journeyTitle={journey.title}
