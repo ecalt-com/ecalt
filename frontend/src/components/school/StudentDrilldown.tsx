@@ -5,17 +5,11 @@ import { useAuth } from '../../lib/AuthContext'
 import { apiErrorCode } from '../../lib/api'
 import {
   getStudentDrilldown, getStudentTranscript, getStudentTranscripts,
-  type StudentDrilldown as Drilldown, type TranscriptMessage, type TranscriptSummary,
+  type StudentDrilldown as Drilldown, type TranscriptMessage, type TranscriptSummary, flagLabel,
 } from '../../lib/schoolApi'
 
 const fmtWhen = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '')
 
-const FLAG_LABEL: Record<string, string> = {
-  overdue: 'Overdue',
-  low_quiz_accuracy: 'Low quiz scores',
-  heavy_hints: 'Needs many hints',
-  stalled: 'Stalled',
-}
 
 // Student drill-down (frontend-changes.md §10, SC-701/702): per assigned course,
 // step completion plus quiz attempts / accuracy / hints, with "needs attention"
@@ -96,7 +90,7 @@ export default function StudentDrilldown({ schoolId, classId, studentUid, studen
                 {c.quiz_accuracy !== null && <span className="text-xs text-slate-500 dark:text-slate-400">· {c.quiz_accuracy}% quiz</span>}
                 {c.flags.map(f => (
                   <span key={f} className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                    {FLAG_LABEL[f] ?? f}
+                    {flagLabel(f)}
                   </span>
                 ))}
               </div>

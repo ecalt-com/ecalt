@@ -234,7 +234,8 @@ def test_progress_matrix_shape_and_empty_cells(client, world):
     s_row = data["students"][0]
     assert s_row["display_name"] == "Asha K"
     assert s_row["cells"][world.C1] == {
-        "done": 0, "total": 2, "percent": 0, "completed": False, "overdue": False}
+        "done": 0, "total": 2, "percent": 0, "completed": False, "overdue": False, "flags": []}
+    assert s_row["flags"] == [] and s_row["needs_attention"] is False
 
 
 def test_progress_matrix_reflects_completion(client, world, db):
@@ -242,7 +243,7 @@ def test_progress_matrix_reflects_completion(client, world, db):
         assert client.post(f"/api/v1/progress/{world.C1}/{step}", headers=world.headers("S")).status_code == 200
     data = client.get(_progress_url(world, world.A1["id"]), headers=world.headers("T")).json()
     assert data["students"][0]["cells"][world.C1] == {
-        "done": 2, "total": 2, "percent": 100, "completed": True, "overdue": False}
+        "done": 2, "total": 2, "percent": 100, "completed": True, "overdue": False, "flags": []}
 
 
 def test_progress_matrix_flags_overdue_when_not_done(client, world, db):
@@ -253,6 +254,36 @@ def test_progress_matrix_flags_overdue_when_not_done(client, world, db):
     data = client.get(_progress_url(world, world.A1["id"]), headers=world.headers("T")).json()
     cell = data["students"][0]["cells"][journey_id]
     assert cell["overdue"] is True and cell["completed"] is False
+    assert cell["flags"] == ["overdue"]
+    assert data["students"][0]["needs_attention"] is True and data["students"][0]["flags"] == ["overdue"]
+
+
+def _quiz(db, uid, journey_id, step_id, correct, hints=0, days_ago=0):
+    with db.cursor() as cur:
+        cur.execute(
+            "INSERT INTO quiz_results (uid, journey_id, step_id, concept, difficulty, is_correct, hints_used, "
+            "answered_at) VALUES (%s, %s, %s, 'c', 'easy', %s, %s, now() - make_interval(days => %s))",
+            (uid, journey_id, step_id, correct, hints, days_ago))
+
+
+def test_progress_matrix_flags_low_accuracy_and_heavy_hints(client, world, db):
+    s1, s2 = f.step_ids(db, world.C1)[:2]
+    for step in (s1, s2):
+        for _ in range(2):
+            _quiz(db, world.S, world.C1, step, correct=False, hints=3)
+    data = client.get(_progress_url(world, world.A1["id"]), headers=world.headers("T")).json()
+    row = data["students"][0]
+    assert row["cells"][world.C1]["flags"] == ["low_quiz_accuracy", "heavy_hints"]
+    assert row["needs_attention"] is True
+
+
+def test_progress_matrix_flags_stalled(client, world, db):
+    s1 = f.step_ids(db, world.C1)[0]
+    with db.cursor() as cur:
+        cur.execute("INSERT INTO user_progress (uid, journey_id, step_id, completed_at) "
+                    "VALUES (%s, %s, %s, now() - interval '10 days')", (world.S, world.C1, s1))
+    data = client.get(_progress_url(world, world.A1["id"]), headers=world.headers("T")).json()
+    assert data["students"][0]["cells"][world.C1]["flags"] == ["stalled"]
 
 
 def test_progress_matrix_forbidden_for_students(client, world):

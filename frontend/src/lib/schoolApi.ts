@@ -808,7 +808,17 @@ export interface ProgressCell {
   percent: number
   completed: boolean
   overdue: boolean
+  flags?: string[]          // "needs attention" flags (SC-702), same as the drill-down
 }
+
+// Labels for the struggle flags (SC-702).
+export const STRUGGLE_FLAG_LABEL: Record<string, string> = {
+  overdue: 'Overdue',
+  low_quiz_accuracy: 'Low quiz scores',
+  heavy_hints: 'Needs many hints',
+  stalled: 'Stalled',
+}
+export const flagLabel = (f: string) => STRUGGLE_FLAG_LABEL[f] ?? f
 
 export interface ProgressCourseCol {
   assignment_id: string
@@ -825,6 +835,8 @@ export interface ProgressStudentRow {
   avatar: string | null
   grade: number | null
   cells: Record<string, ProgressCell>
+  flags?: string[]          // union of the row's cell flags
+  needs_attention?: boolean
 }
 
 export const getClassProgress = (
