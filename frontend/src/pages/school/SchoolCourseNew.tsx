@@ -109,12 +109,25 @@ export default function SchoolCourseNew() {
               We'll read {estimate.chunk_count} section{estimate.chunk_count === 1 ? '' : 's'} from {estimate.document_count} document{estimate.document_count === 1 ? '' : 's'}.
             </p>
           </div>
-          <div className="flex items-center justify-center gap-6 text-sm">
+          <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-sm">
             <div>
               <p className="text-xs text-slate-500 dark:text-slate-400">Estimated cost</p>
               <p className="font-bold text-slate-900 dark:text-slate-100">${(estimate.estimated_cost_cents / 100).toFixed(2)}</p>
             </div>
-            {budgetDollars && (
+            {estimate.estimated_minutes !== undefined && (
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Takes about</p>
+                <p className="font-bold text-slate-900 dark:text-slate-100">{estimate.estimated_minutes} min</p>
+              </div>
+            )}
+            {estimate.budget_remaining_cents !== undefined ? (
+              <div>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Budget left this month</p>
+                <p className={`font-bold ${estimate.budget_remaining_cents < estimate.estimated_cost_cents ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-slate-100'}`}>
+                  ${(estimate.budget_remaining_cents / 100).toFixed(2)}
+                </p>
+              </div>
+            ) : budgetDollars && (
               <div>
                 <p className="text-xs text-slate-500 dark:text-slate-400">Monthly budget</p>
                 <p className="font-bold text-slate-900 dark:text-slate-100">${budgetDollars}</p>

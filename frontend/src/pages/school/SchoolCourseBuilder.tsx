@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, Eye, FilePlus2, History,
-  Loader2, Pencil, Plus, RefreshCw, Rocket, Trash2, X,
+  AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, ClipboardCopy, Eye, FilePlus2, FileText, GripVertical,
+  History, ListChecks, Loader2, Pencil, Plus, RefreshCw, Rocket, Settings2, Trash2, X,
 } from 'lucide-react'
 import clsx from 'clsx'
 import MarkdownContent from '../../components/MarkdownContent'
 import UpdateFromDocument from '../../components/school/UpdateFromDocument'
+import { CourseDetailsModal, QuizPreviewModal, SourcesModal, StudentPreview, useDragReorder } from '../../components/school/BuilderExtras'
 import { useAuth } from '../../lib/AuthContext'
 import { useToast } from '../../lib/ToastContext'
 import { apiErrorCode } from '../../lib/api'
 import { useSchoolJob } from '../../lib/useSchoolJob'
 import {
-  addCourseStep, approveOutline, cancelSchoolJob, deleteCourseStep, DRAFT_BUSY, duplicateCourse,
+  addCourseStep, addStepFromSection, approveOutline, cancelSchoolJob, deleteCourseStep, DRAFT_BUSY, duplicateCourse,
   getCourse, listCourseVersions, patchCourseMeta, patchCourseStep, publishCourse,
   regenerateCourseStep, reorderCourseSteps, restoreCourseVersion, schoolErrorMessage,
   type Course, type CourseStep, type CourseVersion,
@@ -58,6 +59,13 @@ export default function SchoolCourseBuilder() {
   const [showAdd, setShowAdd] = useState(false)
   const [showUpdate, setShowUpdate] = useState(false)
   const [working, setWorking] = useState(false)
+  const [showDetails, setShowDetails] = useState(false)
+  const [showPreview, setShowPreview] = useState(false)
+  const [sources, setSources] = useState<{ ids: string[]; title: string } | null>(null)
+  const [quizStep, setQuizStep] = useState<CourseStep | null>(null)
+  // Unsaved text kept aside after a draft_conflict (§8.4), and a key to remount the editor.
+  const [conflict, setConflict] = useState<{ stepId: string; title: string; body: string } | null>(null)
+  const [editorKey, setEditorKey] = useState(0)
 
   const reload = useCallback(async () => {
     const token = await getToken()
@@ -87,21 +95,37 @@ export default function SchoolCourseBuilder() {
   const job = useSchoolJob(school.id, busy ? buildJobId : null, () => { setBuildJobId(null); reload() })
 
   // Centralised mutation runner: applies the returned course, handles conflicts.
-  const run = useCallback(async (fn: (token: string, revision: number) => Promise<Course>) => {
+  // Always uses the latest revision (autosave can fire right after another save).
+  const revisionRef = useRef<number | undefined>(undefined)
+  revisionRef.current = course?.draft?.revision
+  const run = useCallback(async (
+    fn: (token: string, revision: number) => Promise<Course>, opts: { quietConflict?: boolean } = {},
+  ): Promise<'ok' | 'conflict' | 'error'> => {
     const token = await getToken()
-    if (!token || !course?.draft) return
+    if (!token || revisionRef.current === undefined) return 'error'
     setWorking(true)
     try {
-      setCourse(await fn(token, course.draft.revision))
+      const next = await fn(token, revisionRef.current)
+      revisionRef.current = next.draft?.revision
+      setCourse(next)
+      return 'ok'
     } catch (err) {
       const code = apiErrorCode(err)
-      if (code === 'draft_conflict') { addToast('This course changed elsewhere — reloading.', 'info'); await reload() }
-      else addToast(schoolErrorMessage(code), 'error')
+      if (code === 'draft_conflict') {
+        if (!opts.quietConflict) addToast('This course changed elsewhere — reloaded the latest version.', 'info')
+        await reload()
+        return 'conflict'
+      }
+      addToast(schoolErrorMessage(code), 'error')
+      return 'error'
     } finally { setWorking(false) }
-  }, [getToken, course, addToast, reload])
+  }, [getToken, addToast, reload])
 
   const steps = draft?.steps ?? []
   const selected = useMemo(() => steps.find(s => s.id === sel) ?? steps[0] ?? null, [steps, sel])
+  const dragProps = useDragReorder(steps.map(s => s.id), order => {
+    run((t, rev) => reorderCourseSteps(school.id, courseId, order, rev, t))
+  })
 
   // ── Loading / error / published-no-draft ────────────────────────────────
   if (!course && !error) return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-violet-500" /></div>
@@ -120,7 +144,17 @@ export default function SchoolCourseBuilder() {
       <Link to="/school/courses" className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200">
         <ArrowLeft size={14} /> Courses
       </Link>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap justify-end">
+        {draft && !busy && (
+          <button onClick={() => setShowDetails(true)} className="btn-ghost !py-1.5 !px-3 flex items-center gap-1.5 text-sm">
+            <Settings2 size={14} /> Details
+          </button>
+        )}
+        {draft && !busy && (draft.status === 'built' || draft.status === 'build_failed') && steps.length > 0 && (
+          <button onClick={() => setShowPreview(true)} className="btn-ghost !py-1.5 !px-3 flex items-center gap-1.5 text-sm">
+            <Eye size={14} /> Preview as student
+          </button>
+        )}
         <button onClick={() => setShowVersions(true)} className="btn-ghost !py-1.5 !px-3 flex items-center gap-1.5 text-sm">
           <History size={14} /> Versions
         </button>
@@ -131,6 +165,22 @@ export default function SchoolCourseBuilder() {
         )}
       </div>
     </div>
+  )
+
+  const overlays = (
+    <>
+      {showDetails && draft && (
+        <CourseDetailsModal
+          schoolId={school.id} jid={c.journey_id} draft={draft} fallbackTitle={c.title} working={working}
+          onSave={async (patch) => { await run((t, rev) => patchCourseMeta(school.id, c.journey_id, { ...patch, expected_revision: rev }, t)) }}
+          onHero={() => { reload() }}
+          onClose={() => setShowDetails(false)}
+        />
+      )}
+      {showPreview && draft && <StudentPreview draft={draft} fallbackTitle={c.title} onClose={() => setShowPreview(false)} />}
+      {sources && <SourcesModal schoolId={school.id} jid={c.journey_id} chunkIds={sources.ids} title={sources.title} onClose={() => setSources(null)} />}
+      {quizStep && <QuizPreviewModal schoolId={school.id} jid={c.journey_id} step={quizStep} onClose={() => setQuizStep(null)} />}
+    </>
   )
 
   // ── Busy: outline / build in progress ───────────────────────────────────
@@ -247,7 +297,9 @@ export default function SchoolCourseBuilder() {
 
         <ul className="space-y-2">
           {steps.map((s, i) => (
-            <li key={s.id} className="glass-card rounded-2xl p-4 flex items-start gap-3">
+            <li key={s.id} {...dragProps(s.id)} data-testid="outline-step"
+                className={clsx('glass-card rounded-2xl p-4 flex items-start gap-3', dragProps(s.id).className)}>
+              <GripVertical size={14} className="text-slate-300 dark:text-slate-600 mt-1 cursor-grab shrink-0" aria-hidden="true" />
               <span className="text-xs font-mono text-slate-400 mt-1 w-5 text-right">{i + 1}</span>
               <div className="min-w-0 flex-1">
                 <input
@@ -256,7 +308,11 @@ export default function SchoolCourseBuilder() {
                   className="w-full bg-transparent text-sm font-semibold text-slate-900 dark:text-slate-100 focus:outline-none focus:border-b focus:border-violet-400"
                 />
                 {s.core_question && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{s.core_question}</p>}
-                {s.citations?.length > 0 && <p className="text-[11px] text-slate-400 mt-1">{s.citations.length} source section{s.citations.length === 1 ? '' : 's'}</p>}
+                {(s.chunk_ids?.length ?? 0) > 0 && (
+                  <button onClick={() => setSources({ ids: s.chunk_ids, title: s.title })} className="text-[11px] text-slate-400 hover:text-violet-600 dark:hover:text-violet-400 mt-1 flex items-center gap-1">
+                    <FileText size={11} /> {s.chunk_ids.length} source section{s.chunk_ids.length === 1 ? '' : 's'}
+                  </button>
+                )}
               </div>
               <div className="flex items-center gap-0.5 shrink-0">
                 <button onClick={() => move(s.id, -1)} disabled={i === 0 || working} aria-label="Move up" className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 disabled:opacity-30"><ChevronUp size={15} /></button>
@@ -273,12 +329,22 @@ export default function SchoolCourseBuilder() {
           <div className="glass-card rounded-2xl p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Not covered</h3>
             <ul className="space-y-1.5">
-              {skipped.map((sk, i) => (
-                <li key={i} className="text-sm text-slate-600 dark:text-slate-300 flex items-start gap-2">
-                  <span className="text-slate-400 mt-0.5">•</span>
-                  <span>{sk.title || 'Section'}{sk.reason ? ` — ${sk.reason}` : ''}</span>
-                </li>
-              ))}
+              {skipped.map((sk, i) => {
+                const heading = sk.heading || sk.title || ''
+                return (
+                  <li key={i} className="text-sm text-slate-600 dark:text-slate-300 flex items-start gap-2" data-testid="not-covered">
+                    <span className="text-slate-400 mt-0.5">•</span>
+                    <span className="flex-1 min-w-0">{heading || 'Section'}{sk.reason ? ` — ${sk.reason}` : ''}</span>
+                    {heading && (
+                      <button
+                        onClick={() => { run((t, rev) => addStepFromSection(school.id, c.journey_id, heading, rev, t)) }}
+                        disabled={working}
+                        className="shrink-0 text-xs text-violet-600 dark:text-violet-400 hover:underline disabled:opacity-50 flex items-center gap-1"
+                      ><Plus size={12} /> Make a step</button>
+                    )}
+                  </li>
+                )
+              })}
             </ul>
           </div>
         )}
@@ -291,6 +357,7 @@ export default function SchoolCourseBuilder() {
 
         {showAdd && <AddStepModal onClose={() => setShowAdd(false)} onAdd={async (title) => { await run((t, rev) => addCourseStep(school.id, c.journey_id, { title, expected_revision: rev }, t)); setShowAdd(false) }} />}
         {showVersions && <VersionsDrawer schoolId={school.id} jid={c.journey_id} onClose={() => setShowVersions(false)} onRestored={(nc) => { setShowVersions(false); setCourse(nc) }} />}
+        {overlays}
       </div>
     )
   }
@@ -305,7 +372,9 @@ export default function SchoolCourseBuilder() {
       {draft?.status === 'build_failed' && (
         <div className="glass-card rounded-2xl p-4 text-sm text-rose-600 dark:text-rose-400">Some steps failed to build. Regenerate them, or approve the outline again.</div>
       )}
-      <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">{draft?.meta.title || c.title}</h1>
+      <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+        {draft?.meta.icon && <span aria-hidden="true">{draft.meta.icon}</span>}{draft?.meta.title || c.title}
+      </h1>
 
       <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-4">
         {/* left: step list */}
@@ -314,7 +383,7 @@ export default function SchoolCourseBuilder() {
             {steps.map((s, i) => {
               const b = stepBadge(s)
               return (
-                <li key={s.id}>
+                <li key={s.id} {...dragProps(s.id)} className={clsx('rounded-xl', dragProps(s.id).className)}>
                   <button onClick={() => setSel(s.id)}
                     className={clsx('w-full text-left px-3 py-2 rounded-xl flex items-center gap-2 transition-colors',
                       selected?.id === s.id ? 'bg-violet-100 dark:bg-violet-500/15' : 'hover:bg-slate-100/70 dark:hover:bg-slate-800/50')}>
@@ -332,10 +401,21 @@ export default function SchoolCourseBuilder() {
         {/* center + right */}
         {selected ? (
           <StepPane
-            key={selected.id}
+            key={`${selected.id}:${editorKey}`}
             step={selected}
             working={working}
-            onSave={(patch) => run((t, rev) => patchCourseStep(school.id, c.journey_id, selected.id, { ...patch, expected_revision: rev }, t))}
+            conflictText={conflict?.stepId === selected.id ? conflict : null}
+            onDismissConflict={() => setConflict(null)}
+            onShowSources={() => setSources({ ids: selected.citations?.length ? selected.citations : selected.chunk_ids, title: selected.title })}
+            onQuizPreview={() => setQuizStep(selected)}
+            onSave={async (patch) => {
+              const r = await run((t, rev) => patchCourseStep(school.id, c.journey_id, selected.id, { ...patch, expected_revision: rev }, t), { quietConflict: true })
+              if (r === 'conflict') {
+                setConflict({ stepId: selected.id, title: patch.title ?? selected.title, body: patch.body_md ?? '' })
+                setEditorKey(k => k + 1)
+              }
+              return r
+            }}
             onDelete={() => run((t, rev) => deleteCourseStep(school.id, c.journey_id, selected.id, rev, t))}
             onRegenerate={async (instruction, overwrite) => {
               const token = await getToken(); if (!token || !draft) return
@@ -356,6 +436,7 @@ export default function SchoolCourseBuilder() {
 
       {showAdd && <AddStepModal onClose={() => setShowAdd(false)} onAdd={async (title) => { await run((t, rev) => addCourseStep(school.id, c.journey_id, { title, expected_revision: rev }, t)); setShowAdd(false) }} />}
       {showVersions && <VersionsDrawer schoolId={school.id} jid={c.journey_id} onClose={() => setShowVersions(false)} onRestored={(nc) => { setShowVersions(false); setCourse(nc) }} />}
+      {overlays}
       {showPublish && (
         <PublishDialog
           missingBody={missingBody.length}
@@ -379,18 +460,59 @@ export default function SchoolCourseBuilder() {
 }
 
 // ── Center/right pane for one step ─────────────────────────────────────────
-function StepPane({ step, working, onSave, onDelete, onRegenerate }: {
+// Autosaves 1.5 s after typing stops (§8.4). On a draft_conflict the parent
+// reloads the latest version and remounts this pane; the text that couldn't be
+// saved is shown above the editor for copying.
+const AUTOSAVE_MS = 1500
+
+function StepPane({ step, working, conflictText, onDismissConflict, onShowSources, onQuizPreview, onSave, onDelete, onRegenerate }: {
   step: CourseStep
   working: boolean
-  onSave: (patch: { title?: string; body_md?: string }) => void
+  conflictText: { title: string; body: string } | null
+  onDismissConflict: () => void
+  onShowSources: () => void
+  onQuizPreview: () => void
+  onSave: (patch: { title?: string; body_md?: string }) => Promise<'ok' | 'conflict' | 'error'>
   onDelete: () => void
   onRegenerate: (instruction: string | undefined, overwrite: boolean) => Promise<'protected' | void>
 }) {
+  const { addToast } = useToast()
   const [title, setTitle] = useState(step.title)
   const [body, setBody] = useState(step.body_md ?? '')
   const [preview, setPreview] = useState(false)
   const [regen, setRegen] = useState<string | null>(null)
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
   const dirty = title !== step.title || body !== (step.body_md ?? '')
+
+  // Latest values for the autosave timer (it may fire after re-renders).
+  const latest = useRef({ title, body, step, onSave })
+  latest.current = { title, body, step, onSave }
+  const saving = useRef(false)
+
+  const saveNow = useCallback(async () => {
+    const { title: t, body: b, step: st, onSave: save } = latest.current
+    if (t === st.title && b === (st.body_md ?? '')) return
+    if (saving.current) return
+    saving.current = true
+    setSaveState('saving')
+    const r = await save({ title: t.trim() || st.title, body_md: b })
+    saving.current = false
+    setSaveState(r === 'ok' ? 'saved' : r === 'error' ? 'error' : 'idle')
+  }, [])
+
+  useEffect(() => {
+    if (!dirty) return
+    const timer = window.setTimeout(() => { saveNow() }, AUTOSAVE_MS)
+    return () => window.clearTimeout(timer)
+  }, [title, body, dirty, saveNow])
+
+  // Warn before leaving with unsaved text.
+  useEffect(() => {
+    if (!dirty) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault() }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [dirty])
 
   const doRegen = async (overwrite: boolean) => {
     const res = await onRegenerate(regen?.trim() || undefined, overwrite)
@@ -399,15 +521,39 @@ function StepPane({ step, working, onSave, onDelete, onRegenerate }: {
     } else { setRegen(null) }
   }
 
+  const status = saveState === 'saving' ? 'Saving…'
+    : dirty ? (saveState === 'error' ? "Couldn't save — will retry" : 'Unsaved changes')
+    : saveState === 'saved' ? 'All changes saved' : ''
+  const sourceCount = (step.citations?.length || step.chunk_ids?.length) ?? 0
+  const hasBody = !!(step.body_md ?? '').trim()
+
   return (
     <div className="grid grid-cols-1 xl:grid-cols-[1fr_260px] gap-4">
       {/* center: editor */}
       <div className="glass-card rounded-2xl p-4 space-y-3 min-w-0">
-        <input value={title} onChange={e => setTitle(e.target.value)} className="w-full bg-transparent text-base font-semibold text-slate-900 dark:text-slate-100 focus:outline-none" />
-        <div className="flex items-center gap-2">
+        {conflictText && (
+          <div className="rounded-xl border border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/10 p-3 space-y-2" role="alert" data-testid="conflict-panel">
+            <p className="text-xs text-amber-800 dark:text-amber-200">
+              Someone else changed this course, so your last edit wasn't saved. The editor now shows their version — your text is below to copy back in.
+            </p>
+            <textarea readOnly value={conflictText.body} rows={5} className={clsx(fieldCls, 'font-mono text-xs')} aria-label="Your unsaved text" />
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={async () => { try { await navigator.clipboard.writeText(conflictText.body); addToast('Copied') } catch { addToast("Couldn't copy — select the text instead.", 'error') } }}
+                className="btn-ghost !py-1 !px-2.5 text-xs flex items-center gap-1"
+              ><ClipboardCopy size={12} /> Copy my text</button>
+              <button onClick={() => { setBody(conflictText.body); onDismissConflict() }} className="btn-ghost !py-1 !px-2.5 text-xs">Use my text</button>
+              <button onClick={onDismissConflict} className="btn-ghost !py-1 !px-2.5 text-xs">Dismiss</button>
+            </div>
+          </div>
+        )}
+        <input value={title} onChange={e => setTitle(e.target.value)} aria-label="Step title" className="w-full bg-transparent text-base font-semibold text-slate-900 dark:text-slate-100 focus:outline-none" />
+        <div className="flex items-center gap-2 flex-wrap">
           <button onClick={() => setPreview(false)} className={clsx('text-xs px-2.5 py-1 rounded-lg flex items-center gap-1', !preview ? 'bg-violet-600 text-white' : 'text-slate-500 dark:text-slate-400')}><Pencil size={12} /> Edit</button>
           <button onClick={() => setPreview(true)} className={clsx('text-xs px-2.5 py-1 rounded-lg flex items-center gap-1', preview ? 'bg-violet-600 text-white' : 'text-slate-500 dark:text-slate-400')}><Eye size={12} /> Preview</button>
           <div className="ml-auto flex items-center gap-1">
+            <button onClick={onQuizPreview} disabled={!hasBody} title={hasBody ? 'See sample quiz questions' : 'Save some content first'}
+              className="btn-ghost !py-1 !px-2 text-xs flex items-center gap-1 disabled:opacity-40"><ListChecks size={12} /> Quiz</button>
             <button onClick={() => setRegen(regen === null ? '' : null)} className="btn-ghost !py-1 !px-2 text-xs flex items-center gap-1"><RefreshCw size={12} /> Regenerate</button>
             <button onClick={onDelete} disabled={working} aria-label="Delete step" className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400"><Trash2 size={14} /></button>
           </div>
@@ -428,16 +574,20 @@ function StepPane({ step, working, onSave, onDelete, onRegenerate }: {
             {body.trim() ? <MarkdownContent content={body} /> : <p className="text-sm text-slate-400">Nothing to preview yet.</p>}
           </div>
         ) : (
-          <textarea value={body} onChange={e => setBody(e.target.value)} rows={16}
+          <textarea value={body} onChange={e => setBody(e.target.value)} rows={16} aria-label="Step content"
             placeholder="Step content (markdown)…" className={clsx(fieldCls, 'font-mono text-xs leading-relaxed resize-y')} />
         )}
 
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-slate-400">{step.estimated_minutes ? `~${step.estimated_minutes} min` : ''}</span>
-          <button onClick={() => onSave({ title: title.trim() || step.title, body_md: body })} disabled={!dirty || working}
-            className="btn-primary !py-1.5 !px-4 text-sm disabled:opacity-50 flex items-center gap-1.5">
-            {working ? <Loader2 size={14} className="animate-spin" /> : null} {dirty ? 'Save step' : 'Saved'}
-          </button>
+          <div className="flex items-center gap-2">
+            <span className={clsx('text-xs', saveState === 'error' && dirty ? 'text-rose-500' : 'text-slate-400')} data-testid="save-status" aria-live="polite">{status}</span>
+            {dirty && (
+              <button onClick={saveNow} disabled={working} className="btn-ghost !py-1 !px-3 text-xs disabled:opacity-50 flex items-center gap-1.5">
+                {saveState === 'saving' ? <Loader2 size={12} className="animate-spin" /> : null} Save now
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -464,10 +614,13 @@ function StepPane({ step, working, onSave, onDelete, onRegenerate }: {
             </ul>
           </div>
         )}
-        <p className="text-[11px] text-slate-400">
-          {step.citations?.length ?? 0} source section{(step.citations?.length ?? 0) === 1 ? '' : 's'}
-          {step.origin === 'teacher' ? ' · teacher-authored' : ''}
-        </p>
+        {sourceCount > 0 ? (
+          <button onClick={onShowSources} className="text-xs text-violet-600 dark:text-violet-400 hover:underline flex items-center gap-1.5" data-testid="show-sources">
+            <FileText size={12} /> Read {sourceCount} source section{sourceCount === 1 ? '' : 's'}
+          </button>
+        ) : (
+          <p className="text-[11px] text-slate-400">{step.origin === 'teacher' ? 'Teacher-authored · no source sections' : 'No source sections'}</p>
+        )}
       </aside>
     </div>
   )
