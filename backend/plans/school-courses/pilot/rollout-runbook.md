@@ -13,13 +13,13 @@ How to switch the schools feature on in **production** — first for one pilot s
 | Pilot school recruited | #9 | ⬜ kit ready (`pilot-kit.md`) |
 | Offboarding deletion job (DPA promises it) | #17 / SC-803 | ✅ 2026-11-05 (verified on dev) |
 | Sentry scrubbing + no analytics on student sessions | memo G4/G5 | ✅ 2026-11-05 |
-| Prod AI config rows for school interaction types | #18 | ⬜ (code defaults work meanwhile) |
+| Prod AI config rows for school interaction types | #18 | 🟨 `migrations/018_school_ai_config.sql` ready; apply with the other migrations |
 | Rate-limit keying verified behind Railway's proxy | #19 | ✅ 2026-11-05 (measured + fixed on dev; recheck prod with `GET /api/v1/admin/diagnostics/client-ip`) |
 | CSP `'unsafe-inline'` removed | #25 | ✅ done 2026-10-26 (reaches prod with the `master` merge) |
 
 ## 2. Preflight (prod, read-only checks)
 
-- [ ] **Migrations** 014–017 applied to the prod database (`SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 5`, or check `school_usage.alert_80_at` exists).
+- [ ] **Migrations** 014–018 applied (018 seeds the school AI config rows, #18) to the prod database (`SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 5`, or check `school_usage.alert_80_at` exists).
 - [ ] **Storage bucket** `school-materials` exists in prod Supabase, **private**, with a file size limit = `SCHOOL_DOC_MAX_MB` (25 MB).
 - [ ] **Railway variables** present on the prod `ecalt-api` service (verify names exist; don't paste values anywhere):
   - `FIREBASE_SERVICE_ACCOUNT_JSON` — student sign-in mints custom tokens (503 `login_unavailable` without it)
