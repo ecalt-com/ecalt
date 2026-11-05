@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
-import { NavLink, Outlet, useNavigate, useOutletContext } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate, useOutletContext } from 'react-router-dom'
 import { Loader2, School as SchoolIcon, ShieldAlert } from 'lucide-react'
 import clsx from 'clsx'
 import Navigation from '../../components/Navigation'
@@ -36,6 +36,12 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 // Staff area shell (backend/plans/school-courses/frontend-changes.md §2).
 export default function SchoolLayout() {
+  const tabsRef = useRef<HTMLElement>(null)
+  const { pathname: tabPath } = useLocation()
+  // On phones the tab row scrolls; keep the current section's tab in view.
+  useEffect(() => {
+    tabsRef.current?.querySelector<HTMLElement>('a.bg-violet-600')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }, [tabPath])
   const { user, loading: authLoading, getToken } = useAuth()
   const { loaded, schools, activeSchool, setActiveSchool, refresh } = useSchool()
   const navigate = useNavigate()
@@ -151,7 +157,7 @@ export default function SchoolLayout() {
             )}
           </div>
 
-          <nav aria-label="School sections" className="flex gap-1 mb-6 p-1 glass-card rounded-xl overflow-x-auto flex-nowrap w-fit max-w-full">
+          <nav ref={tabsRef} aria-label="School sections" className="flex gap-1 mb-6 p-1 glass-card rounded-xl overflow-x-auto flex-nowrap w-fit max-w-full">
             {tabs.map(t => (
               <NavLink
                 key={t.to}

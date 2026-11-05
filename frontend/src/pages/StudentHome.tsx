@@ -100,7 +100,7 @@ export default function StudentHome() {
                           </span>
                           <span className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
                             <span>{c.done_steps ? `${c.done_steps} of ${c.total_steps} steps` : `${c.total_steps} steps`}</span>
-                            {due && <span className={due.overdue ? 'text-rose-600 dark:text-rose-400 font-medium' : ''}>· Due {due.text}</span>}
+                            {due && !c.completed && <span className={due.overdue ? 'text-rose-600 dark:text-rose-400 font-medium' : ''}>· Due {due.text}</span>}
                           </span>
                           {c.total_steps > 0 && (
                             <span className="block mt-2 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">

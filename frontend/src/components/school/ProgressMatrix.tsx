@@ -76,11 +76,11 @@ export default function ProgressMatrix({ schoolId, classId }: { schoolId: string
 
   return (
     <div className="glass-card rounded-2xl p-5">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2">
           <BarChart3 size={15} className="text-violet-500" /> Progress
         </h3>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 whitespace-nowrap">
           {students && courses.length > 0 && students.length > 0 && (
             <button
               onClick={() => setAttentionOnly(v => !v)}
