@@ -36,12 +36,22 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 // Staff area shell (backend/plans/school-courses/frontend-changes.md §2).
 export default function SchoolLayout() {
-  const tabsRef = useRef<HTMLElement>(null)
+  // On phones the tab row scrolls sideways; keep the current section's tab in
+  // view. The row mounts after the school loads, so scroll from a callback ref
+  // (first render) and again on every route change.
+  const tabsRef = useRef<HTMLElement | null>(null)
   const { pathname: tabPath } = useLocation()
-  // On phones the tab row scrolls; keep the current section's tab in view.
-  useEffect(() => {
-    tabsRef.current?.querySelector<HTMLElement>('a.bg-violet-600')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-  }, [tabPath])
+  const revealActiveTab = useCallback(() => {
+    const nav = tabsRef.current
+    const tab = nav?.querySelector<HTMLElement>('a.bg-violet-600')
+    if (!nav || !tab) return
+    const left = tab.offsetLeft - nav.offsetLeft
+    if (left < nav.scrollLeft || left + tab.offsetWidth > nav.scrollLeft + nav.clientWidth) {
+      nav.scrollLeft = Math.max(0, left - (nav.clientWidth - tab.offsetWidth) / 2)
+    }
+  }, [])
+  const setTabsRef = useCallback((el: HTMLElement | null) => { tabsRef.current = el; revealActiveTab() }, [revealActiveTab])
+  useEffect(() => { revealActiveTab() }, [tabPath, revealActiveTab])
   const { user, loading: authLoading, getToken } = useAuth()
   const { loaded, schools, activeSchool, setActiveSchool, refresh } = useSchool()
   const navigate = useNavigate()
@@ -157,7 +167,7 @@ export default function SchoolLayout() {
             )}
           </div>
 
-          <nav ref={tabsRef} aria-label="School sections" className="flex gap-1 mb-6 p-1 glass-card rounded-xl overflow-x-auto flex-nowrap w-fit max-w-full">
+          <nav ref={setTabsRef} aria-label="School sections" className="flex gap-1 mb-6 p-1 glass-card rounded-xl overflow-x-auto flex-nowrap w-fit max-w-full">
             {tabs.map(t => (
               <NavLink
                 key={t.to}
