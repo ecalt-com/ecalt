@@ -605,6 +605,77 @@ async def decline_link_request(token: str, request: Request, uid: str = Depends(
     return await _decide_link_request(token, False, request, uid)
 
 
+@router.post("/claim-children",
+             summary="Link children whose consent this parent granted via the email link")
+def claim_children(uid: str = Depends(get_active_account_holder)):
+    """Path B repair: a teen approved through the anonymous
+    POST /users/consent/confirm was activated without a family link, so the
+    parent has no dashboard and no transcript access. When the parent later
+    signs in with the same email address the consent was granted from, this
+    creates the missing link(s). Idempotent — children already linked to any
+    parent are skipped — and the link is disclosed to the child (/my-family)."""
+    parent = _require_adult_parent(uid)
+    email = (parent.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail={
+            "error": "no_email",
+            "message": "Your account has no email address to match consent requests against.",
+        })
+
+    linked = []
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT DISTINCT u.uid, u.display_name, u.jurisdiction,
+                       u.birth_year, u.birth_month
+                  FROM parental_consent pc
+                  JOIN users u ON u.uid = pc.uid
+                 WHERE lower(pc.parent_email) = %s
+                   AND pc.status = 'confirmed'
+                   AND u.uid <> %s
+                   AND u.profile_type = 'account'
+                   AND u.age_group_flag IN ('child', 'teen')
+                   AND NOT EXISTS (SELECT 1 FROM family_links fl
+                                    WHERE fl.child_uid = u.uid AND fl.status = 'active')
+                   AND NOT EXISTS (SELECT 1 FROM deletion_requests dr
+                                    WHERE dr.uid = u.uid AND dr.status = 'scheduled')
+                """,
+                (email, uid),
+            )
+            candidates = [dict(r) for r in cur.fetchall()]
+            for child in candidates:
+                child_uid = child["uid"]
+                cur.execute(
+                    "INSERT INTO family_links (parent_uid, child_uid) VALUES (%s, %s) "
+                    "ON CONFLICT (child_uid) WHERE status = 'active' DO NOTHING",
+                    (uid, child_uid),
+                )
+                tier = "email_plus"
+                if child.get("birth_year") is not None:
+                    tier = required_verification_tier(
+                        child.get("jurisdiction"),
+                        age_from_birth(child["birth_year"], child.get("birth_month")),
+                    )
+                cur.execute(
+                    "INSERT INTO child_settings (child_uid, managed, verification_tier) "
+                    "VALUES (%s, false, %s) ON CONFLICT (child_uid) DO NOTHING",
+                    (child_uid, tier),
+                )
+                record_consent_event(
+                    child_uid, "linked",
+                    parent_uid=uid, parent_email=email, method="email_match",
+                    jurisdiction=child.get("jurisdiction"), cur=cur,
+                )
+                linked.append({"child_uid": child_uid,
+                               "display_name": child.get("display_name")})
+            if linked:
+                cur.execute("UPDATE users SET role = 'parent' WHERE uid = %s", (uid,))
+    for child in linked:
+        invalidate_profile_cache(parent_uid=uid, profile_uid=child["child_uid"])
+    return {"linked": linked, "count": len(linked)}
+
+
 # ── Card micro-verification (Stripe SetupIntent via hosted Checkout) ─────────
 # A successful card setup is the adult signal — nothing is charged and no
 # payment method is retained (no Stripe customer is attached to the session).

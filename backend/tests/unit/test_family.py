@@ -392,3 +392,68 @@ def test_delete_child_forbidden_without_link(client):
         resp = client.delete(f"/api/v1/family/children/{CHILD_UID}")
 
     assert resp.status_code == 403
+
+
+# ── Claim children (retroactive link after anonymous email-link consent) ─────
+
+def _claimable_child(**overrides):
+    row = {
+        "uid": CHILD_UID,
+        "display_name": "Teen User",
+        "jurisdiction": "US",
+        "birth_year": CURRENT_YEAR - 15,
+        "birth_month": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_claim_children_links_matching_consents(client):
+    with patch("app.api.v1.endpoints.family.get_db") as mock_get_db:
+        mock_cur = _mock_db(mock_get_db, [_parent_row()],
+                            fetchall_results=[_claimable_child()])
+        resp = client.post("/api/v1/family/claim-children")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["count"] == 1
+    assert body["linked"][0]["child_uid"] == CHILD_UID
+
+    executed = [str(c[0][0]) for c in mock_cur.execute.call_args_list]
+    assert any("INSERT INTO family_links" in q for q in executed)
+    assert any("INSERT INTO child_settings" in q for q in executed)
+    assert any("INSERT INTO consent_events" in q for q in executed)
+    assert any("role = 'parent'" in q for q in executed)
+    # the candidate query excludes already-linked and deletion-scheduled children
+    candidate_q = next(q for q in executed if "parental_consent" in q)
+    assert "family_links" in candidate_q and "deletion_requests" in candidate_q
+
+
+def test_claim_children_no_matches_is_noop(client):
+    with patch("app.api.v1.endpoints.family.get_db") as mock_get_db:
+        mock_cur = _mock_db(mock_get_db, [_parent_row()], fetchall_results=[])
+        resp = client.post("/api/v1/family/claim-children")
+
+    assert resp.status_code == 200
+    assert resp.json() == {"linked": [], "count": 0}
+    executed = [str(c[0][0]) for c in mock_cur.execute.call_args_list]
+    assert not any("INSERT INTO family_links" in q for q in executed)
+    assert not any("role = 'parent'" in q for q in executed)
+
+
+def test_claim_children_requires_email(client):
+    with patch("app.api.v1.endpoints.family.get_db") as mock_get_db:
+        _mock_db(mock_get_db, [_parent_row(email=None)], fetchall_results=[])
+        resp = client.post("/api/v1/family/claim-children")
+
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error"] == "no_email"
+
+
+def test_claim_children_requires_adult_account(client):
+    with patch("app.api.v1.endpoints.family.get_db") as mock_get_db:
+        _mock_db(mock_get_db, [_parent_row(age_group_flag="teen")])
+        resp = client.post("/api/v1/family/claim-children")
+
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["error"] == "adult_account_required"
