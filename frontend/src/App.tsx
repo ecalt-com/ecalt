@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { HelmetProvider } from 'react-helmet-async'
 import { Analytics } from '@vercel/analytics/react'
 import { SpeedInsights } from '@vercel/speed-insights/react'
+import { analyticsBeforeSend } from './lib/telemetryPrivacy'
 import { ThemeProvider } from './lib/ThemeContext'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import { ToastProvider } from './lib/ToastContext'
@@ -195,8 +196,9 @@ export default function App() {
           </SchoolProvider>
           </ProfileProvider>
         </AuthProvider>
-        <Analytics />
-        <SpeedInsights />
+        {/* No analytics on student sessions or student pages (compliance memo G5). */}
+        <Analytics beforeSend={analyticsBeforeSend} />
+        <SpeedInsights beforeSend={analyticsBeforeSend} />
       </ThemeProvider>
     </HelmetProvider>
   )

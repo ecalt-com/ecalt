@@ -102,6 +102,26 @@ async def upload_journey_image(journey_id: str, data: bytes, content_type: str =
     return f"{settings.SUPABASE_URL}/storage/v1/object/public/{_BUCKET}/{path}"
 
 
+def delete_journey_image(url: str) -> bool:
+    """Delete an uploaded hero image given its public URL. URLs outside our
+    journey-images bucket (curated or external images) are left alone and
+    return False. Raises on a failed delete (a missing object counts as gone)."""
+    prefix = f"{settings.SUPABASE_URL}/storage/v1/object/public/{_BUCKET}/"
+    if not settings.SUPABASE_URL or not url or not url.startswith(prefix):
+        return False
+    path = url[len(prefix):].split("?", 1)[0]
+    resp = httpx.delete(
+        f"{settings.SUPABASE_URL}/storage/v1/object/{_BUCKET}/{path}",
+        headers={"Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+                 "apikey": settings.SUPABASE_SERVICE_ROLE_KEY},
+        timeout=30,
+    )
+    from app.services.school_storage_service import object_missing
+    if not object_missing(resp):
+        resp.raise_for_status()
+    return True
+
+
 def _save_hero_url(journey_id: str, url: str) -> None:
     from app.core.database import get_db
     with get_db() as conn:

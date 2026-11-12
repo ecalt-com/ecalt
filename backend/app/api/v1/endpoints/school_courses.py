@@ -6,9 +6,10 @@ and versions land in later increments.
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
+from app.core.limiter import limiter
 from app.core.school_auth import SchoolCtx, school_member, uuid_or_404
 from app.services import school_course_service as courses, school_jobs
 from app.services import school_course_update_service as updates
@@ -36,6 +37,13 @@ class MetaPatchRequest(BaseModel):
     title: Optional[str] = Field(None, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
     estimated_hours: Optional[float] = Field(None, ge=0, le=1000)
+    icon: Optional[str] = Field(None, max_length=16)
+    tags: Optional[list[str]] = Field(None, max_length=20)
+
+
+class FromSectionRequest(BaseModel):
+    expected_revision: Optional[int] = Field(None, ge=0)
+    heading: str = Field(..., min_length=1, max_length=300)
 
 
 class StepFields(BaseModel):
@@ -132,6 +140,24 @@ def add_step(journey_id: str, body: StepAddRequest, ctx: SchoolCtx = Depends(sch
     data.pop("expected_revision", None)
     after = data.pop("after_step_id", None)
     return courses.add_step(ctx, journey_id, body.expected_revision, data, after_step_id=after)
+
+
+@router.post("/{school_id}/courses/{journey_id}/draft/steps/from-section",
+             summary="Turn a Not covered outline section into a grounded step")
+def add_step_from_section(journey_id: str, body: FromSectionRequest, ctx: SchoolCtx = Depends(school_member())):
+    return courses.add_step_from_section(ctx, journey_id, body.expected_revision, body.heading)
+
+
+@router.get("/{school_id}/courses/{journey_id}/chunks", summary="Source text + pages for cited chunks")
+def source_chunks(journey_id: str, ids: str = Query(..., max_length=2000), ctx: SchoolCtx = Depends(school_member())):
+    return {"chunks": courses.source_chunks(ctx, journey_id, [i for i in ids.split(",") if i.strip()])}
+
+
+@router.post("/{school_id}/courses/{journey_id}/draft/steps/{step_id}/quiz-preview",
+             summary="Sample quiz questions for a draft step (not saved; school-billed)")
+@limiter.limit("20/minute")
+async def quiz_preview(request: Request, journey_id: str, step_id: str, ctx: SchoolCtx = Depends(school_member())):
+    return await courses.quiz_preview(ctx, journey_id, step_id)
 
 
 @router.post("/{school_id}/courses/{journey_id}/draft/steps/reorder", summary="Reorder the draft's steps")

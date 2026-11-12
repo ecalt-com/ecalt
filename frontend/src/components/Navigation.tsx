@@ -36,16 +36,16 @@ function StudentNavigation() {
     <nav className="fixed top-0 left-0 right-0 z-50 px-4 md:px-8 pb-4 safe-top">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <Link to="/my-classes" className="flex items-center">
-          <img src="/logo.png" alt="ECALT" className="h-14 w-auto object-contain dark:brightness-0 dark:invert" />
+          <img src="/logo.png" alt="ECALT" className="h-10 sm:h-14 w-auto object-contain dark:brightness-0 dark:invert" />
         </Link>
-        <div className="glass rounded-xl px-2 py-1.5 flex items-center gap-1">
-          <Link to="/my-classes" className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/50">
+        <div className="glass rounded-xl px-1.5 sm:px-2 py-1.5 flex items-center gap-0.5 sm:gap-1 whitespace-nowrap">
+          <Link to="/my-classes" className="px-2.5 sm:px-3 py-1.5 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/50">
             My classes
           </Link>
           <ThemeToggle />
           <button
             onClick={leave}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-all"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-sm font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 dark:hover:text-rose-400 transition-all"
           >
             <LogOut size={13} /> Sign out
           </button>
@@ -163,13 +163,13 @@ function AccountNavigation() {
             ) : (
               <>
                 <button
-                  onClick={signIn}
+                  onClick={() => signIn()}
                   className="px-3 py-1.5 rounded-lg text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
                 >
                   Sign In
                 </button>
                 <button
-                  onClick={signIn}
+                  onClick={() => signIn()}
                   className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-violet-600 hover:bg-violet-500 text-white transition-colors ml-1"
                 >
                   Start Free

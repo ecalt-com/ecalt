@@ -18,8 +18,8 @@ FastAPI service behind ECALT: AI-generated learning journeys, chat, quizzes, pay
 | Payments | Stripe (global) + Razorpay (India) |
 | Notifications | Brevo email (HTTP API preferred, SMTP fallback), Twilio WhatsApp |
 | Jobs | APScheduler, in-process, only when `SCHEDULER_ENABLED=true` |
-| Rate limiting | slowapi (`app/core/limiter.py`, keyed by remote IP) |
-| Observability | Sentry, structured logging (`logging_config.py`), `X-Request-Id` header |
+| Rate limiting | slowapi (`app/core/limiter.py`, keyed by `client_ip()`: Railway `X-Real-IP`, or `x-vercel-forwarded-for` on Vercel-signed proxy calls — never `request.client.host`, which is Railway's internal proxy) |
+| Observability | Sentry (`core/sentry_scrub.py`: no bodies/cookies/IPs/locals/user; student ids + emails redacted), structured logging (`logging_config.py`), `X-Request-Id` header |
 
 ---
 
@@ -199,7 +199,7 @@ record_usage(uid, ..., input_tokens, output_tokens, ...)   # or record_image_usa
 | Visual intelligence | `visual_orchestrator/planner/router/recipe/registry/retrieval/image/video/telemetry_service`, `wikimedia_retrieval_adapter` — all gated by `VISUAL_*` flags |
 | Money | `subscription_service`, `stripe_service`, `razorpay_service`, `coupon_service` |
 | Accounts & compliance | `account_service` (deletion, export), `consent_service` (parental consent, policy version), `profile_service` (parent PIN, unlock tokens), `firebase_admin` (delete/purge Firebase logins), `content_filter` |
-| Schools (`plans/school-courses/`) | `school_service` (schools, staff, invites, settings, DPA, `school_audit`), `school_student_service` (students, secrets, CSV import), `school_class_service` (classes, join codes, login cards), `school_login_service` (class-code / badge sign-in → Firebase custom token), `journey_access` (who may read a journey) + `core/school_auth.py` (student allowlist, `school_member`, `load_class`) |
+| Schools (`plans/school-courses/`) | `school_service` (schools, staff, invites, settings, DPA, `school_audit`), `school_student_service` (students, secrets, CSV import), `school_class_service` (classes, join codes, login cards), `school_login_service` (class-code / badge sign-in → Firebase custom token), `journey_access` (who may read a journey) + `core/school_auth.py` (student allowlist, `school_member`, `load_class`), `school_course_service` / `school_course_builder` / `school_course_update_service` (AI course builder, publish, updates), `school_jobs` (DB job queue + worker) + `school_job_admin` (ECALT support view, health alerts), `school_offboarding_service` (delete terminated schools), `school_analytics_service` (progress, flags, transcripts, digest) |
 | Notifications | `notification_service` (queue, prefs, caps, signed unsubscribe), `email_service` (Brevo), `whatsapp_service` (Twilio), `copy_generator`, `scheduler` |
 | Config | `provider_service` (AI config, prompts, notification templates, costs) |
 
@@ -252,6 +252,7 @@ Runs only when `SCHEDULER_ENABLED=true` — **exactly one instance (prod)**. Job
 - Notifications: `queue_processor` and `daily_spark_dispatch` (every 15 min), re-engagement ladder, streak lost/risk/milestone, mind-signature nudge, journey-completion nudge, weekly learner digest.
 - Family/compliance: consent follow-ups, weekly family digest, scheduled account deletions (03:30), family lifecycle (04:00 — age-up, turning 13, expiry, retention).
 - Marketplace popularity scan (every 6 h).
+- Schools: teacher digest (Sun 16:00), audit-log pruning (04:20), job-queue health (every 15 min — ERROR log on stuck/failed jobs), **offboarding** (04:40 — deletes terminated schools after `SCHOOL_OFFBOARDING_GRACE_DAYS`, `services/school_offboarding_service.py`).
 
 Jobs must catch and log their own exceptions.
 
@@ -273,6 +274,9 @@ Jobs must catch and log their own exceptions.
 | `SCHOOL_DPA_VERSION` / `SCHOOL_INVITE_TTL_DAYS` | `2026-10` / `7` | Bump the DPA version when its text changes — owners must accept again |
 | `SCHOOL_STUDENT_SESSION_HOURS` | `12` | School students' sessions end this long after sign-in (`auth_time`) → 401 `school_session_expired`. Student sign-in also needs `FIREBASE_SERVICE_ACCOUNT_JSON` (custom tokens) — 503 `login_unavailable` without it |
 | `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | empty | Required for image storage; endpoints return 503 without them |
+| `DB_POOL_MAX` / `DB_POOL_WAIT_SECONDS` | `20` / `10` | Connections per process; a request waits this long for a free one, then 503 `server_busy` (SC-802 burst fix) |
+| `RATE_LIMIT_TRUST_VERCEL_HEADER` | `True` | Key limits on Vercel's `x-vercel-forwarded-for` when the request carries Vercel's proxy signature (`core/limiter.client_ip`) |
+| `SCHOOL_OFFBOARDING_GRACE_DAYS` | `30` | Terminated schools are deleted by the nightly job after this (SC-803) |
 
 Other env vars (see `.env.example`): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FIREBASE_PROJECT_ID`, `DATABASE_URL` (or `DB_*`), `ALLOWED_ORIGINS`, `FRONTEND_URL` (used in email links), Stripe/Razorpay keys + webhook secrets, Brevo/SMTP, Twilio, `NOTIFICATION_SIGNING_SECRET`, `SENTRY_DSN`, `LOG_LEVEL`.
 

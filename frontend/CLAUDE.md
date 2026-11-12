@@ -15,12 +15,12 @@ ECALT is a React + TypeScript SPA built with Vite and deployed on Vercel. It is 
 | Build tool | Vite 8, dev port 3000 |
 | Routing | React Router v6 (`v7_startTransition` + `v7_relativeSplatPath` future flags) |
 | Styling | Tailwind CSS v3 (`darkMode: 'class'`) + CSS vars in `index.css` |
-| Auth | Firebase v12 — Google popup sign-in only. Children use **profiles** on the parent's login (see Family profiles) |
+| Auth | Firebase v12 — Google popup sign-in; school staff can also use Microsoft when `VITE_MICROSOFT_SIGNIN=true`. Children use **profiles** on the parent's login (see Family profiles) |
 | Payments | Stripe (global, redirect checkout) + Razorpay (India, in-page checkout.js) |
 | Diagrams | mermaid v11 (step diagrams, `securityLevel: 'strict'`), D3 v7 (constellation map) |
 | Icons / classes | lucide-react, clsx |
 | SEO | react-helmet-async |
-| Observability | Sentry `@sentry/react`, Vercel Analytics + Speed Insights |
+| Observability | Sentry `@sentry/react`, Vercel Analytics + Speed Insights — both filtered by `lib/telemetryPrivacy.ts` (no events from school students or student pages; URLs lose query/fragment) |
 | Deployment | Vercel (`vercel.json`) — static `dist/` + rewrites |
 
 ---
@@ -265,6 +265,9 @@ Admin starts a session from the Users tab → `ImpersonationContext` stores it, 
 - Staff calls (everything under `/schools/{id}`) need the parent PIN unlock when the account has family profiles — `request()` prompts for it automatically.
 - `AuthContext.accountKind` (`'account' | 'profile' | 'school_student'`) comes from `POST /users`; school students skip every sign-up gate. `isStudentUid(uid)` (`stu_` prefix) is available immediately after Firebase restores a session — use it to skip parent/staff-only lookups (profiles, subscription, reconsent, schools) and to pick the student `Navigation` variant.
 - **Students:** `signInWithClassToken(customToken)` uses `browserSessionPersistence` (shared classroom devices). `StudentGuard` (`ProfileRouting.tsx`) keeps students on `/my-classes`, `/journey/:id`, `/class*` and legal pages. `request()` turns a 401 `school_session_expired` into sign-out + `/class?expired=1`. Picture-password icons live in `lib/pictureIcons.ts` — **never reorder** (the backend stores indices).
+- **Course builder** (`pages/school/SchoolCourseBuilder.tsx` + `components/school/BuilderExtras.tsx`): outline review (drag reorder, cited sources, Not covered → step), 3-pane step editor with **autosave** (1.5 s; on `draft_conflict` it reloads and keeps the unsaved text beside the editor), quiz preview, course details (icon/tags/cover), preview as student. `run()` always uses the latest draft revision.
+- Admin → Schools has a **Background jobs** panel (`pages/admin/tabs/SchoolJobsPanel.tsx`): failed/stuck jobs across schools, retry/cancel.
+- E2E for schools lives in `e2e/*.authed.spec.ts`; `e2e/mobile-375.authed.spec.ts` checks phone width; `e2e/load_classroom.mjs` is the SC-802 load test (dev only).
 - Full contract and what's built vs planned: `../backend/plans/school-courses/frontend-changes.md`.
 
 ### Family profiles
@@ -302,6 +305,7 @@ Children use ECALT as **profiles on the parent's Google login** — no child ema
 | `VITE_FIREBASE_PROJECT_ID` | Yes | Firebase project ID (must match backend `FIREBASE_PROJECT_ID`) |
 | `VITE_API_URL` | No | API base / Vite proxy target. Empty in prod (same-origin) |
 | `VITE_SENTRY_DSN` | No | Sentry not initialised if absent |
+| `VITE_MICROSOFT_SIGNIN` | No | `true` shows **Continue with Microsoft** for school staff (`components/school/StaffSignIn.tsx`). Needs the `microsoft.com` provider enabled in the Firebase project first |
 
 Stripe/Razorpay public keys are **not** env vars — they come from `/api/v1/subscriptions/config` at runtime.
 
@@ -318,7 +322,7 @@ Stripe/Razorpay public keys are **not** env vars — they come from `/api/v1/sub
 
 Branches: `feature/dev` → dev preview + dev backend; `master` → production.
 
-Security headers on all routes: `X-Frame-Options: DENY`, `nosniff`, strict referrer, Permissions-Policy, and a strict **CSP**. **Any new third-party script, API host, iframe or backend domain must be added to the CSP in `vercel.json`** (`script-src`, `connect-src`, `frame-src`) or it will silently fail in prod. It currently allows Google/Firebase, Stripe, Razorpay, Vercel analytics/live, and both Railway backends.
+Security headers on all routes: `X-Frame-Options: DENY`, `nosniff`, strict referrer, Permissions-Policy, and a strict **CSP**. **Any new third-party script, API host, iframe or backend domain must be added to the CSP in `vercel.json`** (`script-src`, `connect-src`, `frame-src`) or it will silently fail in prod. It currently allows Google/Firebase, Stripe, Razorpay, Vercel analytics/live, and both Railway backends. `script-src` has **no `'unsafe-inline'`** (#25): no inline `<script>` in `index.html`, no `on*=` attributes in injected HTML, no `eval`/`new Function` — load scripts from an allowed host instead. `e2e/csp.authed.spec.ts` fails on any blocked script.
 
 ---
 

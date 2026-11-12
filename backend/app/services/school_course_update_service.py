@@ -162,7 +162,9 @@ def propose_update_handler(job: dict) -> dict:
                                                      "core_question", "learning_objective")},
                          "id": ch.step_id, "chunk_ids": ch.matched_chunk_ids}
         else:  # add
-            synths[i] = {"id": "s" + uuid.uuid4().hex[:8], "title": ch.title, "description": "",
+            synths[i] = {"id": "s" + uuid.uuid4().hex[:8],
+                         # the heading comes from the uploaded document: untrusted
+                         "title": builder._sanitize_md(ch.title)[:200] or "New section", "description": "",
                          "type": "concept", "estimated_minutes": 10, "core_question": "",
                          "learning_objective": "", "chunk_ids": ch.matched_chunk_ids}
     bodies = _build_bodies(synths, chunks_by_id, school_id, journey_id, cfg_body, cfg_critic,

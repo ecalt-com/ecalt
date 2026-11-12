@@ -218,9 +218,11 @@ MATRIX: list[Case] = [
     Case("GET", "/api/v1/schools/{school_id}/usage", "school_admin",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/usage"),
     Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/students/{student_uid}/transcripts", "member",
-         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts"),
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts",
+         expect={"T2": "role"}),  # D4: own classes only
     Case("GET", "/api/v1/schools/{school_id}/classes/{class_id}/students/{student_uid}/transcripts/{conversation_id}", "member",
-         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts/{_s_conversation(w, db)}"),
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/classes/{w.A1['id']}/students/{w.S}/transcripts/{_s_conversation(w, db)}",
+         expect={"T2": "role"}),
     # ── M3: documents (any staff member) ──
     Case("POST", "/api/v1/schools/{school_id}/documents/upload-url", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/documents/upload-url",
@@ -253,6 +255,16 @@ MATRIX: list[Case] = [
     Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/draft/steps", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/draft/steps",
          body=lambda w, db: {"title": "New step"}),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/draft/steps/from-section", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/"
+                       f"{f.make_outlined_draft(db, w.school_a, skipped=[{'heading': 'Section 3', 'reason': 'x'}])}"
+                       "/draft/steps/from-section",
+         body=lambda w, db: {"heading": "Section 3"}),
+    Case("GET", "/api/v1/schools/{school_id}/courses/{journey_id}/chunks", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/chunks?ids=x"),
+    Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/draft/steps/{step_id}/quiz-preview", "member",
+         lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_built_draft(db, w.school_a)}/draft/steps/s1/quiz-preview",
+         body=lambda w, db: {}),
     Case("POST", "/api/v1/schools/{school_id}/courses/{journey_id}/draft/steps/reorder", "member",
          lambda w, db: f"/api/v1/schools/{_sid(w)}/courses/{f.make_outlined_draft(db, w.school_a)}/draft/steps/reorder",
          body=lambda w, db: {"order": ["s2", "s1"]}),
@@ -310,4 +322,11 @@ MATRIX: list[Case] = [
     Case("POST", "/api/v1/admin/schools/{school_id}/owner-invite", "ecalt_admin",
          lambda w, db: f"/api/v1/admin/schools/{_sid(w)}/owner-invite",
          body=lambda w, db: {"email": "owner2@school.example"}),
+    Case("GET", "/api/v1/admin/schools/jobs", "ecalt_admin", lambda w, db: "/api/v1/admin/schools/jobs"),
+    Case("POST", "/api/v1/admin/schools/jobs/{job_id}/retry", "ecalt_admin",
+         lambda w, db: f"/api/v1/admin/schools/jobs/{f.enqueue_job(db, w.school_a, status='failed')}/retry",
+         body=lambda w, db: {}),
+    Case("POST", "/api/v1/admin/schools/jobs/{job_id}/cancel", "ecalt_admin",
+         lambda w, db: f"/api/v1/admin/schools/jobs/{f.enqueue_job(db, w.school_a)}/cancel",
+         body=lambda w, db: {}),
 ]

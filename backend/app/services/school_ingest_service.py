@@ -8,6 +8,7 @@ Registered with the job queue at import.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -68,7 +69,17 @@ def extract_handler(job: dict) -> dict:
         return {"status": "skipped", "reason": "deleted"}
 
     _set_status(document_id, "extracting")
-    data = storage.download(doc["storage_path"])
+    # Parse exactly the bytes `complete` verified: the signed upload URL allows
+    # overwrites, so a file swapped in after verification is refused here.
+    try:
+        data = storage.download(doc["storage_path"],
+                                max_bytes=settings.SCHOOL_DOC_MAX_MB * 1024 * 1024)
+    except storage.ObjectTooLarge:
+        _set_status(document_id, "failed", error_code="changed_after_upload")
+        return {"status": "failed", "error_code": "changed_after_upload"}
+    if doc.get("sha256") and hashlib.sha256(data).hexdigest() != doc["sha256"]:
+        _set_status(document_id, "failed", error_code="changed_after_upload")
+        return {"status": "failed", "error_code": "changed_after_upload"}
     ext = _EXT.get(doc["mime"], "bin")
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -114,7 +125,7 @@ def _load(school_id: str, document_id: str) -> Optional[dict]:
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT id, school_id, mime, storage_path, status FROM source_documents WHERE id = %s AND school_id = %s",
+                "SELECT id, school_id, mime, storage_path, status, sha256 FROM source_documents WHERE id = %s AND school_id = %s",
                 (document_id, school_id),
             )
             row = cur.fetchone()

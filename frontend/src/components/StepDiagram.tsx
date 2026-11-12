@@ -59,7 +59,38 @@ export function MermaidDiagram({ code }: { code: string }) {
   )
 }
 
+// Mirror of the backend allowlist (ai_service._svg_is_safe). Defense in depth:
+// the server already drops unsafe SVG, but this keeps any stored legacy
+// content from reaching innerHTML.
+const SVG_ALLOWED_TAGS = new Set([
+  'svg', 'g', 'defs', 'marker', 'title', 'desc',
+  'rect', 'circle', 'ellipse', 'line', 'polyline', 'polygon', 'path',
+  'text', 'tspan', 'lineargradient', 'radialgradient', 'stop',
+])
+
+export function svgIsSafe(svg: string): boolean {
+  try {
+    const doc = new DOMParser().parseFromString(svg, 'image/svg+xml')
+    if (doc.getElementsByTagName('parsererror').length) return false
+    const root = doc.documentElement
+    const all = [root, ...Array.from(root.getElementsByTagName('*'))]
+    if (all.length > 60) return false
+    return all.every(el => {
+      if (!SVG_ALLOWED_TAGS.has(el.localName.toLowerCase())) return false
+      return Array.from(el.attributes).every(a => {
+        const name = a.localName.toLowerCase()
+        const value = a.value.toLowerCase()
+        return !name.startsWith('on') && !name.includes('href')
+          && !value.includes('javascript:') && !value.includes('data:')
+      })
+    })
+  } catch {
+    return false
+  }
+}
+
 export function SvgDiagram({ svg }: { svg: string }) {
+  if (!svgIsSafe(svg)) return null
   // Generated SVGs assume a light background — keep a white panel in dark mode.
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-slate-700/40 bg-white px-4 py-4 overflow-x-auto">

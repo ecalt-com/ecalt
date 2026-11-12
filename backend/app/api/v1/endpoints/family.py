@@ -30,7 +30,7 @@ from app.core.auth import (
 )
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.limiter import limiter
+from app.core.limiter import limiter, client_ip
 from app.core.jurisdiction import (
     ADULT_AGE,
     CONSENT_POLICY_VERSION,
@@ -184,7 +184,7 @@ async def create_child(body: CreateChildRequest, request: Request,
 
     child_uid = new_profile_uid()
     jurisdiction = (body.country.strip().upper() if body.country else None) or parent.get("jurisdiction")
-    ip = hash_ip(request.client.host if request.client else None)
+    ip = hash_ip(client_ip(request))
     age_group = "child" if is_hard_blocked(age) else "teen"
     chat_enabled = not is_hard_blocked(age)  # AI chat stays off for under-13s by default
     tier = required_verification_tier(jurisdiction, age)
@@ -495,7 +495,7 @@ async def _decide_link_request(token: str, approved: bool, request: Request, uid
             "error": "self_approval", "message": "You cannot approve your own consent request.",
         })
 
-    ip = hash_ip(request.client.host if request.client else None)
+    ip = hash_ip(client_ip(request))
     jurisdiction = row.get("jurisdiction")
 
     if approved:
@@ -626,7 +626,7 @@ def start_card_verification(child_uid: str, request: Request,
                 _verify_via_subscription(
                     child_uid, parent, sub,
                     jrow.get("jurisdiction") if jrow else None,
-                    hash_ip(request.client.host if request.client else None), cur,
+                    hash_ip(client_ip(request)), cur,
                 )
     if sub:
         invalidate_status_cache(child_uid)
@@ -717,7 +717,7 @@ def confirm_card_verification(child_uid: str, body: CardVerifyConfirmRequest,
                 parent_uid=uid, parent_email=parent.get("email"),
                 method="card",
                 jurisdiction=dict(jrow).get("jurisdiction") if jrow else None,
-                ip_hash=hash_ip(request.client.host if request.client else None),
+                ip_hash=hash_ip(client_ip(request)),
                 details={"stripe_session": body.session_id},
                 cur=cur,
             )
@@ -1085,7 +1085,7 @@ async def revoke_consent(child_uid: str, request: Request, uid: str = Depends(ge
                 parent_uid=uid, parent_email=parent.get("email"),
                 method="parent_dashboard",
                 jurisdiction=dict(child).get("jurisdiction"),
-                ip_hash=hash_ip(request.client.host if request.client else None),
+                ip_hash=hash_ip(client_ip(request)),
                 details={"grace_days": REVOCATION_GRACE_DAYS}, cur=cur,
             )
     invalidate_status_cache(child_uid)
@@ -1126,7 +1126,7 @@ def cancel_revocation(child_uid: str, request: Request, uid: str = Depends(get_p
                 parent_uid=uid, parent_email=parent.get("email"),
                 method="parent_dashboard",
                 jurisdiction=dict(jrow).get("jurisdiction") if jrow else None,
-                ip_hash=hash_ip(request.client.host if request.client else None),
+                ip_hash=hash_ip(client_ip(request)),
                 details={"trigger": "revocation_cancelled"}, cur=cur,
             )
     invalidate_status_cache(child_uid)
@@ -1159,7 +1159,7 @@ def child_reconsent(child_uid: str, request: Request, uid: str = Depends(get_par
                 parent_uid=uid, parent_email=parent.get("email"),
                 method="parent_dashboard",
                 jurisdiction=row.get("jurisdiction"),
-                ip_hash=hash_ip(request.client.host if request.client else None),
+                ip_hash=hash_ip(client_ip(request)),
                 details={"from_version": row.get("consent_version")}, cur=cur,
             )
     return {"status": "reconsented", "policy_version": CONSENT_POLICY_VERSION,
@@ -1192,7 +1192,7 @@ async def delete_child(child_uid: str, request: Request, uid: str = Depends(get_
         child_uid, "revoked",
         parent_uid=uid, parent_email=parent.get("email"),
         method="parent_dashboard",
-        ip_hash=hash_ip(request.client.host if request.client else None),
+        ip_hash=hash_ip(client_ip(request)),
         details={"trigger": "parent_deleted_child"},
     )
 

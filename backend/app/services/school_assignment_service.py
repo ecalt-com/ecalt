@@ -12,7 +12,7 @@ assignments and reads them back for staff (the Courses tab) and for students
 (the home screen). Settings are enforced in the chat and progress endpoints via
 ``student_assignment_settings`` (SC-503).
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import HTTPException
@@ -289,8 +289,44 @@ def class_progress_matrix(ctx: SchoolCtx, class_id: str) -> dict:
                 (cls["id"], ctx.school_id),
             )
             done_rows = cur.fetchall()
+            # Quiz stats + last activity per student × course, for the same
+            # "needs attention" flags the drill-down shows (#14, SC-702).
+            cur.execute(
+                """
+                SELECT q.uid, q.journey_id,
+                       COUNT(*) FILTER (WHERE NOT q.skipped)                AS attempts,
+                       COUNT(*) FILTER (WHERE q.is_correct)                 AS correct,
+                       COALESCE(SUM(q.hints_used), 0)                       AS hints,
+                       COUNT(DISTINCT q.step_id) FILTER (WHERE NOT q.skipped) AS quizzed_steps,
+                       MAX(q.answered_at)                                   AS last_answered
+                  FROM quiz_results q
+                  JOIN class_enrollments e
+                    ON e.student_uid = q.uid AND e.class_id = %s AND e.removed_at IS NULL
+                  JOIN course_assignments a
+                    ON a.journey_id = q.journey_id AND a.class_id = %s AND a.status = 'active'
+                 GROUP BY q.uid, q.journey_id
+                """,
+                (cls["id"], cls["id"]),
+            )
+            quiz_rows = cur.fetchall()
+            cur.execute(
+                """
+                SELECT up.uid, up.journey_id, MAX(up.completed_at) AS last_completed
+                  FROM user_progress up
+                  JOIN class_enrollments e
+                    ON e.student_uid = up.uid AND e.class_id = %s AND e.removed_at IS NULL
+                  JOIN course_assignments a
+                    ON a.journey_id = up.journey_id AND a.class_id = %s AND a.status = 'active'
+                 GROUP BY up.uid, up.journey_id
+                """,
+                (cls["id"], cls["id"]),
+            )
+            last_rows = cur.fetchall()
 
+    from app.services.school_analytics_service import struggle_flags
     done = {(r["student_uid"], r["journey_id"]): int(r["done"]) for r in done_rows}
+    quiz = {(r["uid"], r["journey_id"]): r for r in quiz_rows}
+    last_done = {(r["uid"], r["journey_id"]): r["last_completed"] for r in last_rows}
     now = datetime.now(timezone.utc)
 
     courses = [{
@@ -312,19 +348,37 @@ def class_progress_matrix(ctx: SchoolCtx, class_id: str) -> dict:
                 d = min(d, total)
             completed = bool(total and d >= total)
             overdue = bool(a["due_at"] and not completed and a["due_at"] < now)
+            key = (s["uid"], a["journey_id"])
+            q = quiz.get(key)
+            attempts = int(q["attempts"]) if q else 0
+            last_active = max([t for t in (last_done.get(key), q["last_answered"] if q else None) if t],
+                              default=None)
+            flags = struggle_flags({
+                "overdue": overdue,
+                "attempts": attempts,
+                "accuracy": (int(q["correct"]) / attempts) if attempts else None,
+                "hints": int(q["hints"]) if q else 0,
+                "quizzed_steps": int(q["quizzed_steps"]) if q else 0,
+                "stalled": bool(d > 0 and not completed and last_active
+                                and (now - last_active) > timedelta(days=7)),
+            })
             cells[a["journey_id"]] = {
                 "done": d,
                 "total": total,
                 "percent": round(d / total * 100) if total else 0,
                 "completed": completed,
                 "overdue": overdue,
+                "flags": flags,
             }
+        row_flags = sorted({fl for c in cells.values() for fl in c["flags"]})
         rows.append({
             "uid": s["uid"],
             "display_name": s["display_name"],
             "avatar": s["avatar"],
             "grade": s["grade"],
             "cells": cells,
+            "flags": row_flags,
+            "needs_attention": bool(row_flags),
         })
 
     return {"students": rows, "courses": courses}

@@ -22,3 +22,15 @@ test.describe('public smoke', () => {
     await expect(page.locator('#root')).not.toBeEmpty()
   })
 })
+
+test.describe('staff sign-in', () => {
+  test('signed-out /school offers staff sign-in instead of bouncing home', async ({ page }) => {
+    await page.goto('/school')
+    await expect(page.getByRole('heading', { name: 'Sign in to your school' })).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('button', { name: 'Continue with Google' })).toBeVisible()
+    // Microsoft appears only when VITE_MICROSOFT_SIGNIN=true on the deployment.
+    if (await page.getByTestId('microsoft-sign-in').count()) {
+      await expect(page.getByTestId('microsoft-sign-in')).toHaveText(/Continue with Microsoft/)
+    }
+  })
+})

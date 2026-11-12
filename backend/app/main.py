@@ -60,10 +60,12 @@ async def lifespan(_app: FastAPI):
         stop_worker()
 
 if settings.SENTRY_DSN:
+    from app.core.sentry_scrub import init_options
     sentry_sdk.init(
         dsn=settings.SENTRY_DSN,
         traces_sample_rate=0.1,
         environment=settings.ENVIRONMENT,
+        **init_options(),
     )
 
 _DESCRIPTION = """

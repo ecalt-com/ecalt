@@ -9,7 +9,8 @@ import {
   getAdditionalUserInfo,
   type User,
 } from 'firebase/auth'
-import { firebaseAuth, googleProvider } from './firebase'
+import { firebaseAuth, googleProvider, microsoftProvider } from './firebase'
+import { setStudentSession } from './telemetryPrivacy'
 import { clearParentUnlock, setAccount as setProfileAccount } from './profileStore'
 
 // /claim is where a teen attaches their own Google login to an existing family
@@ -34,7 +35,7 @@ interface AuthContextValue {
   parentEmail: string | null
   role: UserRole | null
   accountKind: AccountKind | null
-  signIn: () => Promise<void>
+  signIn: (provider?: 'google' | 'microsoft') => Promise<void>
   // Class-code / badge sign-in: exchange the backend's custom token. Session
   // persistence — classroom devices are shared, closing the tab signs out.
   signInWithClassToken: (customToken: string) => Promise<void>
@@ -103,6 +104,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Before any state update, so the first requests children fire already
       // carry this device's chosen family profile.
       setProfileAccount(u?.uid ?? null)
+      setStudentSession(isStudentUid(u?.uid))
       userRef.current = u
       setUser(u)
       setLoading(false)
@@ -150,12 +152,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return unsub
   }, [])
 
-  const signIn = async () => {
+  const signIn = async (provider: 'google' | 'microsoft' = 'google') => {
     if (signingIn.current) return
     signingIn.current = true
     let result
     try {
-      result = await signInWithPopup(firebaseAuth, googleProvider)
+      result = await signInWithPopup(firebaseAuth, provider === 'microsoft' ? microsoftProvider : googleProvider)
     } finally {
       signingIn.current = false
     }

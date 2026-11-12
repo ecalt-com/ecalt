@@ -24,7 +24,8 @@ TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL", "")
 
 __all__ = [
     "World", "clear_caches", "client", "db", "school_db_url", "sent_emails", "world", "firebase_deletes",
-    "fake_service_account", "fake_storage", "fake_images", "_db_tables", "_no_real_email", "_school_test_env",
+    "fake_service_account", "fake_storage", "fake_images", "fake_quiz_preview", "_db_tables", "_no_real_email",
+    "_school_test_env",
 ]
 
 
@@ -129,19 +130,30 @@ def fake_storage(monkeypatch):
         return {"upload_url": f"https://fake.storage.invalid/{object_path}",
                 "token": "fake-token", "path": object_path}
 
-    def _download(object_path):
+    def _download(object_path, *, max_bytes=None):
         if object_path in store:
-            return store[object_path]
-        return _minimal_docx() if object_path.endswith(".docx") else canned_pdf
+            data = store[object_path]
+        else:
+            data = _minimal_docx() if object_path.endswith(".docx") else canned_pdf
+        if max_bytes is not None and len(data) > max_bytes:
+            raise storage.ObjectTooLarge(f"object exceeds {max_bytes} bytes")
+        return data
 
     monkeypatch.setattr(storage, "storage_enabled", lambda: True)
     monkeypatch.setattr(storage, "signed_upload_url", _signed)
     monkeypatch.setattr(storage, "download", _download)
-    monkeypatch.setattr(storage, "delete", lambda object_path: store.pop(object_path, None))
+    deleted: list[str] = []
+
+    def _delete(object_path, *, strict=False):
+        deleted.append(object_path)
+        store.pop(object_path, None)
+
+    monkeypatch.setattr(storage, "delete", _delete)
 
     class _Fake:
         def __init__(self):
             self.store = store
+            self.deleted = deleted
             self.minimal_docx = staticmethod(_minimal_docx)
         def put(self, path: str, data: bytes) -> None:
             store[path] = data
@@ -165,7 +177,26 @@ def fake_images(monkeypatch):
     monkeypatch.setattr(image_service, "images_enabled", lambda: True)
     monkeypatch.setattr(image_service, "generate_hero_image", _gen)
     monkeypatch.setattr(image_service, "upload_journey_image", _upload)
+    image_service.deleted_urls = []
+    monkeypatch.setattr(image_service, "delete_journey_image",
+                        lambda url: image_service.deleted_urls.append(url) or True)
     return image_service
+
+
+@pytest.fixture(autouse=True)
+def fake_quiz_preview(monkeypatch):
+    """Stub the course builder's quiz-preview model call (#16)."""
+    import json as _json
+    from app.services import school_course_service
+    calls: list = []
+
+    async def _call(system, user_content):
+        calls.append(user_content)
+        return _json.dumps([{"question": "What do plants make from light?", "correct_answer": "Food"},
+                            {"question": "Where does it happen?", "correct_answer": "In the leaves"}]), 120, 60
+
+    monkeypatch.setattr(school_course_service, "_quiz_model_call", _call)
+    return calls
 
 
 @pytest.fixture(scope="session")

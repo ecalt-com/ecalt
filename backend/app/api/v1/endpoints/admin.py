@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from typing import Optional
 
@@ -1582,3 +1582,20 @@ def update_notification_template(
         template=body.template,
         updated_by=uid,
     )
+
+
+@router.get("/diagnostics/client-ip")
+def client_ip_diagnostics(request: Request, _uid: str = Depends(get_admin_user)):
+    """What the rate limiter sees as the caller's address (SC-009 / #19).
+    Compare `limiter_key` with your own public IP, direct and via the SPA."""
+    from app.core.limiter import client_ip
+    h = request.headers
+    return {
+        "client_host": request.client.host if request.client else None,
+        "x_forwarded_for": h.get("x-forwarded-for"),
+        "x_real_ip": h.get("x-real-ip"),
+        "x_vercel_forwarded_for": h.get("x-vercel-forwarded-for"),
+        "x_envoy_external_address": h.get("x-envoy-external-address"),
+        "limiter_key": client_ip(request),
+        "header_names": sorted(h.keys()),
+    }

@@ -40,6 +40,7 @@ export interface School {
   student_count: number
   created_at: string
   terminated_at: string | null
+  deletion_due_at?: string | null   // terminated schools: when the nightly job deletes the data
   my_role?: StaffRole                // staff view only
 }
 
@@ -149,6 +150,34 @@ export const adminUpdateSchool = (schoolId: string, body: AdminUpdateSchool, tok
 export const adminInviteOwner = (schoolId: string, email: string, token: string): Promise<CreatedInvite> =>
   request(`/api/v1/admin/schools/${enc(schoolId)}/owner-invite`, json('POST', { email }), token)
 
+// ECALT support: the school job queue across schools (SC-805/806).
+export type AdminJobState = 'attention' | 'failed' | 'stuck' | 'active'
+export interface AdminJob {
+  id: string
+  school_id: string
+  school_name: string
+  kind: string
+  status: string
+  attempts: number
+  max_attempts: number
+  error: string | null
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  journey_id: string | null
+  cancel_requested: boolean
+}
+export interface JobQueueHealth {
+  queued: number; running: number; stuck_queued: number; stuck_running: number
+  failed_last_hour: number; failed_last_day: number
+}
+export const adminListJobs = (state: AdminJobState, token: string): Promise<{ jobs: AdminJob[]; health: JobQueueHealth }> =>
+  request(`/api/v1/admin/schools/jobs?state=${state}`, undefined, token)
+export const adminRetryJob = (jobId: string, token: string): Promise<AdminJob> =>
+  request(`/api/v1/admin/schools/jobs/${enc(jobId)}/retry`, json('POST'), token)
+export const adminCancelJob = (jobId: string, token: string): Promise<{ id: string; status: string }> =>
+  request(`/api/v1/admin/schools/jobs/${enc(jobId)}/cancel`, json('POST'), token)
+
 // ── Permissions (mirror of TESTING.md §4; the API stays the authority) ───────
 
 export type SchoolAction = 'manage_settings' | 'manage_staff' | 'invite_owner' | 'accept_dpa' | 'view_budget'
@@ -212,6 +241,10 @@ export function schoolErrorMessage(code: string | null, fallback = 'Something we
     case 'macro': return "Macro-enabled documents aren't allowed. Remove macros and re-upload."
     case 'corrupt': return "That file didn't look like a valid PDF or Word document."
     case 'upload_missing': return "We couldn't find the uploaded file. Please try again."
+    case 'section_not_found': return 'That section is no longer in the Not covered list.'
+    case 'section_has_no_text': return "We couldn't find that section's text in the document."
+    case 'step_has_no_content': return 'Write or build this step before previewing its quiz.'
+    case 'image_unavailable': return "Image generation isn't set up yet."
     default: return fallback
   }
 }
@@ -545,7 +578,8 @@ export interface CourseStep {
   build_status: 'built' | 'failed' | 'empty'
 }
 
-export interface SkippedSection { title?: string; reason?: string; chunk_ids?: string[] }
+// The outline model returns `heading`; older drafts may carry `title`.
+export interface SkippedSection { heading?: string; title?: string; reason?: string }
 
 export interface CourseDraft {
   version: number
@@ -559,6 +593,9 @@ export interface CourseDraft {
     estimated_hours?: number
     inputs?: OutlineInputs
     skipped_sections?: SkippedSection[]
+    icon?: string | null
+    tags?: string[]
+    hero_image_url?: string | null
     [k: string]: unknown
   }
   steps: CourseStep[]
@@ -580,6 +617,10 @@ export interface CourseEstimate {
   chunk_count: number
   input_tokens: number
   estimated_cost_cents: number
+  estimated_steps?: number
+  estimated_minutes?: number          // rough generation time
+  budget_cents?: number               // this month's AI budget
+  budget_remaining_cents?: number
 }
 
 export interface SchoolJob {
@@ -637,10 +678,37 @@ export const cancelSchoolJob = (schoolId: string, jobId: string, token: string):
 
 export const patchCourseMeta = (
   schoolId: string, jid: string,
-  body: { title?: string; description?: string; estimated_hours?: number; expected_revision?: number },
+  body: { title?: string; description?: string; estimated_hours?: number; icon?: string; tags?: string[]; expected_revision?: number },
   token: string,
 ): Promise<Course> =>
   request(`${courses(schoolId)}/${enc(jid)}/draft`, json('PATCH', body), token)
+
+// #16 builder extras
+export interface SourceChunk {
+  id: string
+  document_id: string
+  filename: string
+  heading_path: string[]
+  page_start: number | null
+  page_end: number | null
+  text: string
+}
+
+export const getSourceChunks = (schoolId: string, jid: string, ids: string[], token: string): Promise<{ chunks: SourceChunk[] }> =>
+  request(`${courses(schoolId)}/${enc(jid)}/chunks?ids=${ids.map(enc).join(',')}`, undefined, token)
+
+export const addStepFromSection = (
+  schoolId: string, jid: string, heading: string, expectedRevision: number | undefined, token: string,
+): Promise<Course> =>
+  request(`${courses(schoolId)}/${enc(jid)}/draft/steps/from-section`, json('POST', { heading, expected_revision: expectedRevision }), token)
+
+export interface QuizPreviewQuestion { question: string; answer: string; difficulty: string | null }
+
+export const previewStepQuiz = (schoolId: string, jid: string, stepId: string, token: string): Promise<{ questions: QuizPreviewQuestion[] }> =>
+  request(`${courses(schoolId)}/${enc(jid)}/draft/steps/${enc(stepId)}/quiz-preview`, json('POST'), token)
+
+export const generateCourseHero = (schoolId: string, jid: string, token: string): Promise<{ hero_image_url: string }> =>
+  request(`${courses(schoolId)}/${enc(jid)}/hero-image`, json('POST'), token)
 
 export const addCourseStep = (
   schoolId: string, jid: string,
@@ -807,7 +875,17 @@ export interface ProgressCell {
   percent: number
   completed: boolean
   overdue: boolean
+  flags?: string[]          // "needs attention" flags (SC-702), same as the drill-down
 }
+
+// Labels for the struggle flags (SC-702).
+export const STRUGGLE_FLAG_LABEL: Record<string, string> = {
+  overdue: 'Overdue',
+  low_quiz_accuracy: 'Low quiz scores',
+  heavy_hints: 'Needs many hints',
+  stalled: 'Stalled',
+}
+export const flagLabel = (f: string) => STRUGGLE_FLAG_LABEL[f] ?? f
 
 export interface ProgressCourseCol {
   assignment_id: string
@@ -824,6 +902,8 @@ export interface ProgressStudentRow {
   avatar: string | null
   grade: number | null
   cells: Record<string, ProgressCell>
+  flags?: string[]          // union of the row's cell flags
+  needs_attention?: boolean
 }
 
 export const getClassProgress = (

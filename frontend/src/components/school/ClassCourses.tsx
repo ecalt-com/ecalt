@@ -27,8 +27,9 @@ function dueLabel(iso: string | null): { text: string; overdue: boolean } | null
 // to a class with a progress summary, and (for class staff) lets them assign a
 // published course, set a due date, toggle the tutor / quiz-required, or
 // unassign. The API is the authority; controls are hidden when canManage is false.
-export default function ClassCourses({ schoolId, classId, canManage }: {
+export default function ClassCourses({ schoolId, classId, canManage, onChanged }: {
   schoolId: string; classId: string; canManage: boolean
+  onChanged?: () => void   // assignments changed (the class page refreshes progress)
 }) {
   const { getToken } = useAuth()
   const { addToast } = useToast()
@@ -82,7 +83,7 @@ export default function ClassCourses({ schoolId, classId, canManage }: {
     const r = await act('assign', t => assignCourse(schoolId, classId, {
       journey_id: pick, due_at: toDueIso(due), tutor_enabled: tutor, quiz_required: quiz,
     }, t), 'Course assigned ✓')
-    if (r) { setPick(''); setDue(''); setTutor(true); setQuiz(false); load() }
+    if (r) { setPick(''); setDue(''); setTutor(true); setQuiz(false); load(); onChanged?.() }
   }
 
   const patch = async (a: Assignment, body: { due_at?: string | null; tutor_enabled?: boolean; quiz_required?: boolean }) => {
@@ -126,7 +127,7 @@ export default function ClassCourses({ schoolId, classId, canManage }: {
                     confirmUnassign === a.id ? (
                       <span className="flex items-center gap-1 shrink-0">
                         <button
-                          onClick={async () => { if (await act(a.id, t => unassignCourse(schoolId, classId, a.id, t).then(() => true), 'Course unassigned')) { setConfirmUnassign(null); load() } }}
+                          onClick={async () => { if (await act(a.id, t => unassignCourse(schoolId, classId, a.id, t).then(() => true), 'Course unassigned')) { setConfirmUnassign(null); load(); onChanged?.() } }}
                           disabled={busy !== null} className="px-2 py-1 rounded-lg text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white"
                         >Remove</button>
                         <button onClick={() => setConfirmUnassign(null)} className="px-2 py-1 rounded-lg text-xs text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">Cancel</button>

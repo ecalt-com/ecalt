@@ -289,14 +289,14 @@ Settings read from `.env`, so every test that depends on a `SCHOOL_*` flag patch
 | G8 | GA | full security sweep (SC-801), PERF-01..06, INV-13c offboarding verified on dev, legal copy live, pilot sign-off (§11) |
 
 ### Performance targets (L8)
-| ID | Scenario | Target |
-|---|---|---|
-| PERF-01 | 40 student logins within 60 s from **one IP** | p95 < 1.5 s, 0 throttled |
-| PERF-02 | 30 students reading cached step content at once | p95 < 500 ms |
-| PERF-03 | Roster import of 2,000 rows | < 30 s, single transaction, all-or-nothing |
-| PERF-04 | Class progress matrix, 40 students × 20 courses | < 1 s |
-| PERF-05 | 100-page document, full build at concurrency 4 | < 10 min |
-| PERF-06 | 10 schools queue builds at once | per-school concurrency respected; no school waits > 2 × its fair share |
+| ID | Scenario | Target | Result (dev, 2026-11-05, `frontend/e2e/load_classroom.mjs`) |
+|---|---|---|---|
+| PERF-01 | 40 student logins within 60 s from **one IP** | p95 < 1.5 s, 0 throttled | 40/40 in 10 s, 0 throttled. Sign-in p95 2.9 s measured from India incl. ~0.7 s network → **~2.2 s server-side: misses target on the dev instance.** First run failed 13/40 (DB pool exhaustion → fixed: requests now wait for a connection, pool 20). Re-measure on the prod instance before GA |
+| PERF-02 | 30 students reading cached step content at once | p95 < 500 ms | 40 at once: journey p95 2.7 s / progress p95 1.5 s client-side incl. ~0.7 s network → ~2.0 s / 0.8 s server-side under the sign-in burst. Not isolated yet |
+| PERF-03 | Roster import of 2,000 rows | < 30 s, single transaction, all-or-nothing | ✅ 0.4 s locally (`test_perf_roster.py`; batched inserts, so network adds little); 40 rows 0.6 s on dev |
+| PERF-04 | Class progress matrix, 40 students × 20 courses | < 1 s | ✅ p95 0.55 s on dev incl. network |
+| PERF-05 | 100-page document, full build at concurrency 4 | < 10 min | Not run (real model spend); measure during the pilot |
+| PERF-06 | 10 schools queue builds at once | per-school concurrency respected; no school waits > 2 × its fair share | Per-school cap covered by `test_school_jobs.py`; no multi-school load run |
 
 ---
 

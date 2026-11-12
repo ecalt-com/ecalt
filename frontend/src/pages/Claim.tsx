@@ -74,7 +74,7 @@ export default function Claim() {
               {authLoading ? (
                 <div className="flex justify-center py-4"><Loader2 size={20} className="animate-spin text-violet-500" /></div>
               ) : !user ? (
-                <button onClick={signIn} className="w-full btn-primary">Sign in with Google</button>
+                <button onClick={() => signIn()} className="w-full btn-primary">Sign in with Google</button>
               ) : (
                 <>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">

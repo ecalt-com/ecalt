@@ -7,6 +7,7 @@ import {
   type School, type SchoolStatus,
 } from '../../../lib/schoolApi'
 import { inputCls, selectCls } from '../constants'
+import { SchoolJobsPanel } from './SchoolJobsPanel'
 
 interface SchoolsTabProps {
   getToken: () => Promise<string | null>
@@ -165,6 +166,8 @@ export function SchoolsTab({ getToken }: SchoolsTabProps) {
         <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">Schools ({total})</h2>
       </div>
 
+      <SchoolJobsPanel getToken={getToken} />
+
       <form onSubmit={create} className="glass-card rounded-xl p-4 grid grid-cols-2 md:grid-cols-6 gap-3 items-end">
         <label className="col-span-2 text-xs text-slate-500">School name
           <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} required maxLength={120} placeholder="Delhi Public School" className={inputCls} />
@@ -225,6 +228,11 @@ export function SchoolsTab({ getToken }: SchoolsTabProps) {
                       {school.staff_count} staff · {school.student_count}/{school.seat_limit} students ·{' '}
                       {school.dpa_accepted ? 'DPA accepted' : 'DPA not accepted'}
                     </p>
+                    {closed && school.deletion_due_at && (
+                      <p className="text-xs text-rose-600 dark:text-rose-400 mt-0.5" data-testid="school-deletion-due">
+                        All data is deleted on {new Date(school.deletion_due_at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}. Export anything the school needs before then.
+                      </p>
+                    )}
                   </div>
                   <select
                     value={school.status}

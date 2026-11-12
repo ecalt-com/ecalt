@@ -14,6 +14,7 @@ are only ever reached with the service-role key or a signed URL).
 from __future__ import annotations
 
 import logging
+from typing import Optional
 
 import httpx
 
@@ -76,29 +77,57 @@ def signed_upload_url(object_path: str, *, upsert: bool = True) -> dict:
     return {"upload_url": f"{_base()}/storage/v1{signed}", "token": token, "path": object_path}
 
 
-def download(object_path: str) -> bytes:
-    """Fetch the stored object's bytes (used by `complete` to verify the file)."""
+class ObjectTooLarge(StorageError):
+    """The stored object is bigger than the caller allows."""
+
+
+def download(object_path: str, *, max_bytes: Optional[int] = None) -> bytes:
+    """Fetch the stored object's bytes (used by `complete` to verify the file
+    and by extraction). With `max_bytes`, the body is streamed and the download
+    aborts with ObjectTooLarge as soon as it passes the limit, so an oversized
+    object never lands in memory."""
     _require()
     url = f"{_base()}/storage/v1/object/{_bucket()}/{object_path}"
     try:
         with httpx.Client(timeout=_TIMEOUT) as http:
-            resp = http.get(url, headers=_auth())
-            resp.raise_for_status()
-            return resp.content
+            with http.stream("GET", url, headers=_auth()) as resp:
+                resp.raise_for_status()
+                buf = bytearray()
+                for chunk in resp.iter_bytes():
+                    buf.extend(chunk)
+                    if max_bytes is not None and len(buf) > max_bytes:
+                        raise ObjectTooLarge(f"object exceeds {max_bytes} bytes")
+                return bytes(buf)
     except httpx.HTTPError as exc:
         raise StorageError(f"download failed: {exc}") from exc
 
 
-def delete(object_path: str) -> None:
-    """Remove the stored object. A missing object is treated as already gone."""
+def object_missing(resp: httpx.Response) -> bool:
+    """Supabase Storage answers a missing object or bucket with HTTP 400 and
+    {"statusCode": "404"} in the body (some versions send a plain 404)."""
+    if resp.status_code == 404:
+        return True
+    if resp.status_code != 400:
+        return False
+    try:
+        return str(resp.json().get("statusCode")) == "404"
+    except ValueError:
+        return False
+
+
+def delete(object_path: str, *, strict: bool = False) -> None:
+    """Remove the stored object. A missing object is treated as already gone.
+    strict=True raises StorageError on failure (offboarding must know)."""
     _require()
     url = f"{_base()}/storage/v1/object/{_bucket()}/{object_path}"
     try:
         with httpx.Client(timeout=_TIMEOUT) as http:
             resp = http.delete(url, headers=_auth())
-            if resp.status_code == 404:
+            if object_missing(resp):
                 return
             resp.raise_for_status()
     except httpx.HTTPError as exc:
+        if strict:
+            raise StorageError(f"delete failed: {exc}") from exc
         # A delete failure shouldn't block the DB soft-delete; log and move on.
         logger.warning("storage delete failed for %s: %s", object_path, exc)

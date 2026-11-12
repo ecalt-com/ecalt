@@ -27,6 +27,10 @@ class Settings(BaseSettings):
 
     # Postgres — prefer DATABASE_URL (Supabase pooler); fallback to individual params
     DATABASE_URL: str = ""
+    # Connections per process, and how long a request waits for a free one
+    # before answering 503 server_busy (SC-802: a class signing in at once).
+    DB_POOL_MAX: int = 20
+    DB_POOL_WAIT_SECONDS: float = 10.0
     DB_HOST: str = ""
     DB_PORT: int = 5432
     DB_NAME: str = "postgres"
@@ -94,11 +98,17 @@ class Settings(BaseSettings):
     # classroom burst at the bell. NB (SC-009): behind Railway's proxy the
     # limiter may see the proxy IP, making these effectively shared — tune up or
     # resolve the proxy-IP keying before a large deployment.
+    # Trust Vercel's x-vercel-forwarded-for when the request carries its proxy
+    # signature (SPA calls via the /api rewrite). See core/limiter.py.
+    RATE_LIMIT_TRUST_VERCEL_HEADER: bool = True
     SCHOOL_SIGNIN_RATELIMIT: str = "240/minute"
     SCHOOL_BADGE_RATELIMIT: str = "120/minute"
     # Days to keep high-volume 'student.sign_in_failed' audit rows (the class
     # throttle only needs the last few minutes). Other audit events are kept.
     SCHOOL_SIGNIN_FAIL_RETENTION_DAYS: int = 30
+    # Days a terminated school's data is kept (for export) before the nightly
+    # offboarding job deletes it (SC-803, DPA §9.2).
+    SCHOOL_OFFBOARDING_GRACE_DAYS: int = 30
 
     # ── Document ingestion + course builder (M3/M4, README §3.6–3.14) ──────────
     # The in-process background-job worker (document extraction, course

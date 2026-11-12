@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
-import { NavLink, Outlet, useNavigate, useOutletContext } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { NavLink, Outlet, useLocation, useOutletContext } from 'react-router-dom'
 import { Loader2, School as SchoolIcon, ShieldAlert } from 'lucide-react'
 import clsx from 'clsx'
 import Navigation from '../../components/Navigation'
 import PageMeta from '../../components/PageMeta'
 import { useAuth } from '../../lib/AuthContext'
+import StaffSignIn from '../../components/school/StaffSignIn'
 import { useSchool } from '../../lib/SchoolContext'
 import { apiErrorCode } from '../../lib/api'
 import { getSchool, ROLE_LABEL, schoolErrorMessage, type School } from '../../lib/schoolApi'
@@ -36,15 +37,27 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 // Staff area shell (backend/plans/school-courses/frontend-changes.md §2).
 export default function SchoolLayout() {
+  // On phones the tab row scrolls sideways; keep the current section's tab in
+  // view. The row mounts after the school loads, so scroll from a callback ref
+  // (first render) and again on every route change.
+  const tabsRef = useRef<HTMLElement | null>(null)
+  const { pathname: tabPath } = useLocation()
+  const revealActiveTab = useCallback(() => {
+    const nav = tabsRef.current
+    const tab = nav?.querySelector<HTMLElement>('a.bg-violet-600')
+    if (!nav || !tab) return
+    const left = tab.offsetLeft - nav.offsetLeft
+    if (left < nav.scrollLeft || left + tab.offsetWidth > nav.scrollLeft + nav.clientWidth) {
+      nav.scrollLeft = Math.max(0, left - (nav.clientWidth - tab.offsetWidth) / 2)
+    }
+  }, [])
+  const setTabsRef = useCallback((el: HTMLElement | null) => { tabsRef.current = el; revealActiveTab() }, [revealActiveTab])
+  useEffect(() => { revealActiveTab() }, [tabPath, revealActiveTab])
   const { user, loading: authLoading, getToken } = useAuth()
   const { loaded, schools, activeSchool, setActiveSchool, refresh } = useSchool()
-  const navigate = useNavigate()
   const [school, setSchool] = useState<School | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!authLoading && !user) navigate('/', { replace: true })
-  }, [authLoading, user, navigate])
 
   const reload = useCallback(async () => {
     if (!activeSchool) return
@@ -70,6 +83,17 @@ export default function SchoolLayout() {
     setError(null)
     reload()
   }, [reload])
+
+  // Signed out: offer staff sign-in here instead of bouncing to the home page.
+  if (!authLoading && !user) {
+    return (
+      <Centered>
+        <h1 className="text-lg font-bold text-slate-900 dark:text-slate-100 mb-1">Sign in to your school</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">For teachers and school staff. Students sign in at <span className="font-medium">/class</span> with their class code.</p>
+        <StaffSignIn />
+      </Centered>
+    )
+  }
 
   if (authLoading || !user || !loaded) {
     return <Centered><Loader2 className="animate-spin text-violet-500 mx-auto" /></Centered>
@@ -151,7 +175,7 @@ export default function SchoolLayout() {
             )}
           </div>
 
-          <nav aria-label="School sections" className="flex gap-1 mb-6 p-1 glass-card rounded-xl overflow-x-auto flex-nowrap w-fit max-w-full">
+          <nav ref={setTabsRef} aria-label="School sections" className="flex gap-1 mb-6 p-1 glass-card rounded-xl overflow-x-auto flex-nowrap w-fit max-w-full">
             {tabs.map(t => (
               <NavLink
                 key={t.to}

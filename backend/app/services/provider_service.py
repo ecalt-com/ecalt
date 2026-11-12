@@ -506,51 +506,56 @@ DEFAULT_STYLE_PROMPTS: dict[str, str] = {
 
 AVAILABLE_MODELS: dict[str, list[dict]] = {
     "anthropic": [
-        {"id": "claude-haiku-4-5-20251001", "label": "Claude Haiku 4.5 (fast, cheap)"},
-        {"id": "claude-sonnet-4-6",          "label": "Claude Sonnet 4.6 (balanced)"},
-        {"id": "claude-opus-4-7",            "label": "Claude Opus 4.7 (powerful)"},
+        {"id": "claude-haiku-5-5",  "label": "Claude Haiku 5.5 (fast, cheap)"},
+        {"id": "claude-sonnet-5-5", "label": "Claude Sonnet 5.5 (balanced)"},
+        {"id": "claude-opus-5-5",   "label": "Claude Opus 5.5 (powerful)"},
     ],
     "openai": [
-        {"id": "gpt-4o-mini",  "label": "GPT-4o Mini (fast, cheap)"},
-        {"id": "gpt-4.1-mini", "label": "GPT-4.1 Mini (balanced, efficient)"},
-        {"id": "gpt-4o",       "label": "GPT-4o (capable)"},
-        {"id": "gpt-4.1",      "label": "GPT-4.1 (powerful)"},
-        {"id": "o1-mini",      "label": "o1 Mini (reasoning)"},
+        {"id": "gpt-6-luna",    "label": "GPT-6 Luna (fast, cheap)"},
+        {"id": "gpt-6.1-terra", "label": "GPT-6.1 Terra (balanced)"},
+        {"id": "gpt-6.1-sol",   "label": "GPT-6.1 Sol (powerful)"},
     ],
 }
 
 # Default config used when DB has no row for an interaction type
 DEFAULT_CONFIG: dict[str, dict] = {
-    "daily_chat":           {"provider": "openai", "model": "gpt-4o-mini"},
-    "nudge":                {"provider": "openai", "model": "gpt-4o-mini"},
-    "onboarding":           {"provider": "openai", "model": "gpt-4o-mini"},
-    "fingerprint":          {"provider": "openai", "model": "gpt-4o-mini"},
-    "mind_signature":       {"provider": "openai", "model": "gpt-4o-mini"},
-    "spark":                {"provider": "openai", "model": "gpt-4.1-mini"},
-    "daily_spark":          {"provider": "openai", "model": "gpt-4o-mini"},
-    "knowledge_extraction": {"provider": "openai", "model": "gpt-4o-mini"},
-    "journey":              {"provider": "openai", "model": "gpt-4.1"},
-    "step_content":         {"provider": "openai", "model": "gpt-4.1-mini"},
-    "content_critic":       {"provider": "openai", "model": "gpt-4o-mini"},
-    "quiz":                 {"provider": "openai", "model": "gpt-4o-mini"},
-    "journey_tutor":        {"provider": "openai", "model": "gpt-4o-mini"},
+    "daily_chat":           {"provider": "openai", "model": "gpt-6-luna"},
+    "nudge":                {"provider": "openai", "model": "gpt-6-luna"},
+    "onboarding":           {"provider": "openai", "model": "gpt-6-luna"},
+    "fingerprint":          {"provider": "openai", "model": "gpt-6-luna"},
+    "mind_signature":       {"provider": "openai", "model": "gpt-6-luna"},
+    "spark":                {"provider": "openai", "model": "gpt-6-luna"},
+    "daily_spark":          {"provider": "openai", "model": "gpt-6-luna"},
+    "knowledge_extraction": {"provider": "openai", "model": "gpt-6-luna"},
+    "journey":              {"provider": "openai", "model": "gpt-6-luna"},
+    "step_content":         {"provider": "openai", "model": "gpt-6-luna"},
+    "content_critic":       {"provider": "openai", "model": "gpt-6-luna"},
+    "quiz":                 {"provider": "openai", "model": "gpt-6-luna"},
+    "journey_tutor":        {"provider": "openai", "model": "gpt-6-luna"},
     "journey_image":        {"provider": "openai", "model": "gpt-image-1-mini"},
-    "visual_planner":       {"provider": "openai", "model": "gpt-4o-mini"},
-    "visual_recipe":        {"provider": "openai", "model": "gpt-4.1-mini"},
+    "visual_planner":       {"provider": "openai", "model": "gpt-6-luna"},
+    "visual_recipe":        {"provider": "openai", "model": "gpt-6-luna"},
     "visual_image":         {"provider": "openai", "model": "gpt-image-1-mini"},
     # School course builder (M4)
-    "school_course_outline":      {"provider": "openai", "model": "gpt-4.1"},
-    "school_step_content":        {"provider": "openai", "model": "gpt-4.1-mini"},
-    "school_faithfulness_critic": {"provider": "openai", "model": "gpt-4.1-mini"},
+    "school_course_outline":      {"provider": "openai", "model": "gpt-6-luna"},
+    "school_step_content":        {"provider": "openai", "model": "gpt-6-luna"},
+    "school_faithfulness_critic": {"provider": "openai", "model": "gpt-6-luna"},
 }
 
 # Cost per token in cents (input, output)
 COST_PER_TOKEN: dict[str, dict[str, float]] = {
     # Anthropic
+    "claude-haiku-5-5":          {"input": 0.000010, "output": 0.000050},
+    "claude-sonnet-5-5":         {"input": 0.000200, "output": 0.001000},
+    "claude-opus-5-5":           {"input": 0.000400, "output": 0.002000},
+    # OpenAI
+    "gpt-6-luna":                {"input": 0.000010, "output": 0.000050},
+    "gpt-6.1-terra":             {"input": 0.000100, "output": 0.000500},
+    "gpt-6.1-sol":               {"input": 0.000200, "output": 0.001000},
+    # Legacy models — keep so old usage records and stale DB configs still cost correctly
     "claude-haiku-4-5-20251001": {"input": 0.000080, "output": 0.000400},
     "claude-sonnet-4-6":         {"input": 0.000300, "output": 0.001500},
     "claude-opus-4-7":           {"input": 0.001500, "output": 0.007500},
-    # OpenAI
     "gpt-4.1-nano":              {"input": 0.000010, "output": 0.000040},
     "gpt-4o-mini":               {"input": 0.000015, "output": 0.000060},
     "gpt-4.1-mini":              {"input": 0.000040, "output": 0.000160},
