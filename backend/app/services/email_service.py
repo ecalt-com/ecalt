@@ -1,6 +1,7 @@
 """Transactional email — Brevo HTTP API (preferred) with SMTP fallback."""
 import hashlib
 import hmac
+import html
 import logging
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -480,6 +481,56 @@ async def send_school_budget_alert_email(admin_email: str, admin_uid: str, schoo
   </a>
 </p>"""
     text_body = f"Hi,\n\n{text_lead}\n\nView AI usage: {usage_url}"
+    return await send_email(
+        to=admin_email,
+        subject=subject,
+        html_body=html_body,
+        text_body=text_body,
+        uid=admin_uid,
+    )
+
+
+async def send_ai_credits_exhausted_email(admin_email: str, admin_uid: str,
+                                          provider: str, error_detail: str) -> bool:
+    """Ops alert to a platform admin: the AI provider account has no credits
+    left, so every AI feature is returning 503s until it is topped up."""
+    provider_name = {"openai": "OpenAI", "anthropic": "Anthropic"}.get(provider, provider)
+    billing_url = (
+        "https://platform.openai.com/settings/organization/billing/"
+        if provider == "openai"
+        else "https://console.anthropic.com/settings/billing"
+    )
+    env = settings.ENVIRONMENT
+    subject = f"[ECALT {env}] {provider_name} credits exhausted — AI features are down"
+    safe_detail = html.escape(error_detail)
+    html_body = f"""\
+<p style="font-family:sans-serif;font-size:16px">Hi,</p>
+<p style="font-family:sans-serif">
+  The <strong>{provider_name}</strong> account used by the ECALT backend
+  (<strong>{env}</strong>) has run out of credits. Sparks, journeys, chat,
+  quizzes and course building are failing with
+  &ldquo;AI service temporarily unavailable&rdquo; until the balance is topped up.
+</p>
+<p style="font-family:sans-serif;color:#666;font-size:13px">
+  Provider error: <code>{safe_detail}</code>
+</p>
+<p style="font-family:sans-serif;margin-top:16px">
+  <a href="{billing_url}"
+     style="display:inline-block;padding:10px 20px;background:#dc2626;color:#fff;
+            border-radius:6px;text-decoration:none;font-weight:bold;font-family:sans-serif">
+    Add credits
+  </a>
+</p>
+<p style="font-family:sans-serif;color:#999;font-size:12px">
+  You'll get at most one of these every 6 hours per backend instance.
+</p>"""
+    text_body = (
+        f"Hi,\n\nThe {provider_name} account used by the ECALT backend ({env}) has run "
+        f"out of credits. All AI features are failing with \"AI service temporarily "
+        f"unavailable\" until the balance is topped up.\n\n"
+        f"Provider error: {error_detail}\n\n"
+        f"Add credits: {billing_url}"
+    )
     return await send_email(
         to=admin_email,
         subject=subject,

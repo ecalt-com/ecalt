@@ -808,6 +808,14 @@ def cost_for_images(model: str, count: int = 1) -> float:
     return COST_PER_IMAGE.get(model, 4.2) * count
 
 
+async def _maybe_alert_credits(provider: str, error: Exception) -> None:
+    """Fire the admin email when a model call failed because the provider
+    account is out of credits (not on ordinary rate limits)."""
+    from app.services.ai_alert_service import alert_credits_exhausted, is_credit_exhaustion
+    if is_credit_exhaustion(error):
+        await alert_credits_exhausted(provider, error)
+
+
 # ── Non-streaming completion ──────────────────────────────────────────────────
 
 async def complete_text(
@@ -822,28 +830,32 @@ async def complete_text(
 
     messages = [{"role": "user", "content": user_content}]
 
-    if provider == "openai":
-        oai_messages = [{"role": "system", "content": system}] + messages
-        if model.startswith("o1"):
-            oai_messages = [m for m in oai_messages if m["role"] != "system"]
-            resp = await _get_openai().chat.completions.create(
-                model=model, messages=oai_messages, max_completion_tokens=max_tokens,
-            )
+    try:
+        if provider == "openai":
+            oai_messages = [{"role": "system", "content": system}] + messages
+            if model.startswith("o1"):
+                oai_messages = [m for m in oai_messages if m["role"] != "system"]
+                resp = await _get_openai().chat.completions.create(
+                    model=model, messages=oai_messages, max_completion_tokens=max_tokens,
+                )
+            else:
+                resp = await _get_openai().chat.completions.create(
+                    model=model, messages=oai_messages, max_tokens=max_tokens,
+                )
+            in_tok = resp.usage.prompt_tokens if resp.usage else 0
+            out_tok = resp.usage.completion_tokens if resp.usage else 0
+            cached_tok = 0
+            if resp.usage and hasattr(resp.usage, "prompt_tokens_details") and resp.usage.prompt_tokens_details:
+                cached_tok = resp.usage.prompt_tokens_details.cached_tokens or 0
+            return (resp.choices[0].message.content or "").strip(), in_tok, out_tok, cached_tok
         else:
-            resp = await _get_openai().chat.completions.create(
-                model=model, messages=oai_messages, max_tokens=max_tokens,
+            resp = await _get_anthropic().messages.create(
+                model=model, max_tokens=max_tokens, system=system, messages=messages,
             )
-        in_tok = resp.usage.prompt_tokens if resp.usage else 0
-        out_tok = resp.usage.completion_tokens if resp.usage else 0
-        cached_tok = 0
-        if resp.usage and hasattr(resp.usage, "prompt_tokens_details") and resp.usage.prompt_tokens_details:
-            cached_tok = resp.usage.prompt_tokens_details.cached_tokens or 0
-        return (resp.choices[0].message.content or "").strip(), in_tok, out_tok, cached_tok
-    else:
-        resp = await _get_anthropic().messages.create(
-            model=model, max_tokens=max_tokens, system=system, messages=messages,
-        )
-        return resp.content[0].text.strip(), resp.usage.input_tokens, resp.usage.output_tokens, 0
+            return resp.content[0].text.strip(), resp.usage.input_tokens, resp.usage.output_tokens, 0
+    except Exception as e:
+        await _maybe_alert_credits(provider, e)
+        raise
 
 
 # ── Streaming abstraction ─────────────────────────────────────────────────────
@@ -859,12 +871,16 @@ async def stream_completion(
     Yields (text_chunk, input_tokens, output_tokens, cached_input_tokens).
     Token counts are only non-zero on the final yield.
     """
-    if provider == "openai":
-        async for item in _stream_openai(model, system, messages, max_tokens):
-            yield item
-    else:
-        async for item in _stream_anthropic(model, system, messages, max_tokens):
-            yield item
+    try:
+        if provider == "openai":
+            async for item in _stream_openai(model, system, messages, max_tokens):
+                yield item
+        else:
+            async for item in _stream_anthropic(model, system, messages, max_tokens):
+                yield item
+    except Exception as e:
+        await _maybe_alert_credits(provider, e)
+        raise
 
 
 async def _stream_anthropic(
