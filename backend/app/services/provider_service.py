@@ -834,14 +834,13 @@ async def complete_text(
         if provider == "openai":
             oai_messages = [{"role": "system", "content": system}] + messages
             if model.startswith("o1"):
+                # o1 models reject system messages
                 oai_messages = [m for m in oai_messages if m["role"] != "system"]
-                resp = await _get_openai().chat.completions.create(
-                    model=model, messages=oai_messages, max_completion_tokens=max_tokens,
-                )
-            else:
-                resp = await _get_openai().chat.completions.create(
-                    model=model, messages=oai_messages, max_tokens=max_tokens,
-                )
+            # max_completion_tokens is the current parameter; GPT-5/GPT-6
+            # generation models reject the legacy max_tokens.
+            resp = await _get_openai().chat.completions.create(
+                model=model, messages=oai_messages, max_completion_tokens=max_tokens,
+            )
             in_tok = resp.usage.prompt_tokens if resp.usage else 0
             out_tok = resp.usage.completion_tokens if resp.usage else 0
             cached_tok = 0
@@ -933,7 +932,7 @@ async def _stream_openai(
     stream = await _get_openai().chat.completions.create(
         model=model,
         messages=oai_messages,
-        max_tokens=max_tokens,
+        max_completion_tokens=max_tokens,
         stream=True,
         stream_options={"include_usage": True},
     )
