@@ -39,17 +39,24 @@ async def lifespan(_app: FastAPI):
         warm_pool()
     except Exception:
         pass  # logged inside; don't prevent startup
+    # With several uvicorn workers (WEB_CONCURRENCY), background work runs in
+    # one leader process only (app/core/leader.py).
+    from app.core.leader import acquire_leadership, release_leadership
+    leader = acquire_leadership()
+    startup_log = logging.getLogger("ecalt.startup")
+    if not leader:
+        startup_log.info("not the leader process: scheduler and school job worker run elsewhere")
     sched = None
-    if settings.SCHEDULER_ENABLED:
+    if settings.SCHEDULER_ENABLED and leader:
         from app.services.scheduler import setup_scheduler
         sched = setup_scheduler()
         sched.start()
-    else:
-        logging.getLogger("ecalt.startup").info("scheduler disabled (SCHEDULER_ENABLED=false)")
+    elif not settings.SCHEDULER_ENABLED:
+        startup_log.info("scheduler disabled (SCHEDULER_ENABLED=false)")
     # School background-job worker (document extraction, course generation).
     # Gated on its own flag, independent of the scheduler (README §3.13).
     worker_started = False
-    if settings.SCHOOLS_ENABLED:
+    if settings.SCHOOLS_ENABLED and leader:
         from app.services.school_jobs import start_worker
         worker_started = start_worker()
     yield
@@ -58,6 +65,8 @@ async def lifespan(_app: FastAPI):
     if worker_started:
         from app.services.school_jobs import stop_worker
         stop_worker()
+    if leader:
+        release_leadership()
 
 if settings.SENTRY_DSN:
     from app.core.sentry_scrub import init_options
