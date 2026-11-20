@@ -277,6 +277,7 @@ Jobs must catch and log their own exceptions.
 | `DB_POOL_MAX` / `DB_POOL_WAIT_SECONDS` | `20` / `10` | Connections per process; a request waits this long for a free one, then 503 `server_busy` (SC-802 burst fix) |
 | `RATE_LIMIT_TRUST_VERCEL_HEADER` | `True` | Key limits on Vercel's `x-vercel-forwarded-for` when the request carries Vercel's proxy signature (`core/limiter.client_ip`) |
 | `SCHOOL_OFFBOARDING_GRACE_DAYS` | `30` | Terminated schools are deleted by the nightly job after this (SC-803) |
+| `WEB_CONCURRENCY` | unset (1) | uvicorn worker processes (uvicorn reads it natively). One process uses one core of the instance's 8 vCPUs; 4 workers met PERF-02 on dev. The scheduler and school job worker run in one leader process only (`core/leader.py`). **Trade-offs before raising it in prod:** slowapi limits are per process (N× looser), and the 60 s in-process caches (status, identity, profile access, school member, journey access) are invalidated only in the worker that made the change, so other workers can serve stale state, including stale denials, for up to 60 s. Each worker has its own DB pool (`DB_POOL_MAX` each) |
 
 Other env vars (see `.env.example`): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FIREBASE_PROJECT_ID`, `DATABASE_URL` (or `DB_*`), `ALLOWED_ORIGINS`, `FRONTEND_URL` (used in email links), Stripe/Razorpay keys + webhook secrets, Brevo/SMTP, Twilio, `NOTIFICATION_SIGNING_SECRET`, `SENTRY_DSN`, `LOG_LEVEL`.
 
