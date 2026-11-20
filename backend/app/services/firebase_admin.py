@@ -42,6 +42,22 @@ def _service_account() -> Optional[dict]:
     return _sa_cache.get("sa")
 
 
+def _signing_key(sa: dict):
+    """The service account's RSA key, parsed once per service-account value.
+    Parsing the PEM costs ~60 ms of CPU, against ~1 ms to sign with the
+    parsed key; every student sign-in mints a token, so a classroom burst
+    queued on re-parsing (SC-802). A malformed key falls back to the PEM
+    string so jwt.encode raises as before."""
+    if _sa_cache.get("key_for") is not sa:
+        from cryptography.hazmat.primitives.serialization import load_pem_private_key
+        try:
+            _sa_cache["key"] = load_pem_private_key(sa["private_key"].encode(), password=None)
+        except (ValueError, TypeError, KeyError, AttributeError):
+            _sa_cache["key"] = sa.get("private_key")
+        _sa_cache["key_for"] = sa
+    return _sa_cache["key"]
+
+
 async def _get_access_token() -> Optional[str]:
     now = time.time()
     if _token_cache.get("token") and _token_cache.get("exp", 0) - 60 > now:
@@ -58,7 +74,7 @@ async def _get_access_token() -> Optional[str]:
             "iat": int(now),
             "exp": int(now) + 3600,
         },
-        sa["private_key"],
+        _signing_key(sa),
         algorithm="RS256",
     )
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -159,5 +175,5 @@ def mint_custom_token(uid: str, claims: Optional[dict] = None) -> Optional[str]:
     }
     if claims:
         payload["claims"] = claims
-    return jwt.encode(payload, sa["private_key"], algorithm="RS256",
+    return jwt.encode(payload, _signing_key(sa), algorithm="RS256",
                       headers={"kid": sa.get("private_key_id")} if sa.get("private_key_id") else None)

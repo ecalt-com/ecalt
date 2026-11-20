@@ -57,26 +57,12 @@ def seed(parent_uid, parent_email, teen_uid, teen_name):
 
 
 def teardown(parent_uid, teen_uid):
-    uids = [u for u in (parent_uid, teen_uid) if u]
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            if teen_uid:
-                for sql in (
-                    "DELETE FROM consent_events WHERE uid = %s",
-                    "DELETE FROM child_settings WHERE child_uid = %s",
-                    "DELETE FROM parental_consent WHERE uid = %s",
-                ):
-                    cur.execute(sql, (teen_uid,))
-            cur.execute("DELETE FROM family_links WHERE parent_uid = %s OR child_uid = ANY(%s)",
-                        (parent_uid, uids))
-            for uid in uids:
-                cur.execute("SAVEPOINT u")
-                try:
-                    cur.execute("DELETE FROM users WHERE uid = %s", (uid,))
-                    cur.execute("RELEASE SAVEPOINT u")
-                except Exception as exc:  # a row in another table still references it
-                    cur.execute("ROLLBACK TO SAVEPOINT u")
-                    print(f"warn: could not delete user {uid}: {exc}", file=sys.stderr)
+    # The app's own erasure cascade: consent_events is append-only, so it
+    # pseudonymizes those rows and deletes everything else.
+    from app.services.account_service import delete_user_account
+    for uid in (teen_uid, parent_uid):
+        if uid:
+            delete_user_account(uid)
 
 
 if __name__ == "__main__":
