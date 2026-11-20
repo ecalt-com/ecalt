@@ -4,7 +4,7 @@
 -- Never overwrites a row an admin already changed.
 INSERT INTO public.ai_provider_config (interaction_type, provider, model, style_prompt)
 VALUES
-  ('school_course_outline',      'openai', 'gpt-4.1',      NULL),
-  ('school_step_content',        'openai', 'gpt-4.1-mini', NULL),
-  ('school_faithfulness_critic', 'openai', 'gpt-4.1-mini', NULL)
+  ('school_course_outline',      'openai', 'gpt-6-luna', NULL),
+  ('school_step_content',        'openai', 'gpt-6-luna', NULL),
+  ('school_faithfulness_critic', 'openai', 'gpt-6-luna', NULL)
 ON CONFLICT (interaction_type) DO NOTHING;
