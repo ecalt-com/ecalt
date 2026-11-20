@@ -202,7 +202,7 @@ def _db_journey(journey_id: str, viewer_uid: Optional[str] = None) -> Optional[J
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("", response_model=JourneysResponse, summary="List all journeys")
-async def list_journeys(response: Response, uid: Optional[str] = Depends(get_optional_acting_uid)):
+def list_journeys(response: Response, uid: Optional[str] = Depends(get_optional_acting_uid)):
     user_journeys: list[Journey] = []
     in_progress: list[JourneyWithProgress] = []
     if is_school_student_uid(uid):
@@ -546,7 +546,7 @@ class MarketplaceResponse(BaseModel):
     response_model=MarketplaceResponse,
     summary="Browse published, community-popular journeys",
 )
-async def marketplace_journeys(
+def marketplace_journeys(
     response: Response,
     age_group: Optional[str] = None,
     difficulty: Optional[str] = None,
@@ -608,7 +608,7 @@ class LikeResponse(BaseModel):
     response_model=LikeResponse,
     summary="Toggle a like on a journey (feeds the marketplace popularity score)",
 )
-async def toggle_journey_like(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
+def toggle_journey_like(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
     uid, _ = ctx
     # Likes feed the marketplace; school courses never enter it (D11).
     if assert_can_read_journey(uid, journey_id):
@@ -657,7 +657,7 @@ async def toggle_journey_like(journey_id: str, ctx: tuple = Depends(get_active_a
     response_model=ExploreResponse,
     summary="Fork a published marketplace journey into your own journeys",
 )
-async def fork_journey(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
+def fork_journey(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
     """Mirrors POST /explore/confirm: persists an independent copy owned by the
     forking user. The fork starts private again — it earns its own place in the
     marketplace rather than inheriting the source's popularity/approval."""
@@ -732,7 +732,7 @@ class SubmitToMarketplaceResponse(BaseModel):
     response_model=SubmitToMarketplaceResponse,
     summary="Creator opt-in: ask for this journey to be reviewed for the marketplace",
 )
-async def submit_to_marketplace(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
+def submit_to_marketplace(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
     """Puts the caller's own journey into the admin review queue immediately,
     without waiting for the popularity job. Still requires admin approval
     before it's publicly listed — this only requests review, it never
@@ -774,7 +774,7 @@ async def submit_to_marketplace(journey_id: str, ctx: tuple = Depends(get_active
 
 
 @router.get("/{journey_id}", response_model=Journey, summary="Get a journey by ID")
-async def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional_user)):
+def get_journey(journey_id: str, uid: Optional[str] = Depends(get_optional_user)):
     assert_can_read_journey(uid, journey_id)
     journey = _db_journey(journey_id, uid) or _journey_map.get(journey_id)
     if not journey:
@@ -1103,7 +1103,7 @@ async def get_step_content(
     response_model=StepVisualResponse,
     summary="Get the planned visual for a step, if any",
 )
-async def get_step_visual(journey_id: str, step_id: str, ctx: tuple = Depends(get_active_acting_uid)):
+def get_step_visual(journey_id: str, step_id: str, ctx: tuple = Depends(get_active_acting_uid)):
     """Read-only — never triggers planning. Planning happens as a side effect
     of step content generation (ai_service.warm_journey_steps /
     _generate_step_for_journey), gated by VISUAL_INTELLIGENCE_ENABLED.
@@ -1134,7 +1134,7 @@ async def get_step_visual(journey_id: str, step_id: str, ctx: tuple = Depends(ge
     status_code=202,
     summary="Record a visual telemetry event",
 )
-async def post_step_visual_event(
+def post_step_visual_event(
     journey_id: str, step_id: str, body: VisualEventRequest, ctx: tuple = Depends(get_acting_uid),
 ):
     """Best-effort — a telemetry write failure must never surface to the
@@ -1235,7 +1235,7 @@ class StepFeedbackRequest(BaseModel):
     "/{journey_id}/steps/{step_id}/feedback",
     summary="Rate step content; negative tags trigger a background regeneration (never for school courses)",
 )
-async def step_feedback(
+def step_feedback(
     journey_id: str,
     step_id: str,
     body: StepFeedbackRequest,

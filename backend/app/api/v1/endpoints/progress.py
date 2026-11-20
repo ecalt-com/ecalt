@@ -214,7 +214,7 @@ def _update_streak(uid: str) -> None:
 
 
 @router.get("/{journey_id}", response_model=JourneyProgressResponse)
-async def get_progress(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
+def get_progress(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
     """Return all completed step IDs for a journey."""
     uid, _ = ctx
     assert_can_read_journey(uid, journey_id)
@@ -233,7 +233,7 @@ async def get_progress(journey_id: str, ctx: tuple = Depends(get_acting_uid)):
 
 
 @router.post("/{journey_id}/{step_id}", response_model=ProgressResponse)
-async def mark_step_complete(
+def mark_step_complete(
     journey_id: str,
     step_id: str,
     background_tasks: BackgroundTasks,
@@ -293,7 +293,7 @@ async def mark_step_complete(
 
 
 @router.delete("/{journey_id}/{step_id}", response_model=ProgressResponse)
-async def mark_step_incomplete(
+def mark_step_incomplete(
     journey_id: str, step_id: str, uid: str = Depends(get_active_user)
 ):
     """Unmark a step as complete."""

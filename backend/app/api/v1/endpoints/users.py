@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, computed_field
 
@@ -216,12 +217,18 @@ def _school_student_profile(uid: str) -> UserProfile:
     )
 
 
+def _school_student_bootstrap(uid: str) -> UserProfile:
+    assert_account_active(uid)
+    return _school_student_profile(uid)
+
+
 @router.post("", response_model=UserProfile, summary="Upsert user on sign-in")
 async def upsert_user(body: UserUpsertRequest, request: Request, uid: str = Depends(get_bootstrap_uid)):
     """Called once after Google sign-in. Enforces the COPPA/GDPR/DPDP age gate when birth_year is provided."""
     if is_school_student_uid(uid):
-        assert_account_active(uid)
-        return _school_student_profile(uid)
+        # A whole class signs in at once: keep the blocking DB reads off the
+        # event loop (SC-802).
+        return await run_in_threadpool(_school_student_bootstrap, uid)
     if body.birth_year is not None:
         existing = _load_existing_user(uid)
         if existing and existing.get("birth_year") is not None:
