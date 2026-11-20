@@ -129,11 +129,25 @@ try {
     const token = ex.idToken
     await time('bootstrap_users', () => raw('POST', '/api/v1/users', { token, body: {} }))
     await time('student_home', () => raw('GET', '/api/v1/school-student/home', { token }))
-    await time('journey', () => raw('GET', `/api/v1/journeys/${firstCourse}`, { token }))
+    const journey = await time('journey', () => raw('GET', `/api/v1/journeys/${firstCourse}`, { token }))
     await time('progress', () => raw('GET', `/api/v1/progress/${firstCourse}`, { token }))
+    const stepId = journey.steps?.[0]?.id
+    if (stepId) await time('step_content', () => raw('GET', `/api/v1/journeys/${firstCourse}/steps/${stepId}/content`, { token }))
+    return { token, stepIds: (journey.steps ?? []).map((st) => st.id) }
   }))
   const burstMs = performance.now() - burstStart
   results.forEach((r) => { if (r.status === 'rejected') errors.push(String(r.reason?.message ?? r.reason)) })
+
+  // 3b. PERF-02 in isolation: every signed-in student reads cached (published)
+  // step content at the same moment, twice (cold then warm per-student caches).
+  const signedIn = results.filter((r) => r.status === 'fulfilled').map((r) => r.value)
+  for (const [label, idx] of [['step_content_isolated', 1], ['step_content_isolated_warm', 2]]) {
+    const iso = await Promise.allSettled(signedIn.map(({ token, stepIds }) => {
+      const stepId = stepIds[idx % Math.max(stepIds.length, 1)]
+      return time(label, () => raw('GET', `/api/v1/journeys/${firstCourse}/steps/${stepId}/content`, { token }))
+    }))
+    iso.forEach((r) => { if (r.status === 'rejected') errors.push(`${label}: ${r.reason?.message ?? r.reason}`) })
+  }
 
   // 4. Teacher's matrix.
   for (let i = 0; i < 5; i++) await time('progress_matrix', () => api('GET', `${base}/classes/${cls.id}/progress`))

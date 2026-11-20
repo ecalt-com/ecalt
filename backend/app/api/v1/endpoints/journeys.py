@@ -4,6 +4,7 @@ import uuid
 import openai as _openai
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
 from app.models.schemas import Journey, JourneyStep, JourneysResponse, JourneyWithProgress, StepContentResponse, ExploreResponse
@@ -1007,6 +1008,46 @@ async def _regenerate_step_task(
                        journey_id, step_id, exc_info=True)
 
 
+def _cached_step_content(uid: str, journey_id: str, step_id: str):
+    """Access check + cache lookup → (school_id, cached row or None). Sync, so
+    the endpoint runs it in the threadpool rather than on the event loop."""
+    school_id = assert_can_read_journey(uid, journey_id)
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT content, prompt_version FROM step_content "
+                    "WHERE journey_id = %s AND step_id = %s",
+                    (journey_id, step_id),
+                )
+                return school_id, cur.fetchone()
+    except Exception:
+        return school_id, None
+
+
+def _generation_context(uid: str, journey_id: str, step_id: str):
+    """Budget check + journey/step lookup for a cache miss (sync, threadpool)."""
+    allowed, reason = check_budget(uid)
+    if not allowed:
+        raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
+    journey = _db_journey(journey_id) or _journey_map.get(journey_id)
+    if not journey:
+        raise HTTPException(status_code=404, detail="Journey not found")
+    step = next((s for s in journey.steps if s.id == step_id), None)
+    if not step:
+        raise HTTPException(status_code=404, detail="Step not found")
+    return journey, step
+
+
+def _store_generated_step(uid, journey_id, step_id, content, quiz_anchors, in_tok, out_tok):
+    model = get_config("step_content")["model"]
+    record_usage(uid, in_tok, out_tok, model, interaction_type="step_content")
+    try:
+        upsert_step_content(journey_id, step_id, content, quiz_anchors, model, overwrite=True)
+    except Exception:
+        pass
+
+
 @router.get(
     "/{journey_id}/steps/{step_id}/content",
     response_model=StepContentResponse,
@@ -1025,29 +1066,19 @@ async def get_step_content(
     journeys without blocking the reader.
     """
     uid, _ = ctx
-    school_id = assert_can_read_journey(uid, journey_id)
-    # Check cache
-    try:
-        with get_db() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT content, prompt_version FROM step_content "
-                    "WHERE journey_id = %s AND step_id = %s",
-                    (journey_id, step_id),
-                )
-                cached = cur.fetchone()
-                if cached:
-                    # School courses show exactly what the teacher published.
-                    if not school_id and (cached.get("prompt_version") or 1) < CONTENT_PROMPT_VERSION:
-                        background_tasks.add_task(
-                            _regenerate_step_task, journey_id, step_id, uid, None
-                        )
-                    return StepContentResponse(
-                        journey_id=journey_id, step_id=step_id,
-                        content=cached["content"], cached=True,
-                    )
-    except Exception:
-        pass
+    # A class opens the same lesson at once: keep the DB work off the event
+    # loop (SC-802 / PERF-02).
+    school_id, cached = await run_in_threadpool(_cached_step_content, uid, journey_id, step_id)
+    if cached:
+        # School courses show exactly what the teacher published.
+        if not school_id and (cached.get("prompt_version") or 1) < CONTENT_PROMPT_VERSION:
+            background_tasks.add_task(
+                _regenerate_step_task, journey_id, step_id, uid, None
+            )
+        return StepContentResponse(
+            journey_id=journey_id, step_id=step_id,
+            content=cached["content"], cached=True,
+        )
 
     if school_id:
         # Never generate for a school course: students only see published content.
@@ -1057,17 +1088,7 @@ async def get_step_content(
         })
 
     # Cache miss — check budget before spending tokens
-    allowed, reason = check_budget(uid)
-    if not allowed:
-        raise HTTPException(status_code=402, detail={"error": reason, "upgrade_url": "/pricing"})
-
-    # Resolve journey + step for generation context
-    journey = _db_journey(journey_id) or _journey_map.get(journey_id)
-    if not journey:
-        raise HTTPException(status_code=404, detail="Journey not found")
-    step = next((s for s in journey.steps if s.id == step_id), None)
-    if not step:
-        raise HTTPException(status_code=404, detail="Step not found")
+    journey, step = await run_in_threadpool(_generation_context, uid, journey_id, step_id)
 
     try:
         content, quiz_anchors, in_tok, out_tok = await _generate_step_for_journey(
@@ -1083,15 +1104,8 @@ async def get_step_content(
         logger.exception("step content generation failed", extra={"journey_id": journey_id, "step_id": step_id})
         raise HTTPException(status_code=500, detail="Failed to generate step content.")
 
-    record_usage(uid, in_tok, out_tok, get_config("step_content")["model"],
-                 interaction_type="step_content")
-
-    # Cache result
-    try:
-        upsert_step_content(journey_id, step_id, content, quiz_anchors,
-                            get_config("step_content")["model"], overwrite=True)
-    except Exception:
-        pass
+    await run_in_threadpool(_store_generated_step, uid, journey_id, step_id,
+                            content, quiz_anchors, in_tok, out_tok)
 
     return StepContentResponse(
         journey_id=journey_id, step_id=step_id, content=content, cached=False,

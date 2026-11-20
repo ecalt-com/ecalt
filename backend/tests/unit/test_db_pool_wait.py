@@ -86,3 +86,50 @@ def test_answers_503_busy_after_the_wait(pool, monkeypatch):
         cm.__exit__(None, None, None)
     with database.get_db():             # slots were all given back
         pass
+
+
+class _CountingConn(_Conn):
+    def __init__(self):
+        self.pings = 0
+
+    def cursor(self):
+        conn = self
+
+        class C:
+            def execute(self, sql, *a):
+                if sql == "SELECT 1":
+                    conn.pings += 1
+        return C()
+
+
+class _OneConnPool:
+    maxconn = 1
+
+    def __init__(self):
+        self.conn = _CountingConn()
+
+    def getconn(self):
+        return self.conn
+
+    def putconn(self, conn, close=False):
+        pass
+
+
+def test_pings_only_connections_that_sat_idle(monkeypatch):
+    p = _OneConnPool()
+    monkeypatch.setattr(database, "_pool", p)
+    database._last_used.clear()
+    try:
+        with database.get_db():
+            pass
+        assert p.conn.pings == 1          # never used before → ping
+        with database.get_db():
+            pass
+        assert p.conn.pings == 1          # just returned → no ping
+        database._last_used[id(p.conn)] -= database._PING_IF_IDLE_SECONDS + 1
+        with database.get_db():
+            pass
+        assert p.conn.pings == 2          # idle past the threshold → ping
+    finally:
+        database._slots.pop(id(p), None)
+        database._last_used.clear()

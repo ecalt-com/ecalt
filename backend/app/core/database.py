@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 
@@ -126,6 +127,18 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     return _pool
 
 
+# Pinging every checkout costs two extra round trips per get_db() block (the
+# SELECT 1 and its rollback). Pooler drops only hit connections that sat idle,
+# so ping only those; the TCP keepalives above cover the rest.
+_PING_IF_IDLE_SECONDS = 30.0
+_last_used: dict[int, float] = {}
+
+
+def _needs_ping(conn) -> bool:
+    last = _last_used.get(id(conn))
+    return last is None or time.monotonic() - last > _PING_IF_IDLE_SECONDS
+
+
 def _is_conn_alive(conn) -> bool:
     """Ping the server to confirm the connection is still usable.
 
@@ -161,8 +174,9 @@ def get_db():
         raise
 
     # Replace stale connections before handing them to the caller.
-    if not _is_conn_alive(conn):
+    if conn.closed or (_needs_ping(conn) and not _is_conn_alive(conn)):
         logger.warning("stale DB connection detected — replacing with fresh one")
+        _last_used.pop(id(conn), None)
         pool.putconn(conn, close=True)
         try:
             conn = pool.getconn()
@@ -190,6 +204,10 @@ def get_db():
     finally:
         # Discard broken connections so the pool never reuses a dead socket.
         try:
+            if conn.closed:
+                _last_used.pop(id(conn), None)
+            else:
+                _last_used[id(conn)] = time.monotonic()
             pool.putconn(conn, close=bool(conn.closed))
         finally:
             slot.release()
