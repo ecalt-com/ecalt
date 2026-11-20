@@ -158,7 +158,7 @@ with get_db() as conn:
 - Auto-commits on success, rolls back on exception. Non-HTTP exceptions become `HTTPException(500)`; `HTTPException`s raised inside pass through after rollback.
 - Stale connections are detected and replaced.
 - **Always use `%s` placeholders — never f-string SQL values.**
-- Sync psycopg2 inside async endpoints is the established pattern; keep DB blocks short.
+- Prod runs **one uvicorn worker**, so a blocking psycopg2 call inside an `async def` endpoint stalls every other request. Endpoints that await nothing should be plain `def` (FastAPI runs them in its threadpool). Async endpoints that must stay async (they `await` or use `asyncio.ensure_future`) should wrap heavy DB work in `run_in_threadpool`. Many older endpoints still do sync DB on the loop; convert them when you touch them. SC-802 found this under a 40-student burst.
 - All learner data (~31 `uid`/`user_id` columns) is keyed by `users.uid` (text PK). A family profile is just another `users` row, so per-uid queries work for profiles unchanged.
 
 ---
