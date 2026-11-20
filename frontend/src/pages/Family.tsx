@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Loader2, Plus, Users, Flame, CreditCard, ShieldCheck, ShieldAlert,
@@ -15,6 +15,7 @@ import { useProfiles } from '../lib/ProfileContext'
 import { useToast } from '../lib/ToastContext'
 import { apiErrorCode, type ApiError } from '../lib/api'
 import {
+  claimChildren,
   getChildren,
   setParentPin,
   startCardVerification,
@@ -128,6 +129,44 @@ export default function Family() {
     if (user) loadChildren()
   }, [user, loadChildren])
 
+  // A teen approved through the emailed consent link has no family link yet;
+  // match them on this parent's sign-in email. Auto-run once, only when empty.
+  const [claimNote, setClaimNote] = useState<{ tone: 'ok' | 'info'; text: string } | null>(null)
+  const [claiming, setClaiming] = useState(false)
+  const autoClaimed = useRef(false)
+
+  const runClaim = useCallback(async (manual: boolean) => {
+    const token = await getToken()
+    if (!token) return
+    setClaiming(true)
+    try {
+      const { linked, count } = await claimChildren(token)
+      if (count > 0) {
+        const names = linked.map(c => c.display_name || 'your child').join(', ')
+        setClaimNote({ tone: 'ok', text: `We found and linked ${names} — you approved their account by email.` })
+        await loadChildren()
+      } else if (manual) {
+        setClaimNote({
+          tone: 'info',
+          text: `No approved child accounts are tied to ${user?.email ?? 'your sign-in email'}. Make sure you sign in with the email address your child entered during sign-up.`,
+        })
+      }
+    } catch (err) {
+      if (manual && apiErrorCode(err) !== 'adult_account_required') {
+        setClaimNote({ tone: 'info', text: "Couldn't check for approved accounts. Please try again." })
+      }
+    } finally {
+      setClaiming(false)
+    }
+  }, [getToken, loadChildren, user?.email])
+
+  useEffect(() => {
+    if (children !== null && children.length === 0 && !autoClaimed.current) {
+      autoClaimed.current = true
+      runClaim(false)
+    }
+  }, [children, runClaim])
+
   // Return leg of the Stripe card-verification redirect:
   // /family?verify_session={SESSION_ID}&child={uid}
   useEffect(() => {
@@ -205,6 +244,23 @@ export default function Family() {
             <div className="glass-card rounded-2xl p-5 mb-5 text-sm text-rose-600 dark:text-rose-400">{loadError}</div>
           )}
 
+          {claimNote && (
+            <div
+              data-testid="claim-note"
+              className={clsx(
+                'glass-card rounded-2xl p-4 mb-5 text-sm flex items-start justify-between gap-3',
+                claimNote.tone === 'ok'
+                  ? 'text-emerald-700 dark:text-emerald-300'
+                  : 'text-slate-600 dark:text-slate-300',
+              )}
+            >
+              <span>{claimNote.text}</span>
+              <button onClick={() => setClaimNote(null)} aria-label="Dismiss" className="shrink-0 opacity-60 hover:opacity-100">
+                <X size={14} />
+              </button>
+            </div>
+          )}
+
           {children === null && !loadError && (
             <div className="flex justify-center py-16"><Loader2 className="animate-spin text-violet-500" /></div>
           )}
@@ -219,9 +275,19 @@ export default function Family() {
                 Add a profile for your child — they'll learn through your sign-in, no email or password
                 needed. Teens with their own Google login show up here once you approve their request.
               </p>
-              <button onClick={() => setShowWizard(true)} className="btn-primary inline-flex items-center gap-1.5">
-                <Plus size={14} /> Add a child
-              </button>
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                <button onClick={() => setShowWizard(true)} className="btn-primary inline-flex items-center gap-1.5">
+                  <Plus size={14} /> Add a child
+                </button>
+                <button
+                  onClick={() => runClaim(true)}
+                  disabled={claiming}
+                  className="btn-ghost inline-flex items-center gap-1.5 text-sm disabled:opacity-60"
+                >
+                  {claiming && <Loader2 size={14} className="animate-spin" />}
+                  I already approved my child's account
+                </button>
+              </div>
             </div>
           )}
 

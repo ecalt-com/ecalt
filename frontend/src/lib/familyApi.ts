@@ -66,6 +66,16 @@ export const createChild = (body: CreateChildBody, token: string): Promise<Creat
 export const deleteChild = (childUid: string, token: string): Promise<void> =>
   request(`/api/v1/family/children/${childUid}`, { method: 'DELETE' }, token)
 
+// Links teens whose consent this parent granted through the emailed link
+// (matched on the parent's sign-in email). Idempotent.
+export interface ClaimChildrenResponse {
+  linked: { child_uid: string; display_name: string | null }[]
+  count: number
+}
+
+export const claimChildren = (token: string): Promise<ClaimChildrenResponse> =>
+  request('/api/v1/family/claim-children', { method: 'POST' }, token)
+
 // ── Path B: authenticated approval of a child-initiated consent request ──────
 
 export interface LinkDecisionResponse {
