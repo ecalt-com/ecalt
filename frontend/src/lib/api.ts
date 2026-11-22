@@ -1,3 +1,4 @@
+import { getOfflineContent, getOfflineJourney, isNetworkFailure } from './offline'
 import type { Journey, JourneysResponse, ExploreRequest, SparkRequest, SparkResponse, SessionStatus, QuizQuestion, QuizSet, QuizHint, QuizResult, StepVisualResponse, VisualEventType } from './types'
 export type { LearnerPurpose, TopicExpertise, QuizVerdict } from './types'
 import { getImpersonationSessionId } from './impersonationStore'
@@ -96,8 +97,15 @@ export const confirmJourney = (preview_token: string, token: string): Promise<{ 
 export const getJourneys = (token?: string): Promise<JourneysResponse> =>
   request('/api/v1/journeys', undefined, token)
 
-export const getJourney = (id: string, token?: string): Promise<Journey> =>
-  request(`/api/v1/journeys/${id}`, undefined, token)
+export const getJourney = async (id: string, token?: string): Promise<Journey> => {
+  try {
+    return await request<Journey>(`/api/v1/journeys/${id}`, undefined, token)
+  } catch (e) {
+    // Offline: a journey the learner saved for offline reading still opens.
+    if (isNetworkFailure(e)) { const saved = await getOfflineJourney(id); if (saved) return saved }
+    throw e
+  }
+}
 
 export interface JourneySuggestions {
   next_level: Journey | null
@@ -180,8 +188,17 @@ export interface StepContent {
   cached: boolean
 }
 
-export const getStepContent = (journeyId: string, stepId: string, token?: string): Promise<StepContent> =>
-  request(`/api/v1/journeys/${journeyId}/steps/${stepId}/content`, undefined, token)
+export const getStepContent = async (journeyId: string, stepId: string, token?: string): Promise<StepContent> => {
+  try {
+    return await request<StepContent>(`/api/v1/journeys/${journeyId}/steps/${stepId}/content`, undefined, token)
+  } catch (e) {
+    if (isNetworkFailure(e)) {
+      const content = await getOfflineContent(journeyId, stepId)
+      if (content) return { journey_id: journeyId, step_id: stepId, content, cached: true }
+    }
+    throw e
+  }
+}
 
 // Synchronous full rewrite of a step's content (rate-limited server-side).
 export const regenerateStepContent = (journeyId: string, stepId: string, token: string): Promise<StepContent> =>

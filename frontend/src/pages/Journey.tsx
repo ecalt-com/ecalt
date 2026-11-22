@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import OfflineButton from '../components/OfflineButton'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Clock, BookOpen, Share2, Award, TrendingUp, Loader2, MessageCircle, Heart, Plus, Send, CheckCircle2 } from 'lucide-react'
 import Navigation from '../components/Navigation'
@@ -486,6 +487,9 @@ export default function Journey() {
                     <TrendingUp size={14} />
                     {completed === 0 ? 'Start Journey' : 'Continue'}
                   </button>
+                  {!isStudent && user && (
+                    <OfflineButton journey={journey} steps={steps} getToken={getToken} />
+                  )}
                   {!isStudent && (
                     <>
                       <button

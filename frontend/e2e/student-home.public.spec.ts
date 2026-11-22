@@ -61,6 +61,9 @@ test('student home — assigned course visible, student journey hides social', a
 
   // Load the student home.
   await page.goto('/my-classes')
+  // F2.3: school students never keep the service worker (shared classroom devices).
+  await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length), { timeout: 15_000 }).toBe(0)
+
   // The class section and the assigned course card both render.
   await expect(page.getByRole('heading', { name: CLASS_NAME })).toBeVisible({ timeout: 20_000 })
   const courseCard = page.getByRole('link').filter({ hasText: COURSE })

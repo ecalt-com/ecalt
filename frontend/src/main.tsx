@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import * as Sentry from '@sentry/react'
 import App from './App'
 import { scrubSentryEvent } from './lib/telemetryPrivacy'
+import { registerServiceWorker } from './lib/pwa'
 import './index.css'
 
 if (import.meta.env.VITE_SENTRY_DSN) {
@@ -30,3 +31,5 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <App />
   </React.StrictMode>
 )
+
+registerServiceWorker()

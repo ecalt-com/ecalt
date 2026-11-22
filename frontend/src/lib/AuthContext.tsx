@@ -11,6 +11,8 @@ import {
 } from 'firebase/auth'
 import { firebaseAuth, googleProvider, microsoftProvider } from './firebase'
 import { setStudentSession } from './telemetryPrivacy'
+import { setOfflineScope } from './offline'
+import { unregisterServiceWorkers } from './pwa'
 import { clearParentUnlock, setAccount as setProfileAccount } from './profileStore'
 
 // /claim is where a teen attaches their own Google login to an existing family
@@ -105,6 +107,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // carry this device's chosen family profile.
       setProfileAccount(u?.uid ?? null)
       setStudentSession(isStudentUid(u?.uid))
+      // Offline reading is per signed-in person and cleared at sign-out; school
+      // students get neither it nor the service worker (shared classroom devices).
+      setOfflineScope(isStudentUid(u?.uid) ? null : (u?.uid ?? null))
+      if (isStudentUid(u?.uid)) void unregisterServiceWorkers()
       userRef.current = u
       setUser(u)
       setLoading(false)
