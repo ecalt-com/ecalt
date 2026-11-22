@@ -122,6 +122,8 @@ async def generate_copy(notification_type: str, context: dict, uid: str | None =
     first = _first_name(raw_name)
     ctx = {**context, "name": first, "curiosity_type": context.get("curiosity_type", "conceptual")}
 
+    from app.services.notification_links import target_path
+    path = target_path(notification_type, context)
     cfg = get_config("nudge")
     system = inject_fingerprint(uid, cfg["style_prompt"])
     template = _get_template(notification_type)
@@ -145,22 +147,23 @@ async def generate_copy(notification_type: str, context: dict, uid: str | None =
         short = copy.get("short_message") or _FALLBACK["short_message"]
         return {
             "subject": copy.get("subject") or _FALLBACK["subject"],
-            "body_html": _ensure_cta(copy.get("body_html") or _FALLBACK["body_html"]),
-            "short_message": _append_link(short),
+            "body_html": _ensure_cta(copy.get("body_html") or _FALLBACK["body_html"], path),
+            "short_message": _append_link(short, path),
+            "target_path": path,
         }
     except Exception as e:
         logger.error("generate_copy failed type=%s: %s", notification_type, e)
         fallback = dict(_FALLBACK)
         base = f"Hey {first}! Something new is waiting for you on ECALT." if first != "there" else _FALLBACK["short_message"]
-        fallback["short_message"] = _append_link(base)
-        fallback["body_html"] = _ensure_cta(fallback["body_html"])
+        fallback["short_message"] = _append_link(base, path)
+        fallback["body_html"] = _ensure_cta(fallback["body_html"], path)
+        fallback["target_path"] = path
         return fallback
 
 
-def _learn_link() -> str:
-    from app.core.config import settings
-    frontend_url = (getattr(settings, "FRONTEND_URL", None) or "https://ecalt.vercel.app").rstrip("/")
-    return f"{frontend_url}/learn"
+def _learn_link(path: str = "/learn") -> str:
+    from app.services.notification_links import frontend_url
+    return f"{frontend_url()}{path}"
 
 
 _CTA_TPL = """\
@@ -173,25 +176,25 @@ _CTA_TPL = """\
 </p>"""
 
 
-def _ensure_cta(body_html: str) -> str:
+def _ensure_cta(body_html: str, path: str = "/learn") -> str:
     """Make every link in the email body point at the real /learn URL.
 
     The model is instructed not to emit links, but a nano model can't be
     trusted with that — rewrite any href it invents and append a
     server-rendered CTA button if the body has no link at all.
     """
-    link = _learn_link()
+    link = _learn_link(path)
     body_html = re.sub(r"""href=(["'])[^"']*\1""", f'href="{link}"', body_html)
     if link not in body_html:
         body_html += _CTA_TPL.format(link=link)
     return body_html
 
 
-def _append_link(short: str) -> str:
-    """Guarantee the ECALT /learn URL appears at the end of a WhatsApp short_message."""
-    from app.core.config import settings
-    frontend_url = (getattr(settings, "FRONTEND_URL", None) or "https://ecalt.vercel.app").rstrip("/")
-    link = f"{frontend_url}/learn"
+def _append_link(short: str, path: str = "/learn") -> str:
+    """Guarantee the call-to-action URL appears at the end of a WhatsApp short_message."""
+    from app.services.notification_links import frontend_url as _frontend_url
+    frontend_url = _frontend_url()
+    link = f"{frontend_url}{path}"
     if link in short or frontend_url in short:
         return short
     separator = " → "

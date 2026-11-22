@@ -38,6 +38,7 @@ PUBLIC_ROUTES = {
     ("POST", "/api/v1/subscriptions/webhook"),           # Stripe-signed
     ("POST", "/api/v1/subscriptions/razorpay/webhook"),  # Razorpay-signed
     ("GET", "/api/v1/notifications/open"),               # email open pixel
+    ("GET", "/api/v1/notifications/c/{log_id}"),         # signed notification click-through
     ("GET", "/api/v1/notifications/unsubscribe"),        # HMAC token in the link
     ("GET", "/api/v1/users/consent/confirm"),            # parent's emailed token
     ("POST", "/api/v1/users/consent/confirm"),

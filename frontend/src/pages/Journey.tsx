@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Clock, BookOpen, Share2, Award, TrendingUp, Loader2, MessageCircle, Heart, Plus, Send, CheckCircle2 } from 'lucide-react'
 import Navigation from '../components/Navigation'
@@ -311,6 +311,20 @@ export default function Journey() {
       setSubmitting(false)
     }
   }
+
+  // Deep link from a notification (#step-<id>): open that step once the journey
+  // has loaded, unless it's still locked behind earlier steps.
+  const deepLinkedFor = useRef<string | null>(null)
+  useEffect(() => {
+    if (!id || loading || steps.length === 0 || deepLinkedFor.current === id) return
+    deepLinkedFor.current = id
+    const match = /^#step-(.+)$/.exec(window.location.hash)
+    if (!match) return
+    const wanted = decodeURIComponent(match[1])
+    const index = steps.findIndex(s => s.id === wanted)
+    if (index !== -1 && !isStepLocked(index)) setExpandedStepId(wanted)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, loading, steps])
 
   const toggleExpanded = (stepId: string) =>
     setExpandedStepId(prev => (prev === stepId ? null : stepId))

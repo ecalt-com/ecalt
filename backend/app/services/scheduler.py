@@ -503,7 +503,11 @@ async def _journey_completion_nudge() -> None:
                     f"""
                     SELECT DISTINCT ON (u.uid)
                            u.uid, u.email, u.display_name,
-                           j.title AS journey_title,
+                           j.title AS journey_title, j.id AS journey_id,
+                           (SELECT st->>'id' FROM jsonb_array_elements(j.steps) WITH ORDINALITY e(st, i)
+                             WHERE NOT EXISTS (SELECT 1 FROM user_progress p
+                                                WHERE p.uid = u.uid AND p.journey_id = j.id AND p.step_id = st->>'id')
+                             ORDER BY i LIMIT 1) AS next_step_id,
                            jsonb_array_length(j.steps) - COUNT(up.step_id) AS steps_remaining,
                            COALESCE(np.preferred_channel, 'whatsapp') AS preferred_channel,
                            np.email_enabled, np.whatsapp_opted_in, np.whatsapp_enabled
@@ -535,6 +539,8 @@ async def _journey_completion_nudge() -> None:
             {
                 "name": u["display_name"] or "",
                 "journey_title": u["journey_title"],
+                "journey_id": u["journey_id"],
+                "next_step_id": u["next_step_id"],
                 "steps_remaining": int(u["steps_remaining"]),
             },
         )

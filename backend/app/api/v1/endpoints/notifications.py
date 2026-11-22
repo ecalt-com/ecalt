@@ -324,3 +324,29 @@ def track_open(log_id: str = Query(...)):
     except Exception as e:
         logger.debug("track_open failed log_id=%s: %s", log_id, e)
     return Response(content=_TRANSPARENT_GIF, media_type="image/gif")
+
+
+@router.get("/c/{log_id}", include_in_schema=False)
+def track_click(log_id: str, to: str = Query(...), sig: str = Query("")):
+    """Click-through: stamp clicked_at once, then redirect to the signed same-site target."""
+    from fastapi.responses import RedirectResponse
+    from app.services.notification_links import landing_url, verify_click
+    if not verify_click(log_id, to, sig):
+        raise HTTPException(status_code=400, detail="Invalid link")
+    channel = ntype = uid = None
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE notification_log SET clicked_at = COALESCE(clicked_at, now()), "
+                    "opened_at = COALESCE(opened_at, now()) WHERE id = %s "
+                    "RETURNING uid, channel, notification_type", (log_id,))
+                row = cur.fetchone()
+                if row:
+                    uid, channel, ntype = row["uid"], row["channel"], row["notification_type"]
+    except Exception as e:
+        logger.debug("track_click failed log_id=%s: %s", log_id, e)
+    if uid:
+        from app.services.learning_events_service import record_event
+        record_event(uid, "notification_click", props={"type": ntype or "", "channel": channel or ""})
+    return RedirectResponse(landing_url(to, channel, ntype), status_code=302)

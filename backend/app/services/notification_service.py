@@ -265,6 +265,12 @@ class NotificationService:
         )
         success = False
 
+        if log_id and copy.get("target_path"):
+            from app.services.notification_links import build_click_url, frontend_url
+            plain, tracked = f"{frontend_url()}{copy['target_path']}", build_click_url(log_id, copy["target_path"])
+            copy = {**copy, "body_html": copy["body_html"].replace(plain, tracked),
+                    "short_message": copy["short_message"].replace(plain, tracked)}
+
         if channel == "email":
             success = await send_email(
                 to=email,
