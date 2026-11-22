@@ -14,6 +14,7 @@ Jobs registered:
 """
 import json
 import logging
+from datetime import datetime, timedelta, timezone
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
@@ -67,6 +68,7 @@ async def _enqueue(uid: str, notif_type: str, channel: str, payload: dict) -> No
                     """
                     INSERT INTO notification_queue (uid, notification_type, channel, scheduled_for, payload)
                     VALUES (%s, %s, %s, now(), %s)
+                    ON CONFLICT DO NOTHING
                     """,
                     (uid, notif_type, channel, json.dumps(payload)),
                 )
@@ -90,6 +92,79 @@ def _preferred_channel(row) -> str:
 
 # ── Job 1: Queue processor ────────────────────────────────────────────────────
 
+MAX_DUE_PER_USER_PER_RUN = 2
+MAX_BLOCKED_RETRIES = 3
+QUEUE_ALERT_DEPTH = 1000
+FAILURE_BACKOFF = (timedelta(minutes=15), timedelta(hours=1), timedelta(hours=6))
+
+
+def _claim_due_rows(cur) -> list[dict]:
+    """Expire stale rows, fail abandoned claims, then claim up to 50 due rows,
+    at most MAX_DUE_PER_USER_PER_RUN per user, so one user's backlog can't
+    starve everyone else. A claimed row is 'sending' until its outcome is
+    recorded; a crash in between fails the row instead of re-sending it."""
+    cur.execute(
+        "UPDATE notification_queue SET status = 'expired' "
+        "WHERE status = 'pending' AND expires_at IS NOT NULL AND expires_at < now()"
+    )
+    cur.execute(
+        "UPDATE notification_queue SET status = 'failed' "
+        "WHERE status = 'sending' AND claimed_at < now() - interval '30 minutes'"
+    )
+    cur.execute(
+        """
+        UPDATE notification_queue q
+           SET status = 'sending', claimed_at = now()
+         WHERE q.id IN (
+                 SELECT id FROM (
+                     SELECT id, scheduled_for,
+                            ROW_NUMBER() OVER (PARTITION BY uid ORDER BY scheduled_for) AS rn
+                       FROM notification_queue
+                      WHERE status = 'pending' AND scheduled_for <= now()
+                 ) due
+                  WHERE rn <= %s
+                  ORDER BY scheduled_for
+                  LIMIT 50)
+           AND q.status = 'pending'
+        RETURNING q.id, q.uid, q.notification_type, q.channel, q.payload, q.attempts
+        """,
+        (MAX_DUE_PER_USER_PER_RUN,),
+    )
+    return [dict(r) for r in cur.fetchall()]
+
+
+def _resolve_row(cur, row: dict, outcome) -> None:
+    """Record what happened to a claimed row."""
+    from app.services.notification_service import (
+        BLOCKED, DEFERRED, SENT, TIME_SENSITIVE_TYPES,
+    )
+    rid, attempts = str(row["id"]), int(row.get("attempts") or 0)
+    now = datetime.now(timezone.utc)
+    if outcome.status == SENT:
+        cur.execute("UPDATE notification_queue SET status = 'sent' WHERE id = %s", (rid,))
+    elif outcome.status == DEFERRED:
+        cur.execute("UPDATE notification_queue SET status = 'pending', scheduled_for = %s WHERE id = %s",
+                    (outcome.retry_at, rid))
+    elif outcome.status == BLOCKED:
+        if row["notification_type"] in TIME_SENSITIVE_TYPES or attempts + 1 >= MAX_BLOCKED_RETRIES:
+            cur.execute("UPDATE notification_queue SET status = 'expired', attempts = attempts + 1 WHERE id = %s",
+                        (rid,))
+        else:
+            cur.execute(
+                "UPDATE notification_queue SET status = 'pending', attempts = attempts + 1, "
+                "scheduled_for = %s WHERE id = %s",
+                (now + timedelta(days=1), rid))
+    else:  # FAILED
+        if attempts >= len(FAILURE_BACKOFF):
+            cur.execute("UPDATE notification_queue SET status = 'failed', attempts = attempts + 1 WHERE id = %s",
+                        (rid,))
+        else:
+            cur.execute(
+                "UPDATE notification_queue SET status = 'pending', attempts = attempts + 1, "
+                "scheduled_for = %s WHERE id = %s",
+                (now + FAILURE_BACKOFF[attempts], rid))
+
+
 async def _queue_processor() -> None:
     """Drain pending notification_queue rows whose scheduled_for <= now()."""
     from app.core.database import get_db
@@ -98,18 +173,13 @@ async def _queue_processor() -> None:
     try:
         with get_db() as conn:
             with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT id, uid, notification_type, channel, payload
-                    FROM notification_queue
-                    WHERE status = 'pending' AND scheduled_for <= now()
-                    ORDER BY scheduled_for
-                    LIMIT 50
-                    """,
-                )
-                rows = cur.fetchall()
+                rows = _claim_due_rows(cur)
+                cur.execute("SELECT COUNT(*) AS n FROM notification_queue WHERE status = 'pending'")
+                depth = int(cur.fetchone()["n"])
+        if depth > QUEUE_ALERT_DEPTH:
+            logger.error("queue_processor: %s pending notifications (alert threshold %s)", depth, QUEUE_ALERT_DEPTH)
     except Exception as e:
-        logger.error("queue_processor: DB read failed: %s", e)
+        logger.error("queue_processor: claim failed: %s", e)
         return
 
     for row in rows:
@@ -119,37 +189,42 @@ async def _queue_processor() -> None:
                 with conn.cursor() as cur:
                     cur.execute("SELECT email, display_name FROM users WHERE uid = %s", (uid,))
                     user = cur.fetchone()
-            if not user:
-                continue
-            if not user["email"] and row["channel"] == "email":
-                # Child profiles have no email; drop rather than retry forever.
-                with get_db() as conn:
-                    with conn.cursor() as cur:
-                        cur.execute(
-                            "UPDATE notification_queue SET status = 'failed' WHERE id = %s",
-                            (str(row["id"]),),
-                        )
-                continue
+                    if not user or (not user["email"] and row["channel"] == "email"):
+                        # Gone, or a child profile with no email: drop, never retry.
+                        cur.execute("UPDATE notification_queue SET status = 'failed' WHERE id = %s",
+                                    (str(row["id"]),))
+                        continue
 
             payload = row["payload"] or {}
             payload.setdefault("name", user["display_name"] or "")
 
-            success = await notification_service.send_notification(
+            outcome = await notification_service.attempt_send(
                 uid=uid,
                 email=user["email"],
                 notification_type=row["notification_type"],
                 channel=row["channel"],
                 context=payload,
             )
-            new_status = "sent" if success else "pending"
             with get_db() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE notification_queue SET status = %s WHERE id = %s",
-                        (new_status, str(row["id"])),
-                    )
+                    _resolve_row(cur, row, outcome)
         except Exception as e:
             logger.error("queue_processor: row=%s uid=%s failed: %s", row["id"], uid, e)
+
+
+async def _prune_notification_queue() -> None:
+    """Delete finished queue rows older than 30 days."""
+    from app.core.database import get_db
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM notification_queue "
+                    "WHERE status IN ('cancelled','expired','sent','failed') "
+                    "AND created_at < now() - interval '30 days'")
+                logger.info("prune_notification_queue: deleted %s rows", cur.rowcount)
+    except Exception as e:
+        logger.error("prune_notification_queue failed: %s", e)
 
 
 # ── Job 2: Daily spark dispatch ───────────────────────────────────────────────
@@ -1305,6 +1380,7 @@ def setup_scheduler() -> AsyncIOScheduler:
         (_family_lifecycle_dispatch,   "cron", {"hour": 4, "minute": 0},  "family_lifecycle_dispatch"),
         (_marketplace_popularity_scan, "cron", {"hour": "*/6"},           "marketplace_popularity_scan"),
         (_prune_school_audit_log,      "cron", {"hour": 4, "minute": 20},  "prune_school_audit_log"),
+        (_prune_notification_queue,    "cron", {"hour": 4, "minute": 50},  "prune_notification_queue"),
         (_school_offboarding_dispatch, "cron", {"hour": 4, "minute": 40},  "school_offboarding_dispatch"),
         (_school_jobs_health,          "cron", {"minute": "*/15"},         "school_jobs_health"),
     ]

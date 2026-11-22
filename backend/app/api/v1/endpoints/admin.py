@@ -1584,6 +1584,26 @@ def update_notification_template(
     )
 
 
+@router.get("/diagnostics/notification-queue")
+def notification_queue_diagnostics(_uid: str = Depends(get_admin_user)):
+    """Queue depth by status and type, the oldest overdue row, and the users
+    with the most pending rows (F0.1). Counts only, no message content."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT status, notification_type, COUNT(*) AS n FROM notification_queue "
+                        "GROUP BY 1, 2 ORDER BY n DESC")
+            by_status = [dict(r) for r in cur.fetchall()]
+            cur.execute("SELECT COUNT(*) AS pending, "
+                        "COUNT(*) FILTER (WHERE scheduled_for <= now()) AS due, "
+                        "EXTRACT(EPOCH FROM now() - MIN(scheduled_for) FILTER (WHERE scheduled_for <= now())) AS oldest_due_seconds "
+                        "FROM notification_queue WHERE status = 'pending'")
+            totals = dict(cur.fetchone())
+            cur.execute("SELECT COUNT(*) AS n FROM (SELECT 1 FROM notification_queue WHERE status = 'pending' "
+                        "GROUP BY uid HAVING COUNT(*) > 20) x")
+            heavy = cur.fetchone()["n"]
+    return {"totals": totals, "users_with_over_20_pending": heavy, "by_status": by_status}
+
+
 @router.get("/diagnostics/client-ip")
 def client_ip_diagnostics(request: Request, _uid: str = Depends(get_admin_user)):
     """What the rate limiter sees as the caller's address (SC-009 / #19).

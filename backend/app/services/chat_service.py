@@ -512,8 +512,10 @@ async def _queue_cliffhanger(uid: str, user_message: str, curiosity_type: str = 
                 cur.execute(
                     """
                     INSERT INTO notification_queue
-                        (uid, notification_type, channel, scheduled_for, payload)
-                    VALUES (%s, 'cliffhanger_return', %s, now() + interval '2 hours', %s)
+                        (uid, notification_type, channel, scheduled_for, payload, expires_at)
+                    VALUES (%s, 'cliffhanger_return', %s, now() + interval '2 hours', %s,
+                            now() + interval '2 hours' + interval '48 hours')
+                    ON CONFLICT DO NOTHING
                     """,
                     (uid, channel, json.dumps({"topic": topic, "curiosity_type": curiosity_type})),
                 )

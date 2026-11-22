@@ -1,6 +1,7 @@
 """Base notification service — routing, daily cap, quiet hours, logging, scheduling."""
 import json
 import logging
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -9,6 +10,21 @@ from app.core.database import get_db
 logger = logging.getLogger("app.services.notification_service")
 
 DAILY_CAP = 2
+
+SENT, DEFERRED, BLOCKED, FAILED = "sent", "deferred", "blocked", "failed"
+
+# Only worth sending close to the moment that triggered them.
+TIME_SENSITIVE_TYPES = {"cliffhanger_return", "streak_at_risk"}
+
+
+@dataclass
+class SendOutcome:
+    status: str
+    retry_at: Optional[datetime] = None
+    reason: str = ""
+
+    def __bool__(self) -> bool:
+        return self.status == SENT
 
 
 class NotificationService:
@@ -116,15 +132,20 @@ class NotificationService:
         payload: dict,
         when: datetime,
     ) -> None:
+        """Queue one future send. A second pending row for a single-instance
+        type is dropped by the unique index (ON CONFLICT DO NOTHING)."""
         try:
             with get_db() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
-                        INSERT INTO notification_queue (uid, notification_type, channel, scheduled_for, payload)
-                        VALUES (%s, %s, %s, %s, %s)
+                        INSERT INTO notification_queue
+                            (uid, notification_type, channel, scheduled_for, payload, expires_at)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT DO NOTHING
                         """,
-                        (uid, notification_type, channel, when, json.dumps(payload)),
+                        (uid, notification_type, channel, when, json.dumps(payload),
+                         when + timedelta(hours=48) if notification_type in TIME_SENSITIVE_TYPES else None),
                     )
         except Exception as e:
             logger.error("schedule_for_later failed uid=%s: %s", uid, e)
@@ -187,6 +208,22 @@ class NotificationService:
         channel: str,
         context: dict,
     ) -> bool:
+        """Send now. A quiet-hours deferral queues one retry (deduplicated)."""
+        outcome = await self.attempt_send(uid, email, notification_type, channel, context)
+        if outcome.status == DEFERRED:
+            await self.schedule_for_later(uid, notification_type, channel, context, when=outcome.retry_at)
+        return outcome.status == SENT
+
+    async def attempt_send(
+        self,
+        uid: str,
+        email: str,
+        notification_type: str,
+        channel: str,
+        context: dict,
+    ) -> SendOutcome:
+        """One delivery attempt. Never writes to notification_queue: the caller
+        decides what a deferral or a block means for its queue row."""
         from app.core.config import settings
         from app.services.copy_generator import generate_copy
         from app.services.email_service import send_email
@@ -195,10 +232,10 @@ class NotificationService:
         # Global channel kill-switches (override per-user prefs)
         if channel == "email" and not settings.NOTIFICATIONS_EMAIL_ENABLED:
             logger.info("email channel disabled globally — skipping uid=%s type=%s", uid, notification_type)
-            return False
+            return SendOutcome(BLOCKED, reason="channel_disabled")
         if channel == "whatsapp" and not settings.NOTIFICATIONS_WHATSAPP_ENABLED:
             logger.info("whatsapp channel disabled globally — skipping uid=%s type=%s", uid, notification_type)
-            return False
+            return SendOutcome(BLOCKED, reason="channel_disabled")
 
         # Inject user's display_name into context if not already present
         if "name" not in context and "display_name" not in context:
@@ -214,15 +251,12 @@ class NotificationService:
 
         if not await self.can_send(uid):
             logger.info("send blocked by daily cap / quiet-mode uid=%s type=%s", uid, notification_type)
-            return False
+            return SendOutcome(BLOCKED, reason="cap")
 
         if await self.is_quiet_hours(uid):
-            await self.schedule_for_later(
-                uid, notification_type, channel, context,
-                when=datetime.now(timezone.utc) + timedelta(hours=2),
-            )
             logger.info("send deferred (quiet hours) uid=%s type=%s", uid, notification_type)
-            return False
+            return SendOutcome(DEFERRED, retry_at=datetime.now(timezone.utc) + timedelta(hours=2),
+                               reason="quiet_hours")
 
         copy = await generate_copy(notification_type, context)
         log_id = await self.log_notification(
@@ -255,7 +289,7 @@ class NotificationService:
 
             if not pref or not pref["whatsapp_opted_in"] or not pref["whatsapp_phone"]:
                 logger.warning("whatsapp send blocked: not opted in uid=%s", uid)
-                return False
+                return SendOutcome(BLOCKED, reason="not_opted_in")
 
             success = await send_whatsapp(
                 to_e164=pref["whatsapp_phone"],
@@ -271,7 +305,7 @@ class NotificationService:
             except Exception:
                 pass
 
-        return success
+        return SendOutcome(SENT if success else FAILED, reason="" if success else "transport")
 
 
 notification_service = NotificationService()
