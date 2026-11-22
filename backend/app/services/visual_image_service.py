@@ -106,6 +106,8 @@ async def generate_step_visual(visual_description: str, uid: str | None) -> dict
             record_image_usage(uid, model, interaction_type="visual_image")
         return {"url": url, "model": model, "content_type": content_type, "content_hash": content_hash,
                 "size_bytes": len(data)}
-    except Exception:
+    except Exception as e:
         logger.warning("visual image generation failed", exc_info=True)
+        from app.services.provider_service import _maybe_alert_credits
+        await _maybe_alert_credits("openai", e)
         return None

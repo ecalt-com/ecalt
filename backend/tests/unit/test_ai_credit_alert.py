@@ -113,3 +113,35 @@ async def test_provider_hook_fires_only_on_credit_errors(monkeypatch):
 
     await provider_service._maybe_alert_credits("openai", Exception(TRANSIENT_RATE_LIMIT))
     assert mock.await_count == 1  # unchanged
+
+
+# ── Image generation is covered too (E9) ─────────────────────────────────────
+
+@pytest.mark.parametrize("error_text, expect_alert", [(OPENAI_EXHAUSTED, True), (TRANSIENT_RATE_LIMIT, False)])
+def test_hero_image_failure_alerts_only_on_credit_exhaustion(monkeypatch, error_text, expect_alert):
+    import asyncio
+    from app.services import image_service
+    from app.models.schemas import Journey
+
+    sent = AsyncMock()
+    monkeypatch.setattr(ai_alert_service, "alert_credits_exhausted", sent)
+    monkeypatch.setattr(image_service, "images_enabled", lambda: True)
+    monkeypatch.setattr(image_service, "generate_hero_image", AsyncMock(side_effect=RuntimeError(error_text)))
+    j = Journey(id="j1", question="q", title="t", description="d", icon="x", tags=[], steps=[],
+                estimated_hours=1)
+    assert asyncio.run(image_service.generate_and_attach_hero(j, None)) is None
+    assert sent.await_count == (1 if expect_alert else 0)
+    if expect_alert:
+        assert sent.await_args.args[0] == "openai"
+
+
+def test_visual_image_failure_alerts_on_credit_exhaustion(monkeypatch):
+    import asyncio
+    from app.services import visual_image_service as vis
+
+    sent = AsyncMock()
+    monkeypatch.setattr(ai_alert_service, "alert_credits_exhausted", sent)
+    monkeypatch.setattr(vis, "images_enabled", lambda: True)
+    monkeypatch.setattr(vis, "generate_visual_image", AsyncMock(side_effect=RuntimeError(OPENAI_EXHAUSTED)))
+    assert asyncio.run(vis.generate_step_visual("a diagram", None)) is None
+    assert sent.await_count == 1

@@ -2,7 +2,7 @@
 
 ECALT is a React + TypeScript SPA built with Vite and deployed on Vercel. It is entirely client-side (no SSR). All data goes through the FastAPI backend on Railway (`../backend`), reached via same-origin `/api/*` calls that Vercel rewrites (prod) or the Vite proxy forwards (dev).
 
-> **Stray Next.js files — ignore them.** `next.config.mjs`, `next-env.d.ts`, `.next/` and `src/app/**` (layout.tsx, page.tsx, globals.css, …) are leftovers from an abandoned Next.js experiment. They are **not** in `tsconfig.json`'s `include`, not imported anywhere and not built. The real app entry is `src/main.tsx` → `src/App.tsx`. Never add code under `src/app/`.
+> The abandoned Next.js experiment (`src/app/**`, `next.config.mjs`) and the unrouted `HomeCosmic`, `Privacy` and `MissionCard` were deleted on 2026-11-22. The app entry is `src/main.tsx` → `src/App.tsx`.
 
 ---
 
@@ -34,10 +34,10 @@ cp .env.example .env        # fill in Firebase vars
 npm run dev                  # localhost:3000; /api/* proxied → VITE_API_URL || localhost:8000
 npm run build                # tsc type-check + vite build → dist/   (run this to verify changes)
 npm run preview              # serve dist/ at localhost:4173
-npm run lint                 # eslint src --ext ts,tsx
+npm run lint                 # eslint src
 ```
 
-There is no frontend test suite — **`npm run build` (which runs `tsc`) is the correctness gate.** Unused locals/params fail the build. Run `npm run lint` too, and check UI changes in the browser (light + dark, ~375px width).
+There is no frontend test suite — **`npm run build` (which runs `tsc`) is the correctness gate.** Unused locals/params fail the build. Run `npm run lint` too (eslint 9, flat config in `eslint.config.js`; CI runs it), and check UI changes in the browser (light + dark, ~375px width).
 
 `@` alias: `import '@/components/Foo'` → `src/components/Foo` (most code uses relative imports).
 
@@ -50,7 +50,6 @@ frontend/src/
 ├── main.tsx                     # Sentry init, history.scrollRestoration='manual', createRoot
 ├── App.tsx                      # Provider tree, lazy routes, post-sign-in gates, global banners
 ├── index.css                    # CSS vars + component classes (.glass, .glass-card, .btn-primary…)
-├── styles/cosmic.css            # Only used by pages/HomeCosmic.tsx
 ├── lib/
 │   ├── api.ts                   # request<T>() + typed wrappers for most endpoints
 │   ├── familyApi.ts             # Family / parental-consent endpoint wrappers (uses request())
@@ -91,14 +90,14 @@ frontend/src/
     ├── MarkdownContent.tsx      # Custom markdown renderer (no library) + diagram extraction
     ├── Navigation.tsx, GateModal.tsx, OnboardingModal.tsx, ReconsentBanner.tsx,
     ├── ImpersonationBanner.tsx, AccountPausedScreen.tsx, MindSignatureDisclaimer.tsx,
-    └── JourneyCard.tsx, MarketplaceCard.tsx, MissionCard.tsx, Spark*.tsx, PageMeta.tsx, …
+    └── JourneyCard.tsx, MarketplaceCard.tsx, Spark*.tsx, PageMeta.tsx, …
 ```
 
 ---
 
 ## Routes
 
-All pages are `React.lazy` + `Suspense` (`PageSkeleton` spinner) and wrapped in `<ErrorBoundary>`. The landing page can be swapped to `HomeCosmic` by toggling the commented import at the top of `App.tsx`.
+All pages are `React.lazy` + `Suspense` (`PageSkeleton` spinner) and wrapped in `<ErrorBoundary>`. 
 
 | Path | Page | Notes |
 |---|---|---|
@@ -215,7 +214,7 @@ Schools (backend `plans/school-courses/`): `getMySchools`, `getSchool`, `updateS
 Children CRUD, link-request approve/decline, card verification (start/confirm), child overview/activity/transcript, `getMyFamily`, consent record, `patchChildSettings`, revoke/cancel-revoke/reconsent, `exportChildData`, self consent (`getMyConsent`, `reconsentSelf`), and token-based parent consent (`getConsentStatus`, `decideConsent`, `resendConsentEmail`, `reportConsent`).
 
 ### Remaining direct `fetch()` users
-`AuthContext` (POST `/users`), `GeoContext`, `PaymentConfig`, `SubscriptionContext`, `ConversationInterface` + `JourneyTutor` (SSE), and older code (`Pricing`, `Profile`, `Welcome`, `Verify`, `MindSignature`, `Admin` + `admin/hooks` + several admin tabs, `KnowledgeUniverse`, `TodaysSpark`, `OnboardingModal`). `pages/Privacy.tsx` is unrouted (`/privacy` redirects to `/profile`). All of them except AuthContext and admin now use `authHeaders(token)`.
+`AuthContext` (POST `/users`), `GeoContext`, `PaymentConfig`, `SubscriptionContext`, `ConversationInterface` + `JourneyTutor` (SSE), and older code (`Pricing`, `Profile`, `Welcome`, `Verify`, `MindSignature`, `Admin` + `admin/hooks` + several admin tabs, `KnowledgeUniverse`, `TodaysSpark`, `OnboardingModal`). All of them except AuthContext and admin now use `authHeaders(token)`.
 
 ---
 
@@ -335,7 +334,6 @@ Security headers on all routes: `X-Frame-Options: DENY`, `nosniff`, strict refer
 - **D3 constellation** mutates the DOM directly in a `useEffect`; don't mix React children into it.
 - **Home waitlist form is UI-only** — no API call.
 - **Plan copy is hardcoded** in `Pricing.tsx` / admin constants — changing copy needs a frontend deploy.
-- **Stray `src/app/` Next.js files** — never edit or import them (see top of file).
 - When a backend feature needs frontend work, the project convention is to document the frontend changes in an md plan (see `../backend/plans/<feature>/frontend-changes.md`) before implementing.
 
 ---

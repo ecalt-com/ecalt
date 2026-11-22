@@ -5,8 +5,7 @@ import reactRefresh from 'eslint-plugin-react-refresh'
 import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
-  // src/app/** is the abandoned Next.js experiment (see CLAUDE.md): not built, not linted.
-  { ignores: ['dist', 'src/app/**', 'e2e/**', '.next', 'node_modules'] },
+  { ignores: ['dist', 'e2e/**', 'node_modules'] },
   {
     files: ['src/**/*.{ts,tsx}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],

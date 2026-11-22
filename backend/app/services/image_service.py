@@ -156,6 +156,8 @@ async def generate_and_attach_hero(journey: Journey, uid: str | None) -> str | N
             record_image_usage(uid, model)
         logger.info("hero image attached journey=%s bytes=%d", journey.id, len(data))
         return url
-    except Exception:
+    except Exception as e:
         logger.warning("hero image generation failed journey=%s", journey.id, exc_info=True)
+        from app.services.provider_service import _maybe_alert_credits
+        await _maybe_alert_credits("openai", e)
         return None

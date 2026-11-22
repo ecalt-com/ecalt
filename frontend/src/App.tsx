@@ -22,8 +22,6 @@ import BirthYearGate from './components/auth/BirthYearGate'
 import Under13Block from './components/auth/Under13Block'
 import ParentalConsentForm, { ConsentSentScreen } from './components/auth/ParentalConsentForm'
 
-// LANDING PAGE TOGGLE — swap these two lines to use cosmic home:
-// const Home       = lazy(() => import('./pages/HomeCosmic'))
 const Home          = lazy(() => import('./pages/Home'))
 const Learn         = lazy(() => import('./pages/Learn'))
 const Pricing       = lazy(() => import('./pages/Pricing'))
