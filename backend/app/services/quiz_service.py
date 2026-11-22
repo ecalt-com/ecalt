@@ -338,7 +338,8 @@ def find_reusable_quiz_set(uid: str, journey_id: str, step_id: str) -> dict | No
                 return None
             cur.execute(
                 "SELECT id, concept, quiz_data, hints_given FROM quiz_sessions "
-                "WHERE quiz_set_id = %s AND uid = %s ORDER BY created_at, id",
+                "WHERE quiz_set_id = %s AND uid = %s "
+                "ORDER BY (quiz_data->>'position')::int NULLS LAST, created_at, id",
                 (row["quiz_set_id"], uid),
             )
             sessions = cur.fetchall()
@@ -528,6 +529,7 @@ async def generate_quiz_set(
         with conn.cursor() as cur:
             for i, (q, judge_ok, judge_issue, was_retried) in enumerate(checked_questions):
                 q["difficulty"] = difficulties[i] if i < len(difficulties) else difficulty
+                q["position"] = i  # rows share one transaction timestamp; this keeps the order stable on reuse
                 cur.execute(
                     """
                     INSERT INTO quiz_sessions

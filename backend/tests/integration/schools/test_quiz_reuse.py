@@ -13,12 +13,12 @@ def _set(db, uid, set_id, n=3, journey="j1", step="s1", submitted=(), age_hours=
         cur.execute("INSERT INTO users (uid, email) VALUES (%s, %s) ON CONFLICT DO NOTHING", (uid, f"{uid}@x.com"))
         cur.execute("INSERT INTO journeys (id, uid, title, question, description, estimated_hours) VALUES (%s, %s, 't', 'q', 'd', 1) ON CONFLICT DO NOTHING", (journey, uid))
         for i in range(n):
-            q = {"question": f"Q{i}?", "difficulty": "exploratory", "intro_phrase": "hi", "concept_tested": f"c{i}"}
+            q = {"question": f"Q{i}?", "difficulty": "exploratory", "intro_phrase": "hi", "concept_tested": f"c{i}",
+                 "position": i}
             cur.execute(
                 "INSERT INTO quiz_sessions (uid, concept, quiz_data, journey_id, step_id, quiz_set_id, submitted, "
-                "hints_given, created_at) VALUES (%s,'c',%s::jsonb,%s,%s,%s,%s,%s, now() - make_interval(hours => %s) "
-                "+ make_interval(secs => %s))",
-                (uid, json.dumps(q), journey, step, set_id, i in submitted, hints if i == 0 else 0, age_hours, i))
+                "hints_given, created_at) VALUES (%s,'c',%s::jsonb,%s,%s,%s,%s,%s, now() - make_interval(hours => %s))",
+                (uid, json.dumps(q), journey, step, set_id, i in submitted, hints if i == 0 else 0, age_hours))
 
 
 def test_reuses_the_same_questions_in_order(db):
