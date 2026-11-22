@@ -1,5 +1,8 @@
 {
   "rewrites": [
+    { "source": "/journey/:id", "has": [{ "type": "host", "value": "ecalt-dev.vercel.app" }, { "type": "header", "key": "user-agent", "value": "(?i).*(facebookexternalhit|whatsapp|twitterbot|slackbot|linkedinbot|telegrambot|discordbot|skypeuripreview).*" }], "destination": "https://ecalt-api-dev.up.railway.app/api/v1/share/journey/:id" },
+    { "source": "/journey/:id", "has": [{ "type": "host", "value": "ecalt-git-feature-dev-biswambar-s-projects.vercel.app" }, { "type": "header", "key": "user-agent", "value": "(?i).*(facebookexternalhit|whatsapp|twitterbot|slackbot|linkedinbot|telegrambot|discordbot|skypeuripreview).*" }], "destination": "https://ecalt-api-dev.up.railway.app/api/v1/share/journey/:id" },
+    { "source": "/journey/:id", "has": [{ "type": "header", "key": "user-agent", "value": "(?i).*(facebookexternalhit|whatsapp|twitterbot|slackbot|linkedinbot|telegrambot|discordbot|skypeuripreview).*" }], "destination": "https://ecalt-production.up.railway.app/api/v1/share/journey/:id" },
     { "source": "/sitemap.xml", "destination": "https://ecalt-production.up.railway.app/api/v1/sitemap" },
     { "source": "/api/:path*", "has": [{ "type": "host", "value": "ecalt-dev.vercel.app" }], "destination": "https://ecalt-api-dev.up.railway.app/api/:path*" },
     { "source": "/api/:path*", "has": [{ "type": "host", "value": "ecalt-git-feature-dev-biswambar-s-projects.vercel.app" }], "destination": "https://ecalt-api-dev.up.railway.app/api/:path*" },
