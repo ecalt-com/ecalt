@@ -1,14 +1,19 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Loader2, Search } from 'lucide-react'
 import Navigation from '../components/Navigation'
 import MarketplaceCard from '../components/MarketplaceCard'
 import PageMeta from '../components/PageMeta'
-import { getMarketplace } from '../lib/api'
+import { getMarketplace, type MarketplaceFilters } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import type { Journey } from '../lib/types'
 
 const FILTERS = ['All', 'Beginner', 'Intermediate', 'Advanced']
 const PAGE_SIZE = 20
+const SORTS: { value: NonNullable<MarketplaceFilters['sort']>; label: string }[] = [
+  { value: 'popular', label: 'Most popular' },
+  { value: 'liked', label: 'Most liked' },
+  { value: 'new', label: 'Newest' },
+]
 
 export default function Marketplace() {
   const [journeys, setJourneys] = useState<Journey[]>([])
@@ -16,16 +21,25 @@ export default function Marketplace() {
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [filter, setFilter] = useState('All')
+  const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [sort, setSort] = useState<NonNullable<MarketplaceFilters['sort']>>('popular')
   const { getToken } = useAuth()
 
   const difficultyParam = filter === 'All' ? undefined : filter.toLowerCase()
+  const qParam = debouncedQuery.trim() || undefined
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQuery(query), 300)
+    return () => window.clearTimeout(t)
+  }, [query])
 
   // Filter changes reset to page 1 — re-fetch from scratch.
   useEffect(() => {
     let cancelled = false
     setLoading(true)
     getToken()
-      .then(token => getMarketplace({ difficulty: difficultyParam, limit: PAGE_SIZE, offset: 0 }, token ?? undefined))
+      .then(token => getMarketplace({ difficulty: difficultyParam, q: qParam, sort, limit: PAGE_SIZE, offset: 0 }, token ?? undefined))
       .then(res => {
         if (cancelled) return
         setJourneys(res.journeys)
@@ -35,14 +49,14 @@ export default function Marketplace() {
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter])
+  }, [filter, qParam, sort])
 
   const loadMore = useCallback(async () => {
     setLoadingMore(true)
     try {
       const token = await getToken()
       const res = await getMarketplace(
-        { difficulty: difficultyParam, limit: PAGE_SIZE, offset: journeys.length },
+        { difficulty: difficultyParam, q: qParam, sort, limit: PAGE_SIZE, offset: journeys.length },
         token ?? undefined,
       )
       setJourneys(prev => [...prev, ...res.journeys])
@@ -53,7 +67,7 @@ export default function Marketplace() {
       setLoadingMore(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [journeys.length, difficultyParam])
+  }, [journeys.length, difficultyParam, qParam, sort])
 
   return (
     <>
@@ -74,6 +88,28 @@ export default function Marketplace() {
           <p className="text-slate-500">
             Journeys the community has used and liked the most, curated in by our admins.
           </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 mb-6">
+          <div className="relative flex-1">
+            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden />
+            <input
+              type="search"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              placeholder="Search journeys, topics, tags…"
+              aria-label="Search the marketplace"
+              className="w-full pl-10 pr-3 py-2.5 rounded-xl text-sm glass border border-transparent focus:border-violet-400 focus:outline-none text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+            />
+          </div>
+          <select
+            value={sort}
+            onChange={e => setSort(e.target.value as typeof sort)}
+            aria-label="Sort journeys"
+            className="px-3 py-2.5 rounded-xl text-sm glass border border-transparent focus:border-violet-400 focus:outline-none text-slate-700 dark:text-slate-200"
+          >
+            {SORTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
         </div>
 
         <div className="flex gap-2 flex-wrap mb-10">
@@ -113,9 +149,13 @@ export default function Marketplace() {
         ) : (
           <div className="text-center py-24">
             <p className="text-4xl mb-4">🌱</p>
-            <p className="text-lg font-medium text-slate-700 dark:text-slate-400">Nothing here yet</p>
+            <p className="text-lg font-medium text-slate-700 dark:text-slate-400">
+              {qParam ? `No journeys match “${qParam}”` : 'Nothing here yet'}
+            </p>
             <p className="text-sm text-slate-500 mt-1">
-              Journeys show up here once they've been used and liked by enough learners and approved by an admin.
+              {qParam
+                ? 'Try different words, or clear the search.'
+                : "Journeys show up here once they've been used and liked by enough learners and approved by an admin."}
             </p>
           </div>
         )}

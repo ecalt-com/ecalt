@@ -114,6 +114,8 @@ export interface MarketplaceFilters {
   age_group?: string
   difficulty?: string
   tag?: string
+  q?: string
+  sort?: 'popular' | 'new' | 'liked'
   limit?: number
   offset?: number
 }
@@ -130,6 +132,8 @@ export const getMarketplace = (filters: MarketplaceFilters = {}, token?: string)
   if (filters.age_group) params.set('age_group', filters.age_group)
   if (filters.difficulty) params.set('difficulty', filters.difficulty)
   if (filters.tag) params.set('tag', filters.tag)
+  if (filters.q) params.set('q', filters.q)
+  if (filters.sort) params.set('sort', filters.sort)
   params.set('limit', String(filters.limit ?? 20))
   params.set('offset', String(filters.offset ?? 0))
   return request(`/api/v1/journeys/marketplace?${params}`, undefined, token)

@@ -531,6 +531,19 @@ async def journey_recommendations(background_tasks: BackgroundTasks, ctx: tuple 
     )
 
 
+_MARKETPLACE_SORTS = {  # fixed fragments only: the sort key is never interpolated from the request
+    "popular": "popularity_score DESC, created_at DESC",
+    "new": "created_at DESC",
+    "liked": "like_count DESC, popularity_score DESC, created_at DESC",
+}
+
+
+def _search_terms(q: Optional[str]) -> list[str]:
+    """Up to 5 words, LIKE wildcards escaped, so '100%' or 'a_b' match literally."""
+    words = [w[:50] for w in (q or "").split() if w][:5]
+    return [w.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") for w in words]
+
+
 _MARKETPLACE_DEFAULT_LIMIT = 20
 _MARKETPLACE_MAX_LIMIT = 50
 
@@ -552,6 +565,8 @@ def marketplace_journeys(
     age_group: Optional[str] = None,
     difficulty: Optional[str] = None,
     tag: Optional[str] = None,
+    q: Optional[str] = Query(None, max_length=100, description="Words that must each appear in the title, description or a tag"),
+    sort: str = Query("popular", pattern="^(popular|new|liked)$"),
     limit: int = Query(_MARKETPLACE_DEFAULT_LIMIT, ge=1, le=_MARKETPLACE_MAX_LIMIT),
     offset: int = Query(0, ge=0),
     uid: Optional[str] = Depends(get_optional_acting_uid),
@@ -575,7 +590,13 @@ def marketplace_journeys(
     if tag:
         filters.append("%s = ANY(tags)")
         params.append(tag)
+    for term in _search_terms(q):
+        pattern = f"%{term}%"
+        filters.append("(title ILIKE %s ESCAPE '\\' OR description ILIKE %s ESCAPE '\\' "
+                       "OR EXISTS (SELECT 1 FROM unnest(tags) t WHERE t ILIKE %s ESCAPE '\\'))")
+        params.extend([pattern, pattern, pattern])
     where_clause = " AND ".join(filters)
+    order_by = _MARKETPLACE_SORTS[sort]
 
     try:
         with get_db() as conn:
@@ -586,7 +607,7 @@ def marketplace_journeys(
                     f"""
                     SELECT * FROM journeys
                     WHERE {where_clause}
-                    ORDER BY popularity_score DESC, created_at DESC
+                    ORDER BY {order_by}
                     LIMIT %s OFFSET %s
                     """,
                     params + [limit, offset],
