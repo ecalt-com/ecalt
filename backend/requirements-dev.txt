@@ -1,3 +1,6 @@
+# Test/dev-only dependencies (not installed in the runtime image).
 -r requirements.txt
 pytest>=7.4
 pytest-asyncio>=0.23
+# reportlab generates PDF fixtures for the document-ingestion tests.
+reportlab>=4.0.0
