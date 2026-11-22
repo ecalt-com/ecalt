@@ -48,35 +48,50 @@ const courses = (await call(owner, 'GET', `/api/v1/schools/${SCHOOL}/courses`)).
 const course = courses.find((c) => c.status === 'published')
 const jid = course.journey_id
 const classCourses = (await call(owner, 'GET', `/api/v1/schools/${SCHOOL}/classes/${CLASS}/courses`)).body
-const existing = (classCourses.courses ?? classCourses).find?.((c) => c.journey_id === jid)
+const existing = classCourses.assignments.find((c) => c.journey_id === jid)
 
 const studentCan = async () => (await call(STUDENT, 'GET', `/api/v1/journeys/${jid}`)).status === 200
 
+// Seconds from the change until the last stale answer (the 12 confirming requests
+// themselves take several seconds, so they are not counted).
 async function settle(expected, label) {
   const start = Date.now()
   let streak = 0
-  while (Date.now() - start < 30_000) {
-    streak = (await studentCan()) === expected ? streak + 1 : 0
-    if (streak >= 12) { const s = ((Date.now() - start) / 1000).toFixed(1); console.log(`${label}: every request agreed after ${s} s`); return Number(s) }
+  let lastStale = 0
+  while (Date.now() - start < 45_000) {
+    if ((await studentCan()) === expected) streak++
+    else { streak = 0; lastStale = Date.now() - start }
+    if (streak >= 12) { const s = lastStale / 1000; console.log(`${label}: last stale answer ${s.toFixed(1)} s after the change`); return s }
     await new Promise((r) => setTimeout(r, 250))
   }
-  console.log(`${label}: STILL DISAGREEING after 30 s`)
+  console.log(`${label}: STILL DISAGREEING after 45 s`)
   return Infinity
+}
+
+const warm = async () => { for (let i = 0; i < 24; i++) await studentCan() }   // 24 random-worker hits: every worker caches the current answer
+const unassign = async (id) => {
+  const del = await call(owner, 'DELETE', `/api/v1/schools/${SCHOOL}/classes/${CLASS}/courses/${id}`)
+  if (del.status !== 204) throw new Error(`unassign failed: ${del.status}`)
+}
+const assign = async () => {
+  const a = await call(owner, 'POST', `/api/v1/schools/${SCHOOL}/classes/${CLASS}/courses`, { journey_id: jid })
+  if (![200, 201].includes(a.status)) throw new Error(`assign failed: ${a.status} ${JSON.stringify(a.body)}`)
 }
 
 let failures = 0
 try {
-  if (existing) await call(owner, 'DELETE', `/api/v1/schools/${SCHOOL}/classes/${CLASS}/courses/${existing.id}`)
-  // warm every worker's cache with "no access"
-  for (let i = 0; i < 24; i++) await studentCan()
+  if (!existing) throw new Error('the published course is not assigned to the class; assign it first')
+  await warm()                                   // every worker has cached "allowed"
+  if (!(await studentCan())) throw new Error('precondition: the student should have access')
+  await unassign(existing.id)
   const t1 = await settle(false, 'after unassign (student blocked)')
-  const a = await call(owner, 'POST', `/api/v1/schools/${SCHOOL}/classes/${CLASS}/courses`, { journey_id: jid })
-  if (![200, 201].includes(a.status)) throw new Error(`assign failed: ${a.status} ${JSON.stringify(a.body)}`)
+  await warm()                                   // every worker has cached "blocked"
+  await assign()
   const t2 = await settle(true, 'after assign   (student allowed)')
-  if (!(t1 < 10 && t2 < 10)) failures++
+  if (!(t1 < 5 && t2 < 5)) failures++
 } finally {
   const now = (await call(owner, 'GET', `/api/v1/schools/${SCHOOL}/classes/${CLASS}/courses`)).body
-  if (!(now.courses ?? now).find?.((c) => c.journey_id === jid)) await call(owner, 'POST', `/api/v1/schools/${SCHOOL}/classes/${CLASS}/courses`, { journey_id: jid })
+  if (!now.assignments.find((c) => c.journey_id === jid)) await assign()
 }
-console.log(failures ? 'FAIL: changes took 10 s or more to reach every worker' : 'OK: changes reached every worker within 10 s')
+console.log(failures ? 'FAIL: changes took 5 s or more to reach every worker' : 'OK: changes reached every worker within 5 s')
 process.exit(failures ? 1 : 0)

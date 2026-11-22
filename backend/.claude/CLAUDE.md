@@ -277,7 +277,8 @@ Jobs must catch and log their own exceptions.
 | `DB_POOL_MAX` / `DB_POOL_WAIT_SECONDS` | `20` / `10` | Connections per process; a request waits this long for a free one, then 503 `server_busy` (SC-802 burst fix) |
 | `RATE_LIMIT_TRUST_VERCEL_HEADER` | `True` | Key limits on Vercel's `x-vercel-forwarded-for` when the request carries Vercel's proxy signature (`core/limiter.client_ip`) |
 | `SCHOOL_OFFBOARDING_GRACE_DAYS` | `30` | Terminated schools are deleted by the nightly job after this (SC-803) |
-| `WEB_CONCURRENCY` | unset (1) | uvicorn worker processes (uvicorn reads it natively). One process uses one core of the instance's 8 vCPUs; 4 workers met PERF-02 on dev. The scheduler and school job worker run in one leader process only (`core/leader.py`). **Trade-offs before raising it in prod:** slowapi limits are per process (N× looser), and the 60 s in-process caches (status, identity, profile access, school member, journey access) are invalidated only in the worker that made the change, so other workers can serve stale state, including stale denials, for up to 60 s. Each worker has its own DB pool (`DB_POOL_MAX` each) |
+| `WEB_CONCURRENCY` | unset (1) | uvicorn worker processes (uvicorn reads it natively). One process uses one core of the instance's 8 vCPUs; 4 workers met PERF-02 on dev. The scheduler and school job worker run in one leader process only (`core/leader.py`). **Stale caches:** with more than one worker `core/cache_bus.py` is on automatically: each `invalidate_*` helper evicts locally and publishes to `cache_invalidations`, and every worker polls it (2 s), so a change reaches all workers in about a second instead of up to 60 s (measured on dev with 4 workers by `frontend/e2e/cache_bus_check.mjs`: last stale answer 0.3–0.4 s after the change; with the bus off, still stale after 45 s). **Any new in-process cache needs an invalidator that goes through `cache_bus.register`/`publish`.** Needs migration `024_cache_invalidations.sql`. **Still open before raising it in prod:** slowapi limits are per process (N× looser) unless `RATE_LIMIT_STORAGE_URI` points at a shared store such as Railway Redis (add the `redis` package to `requirements.txt` then). Each worker has its own DB pool (`DB_POOL_MAX` each) |
+| `CACHE_BUS_ENABLED` / `RATE_LIMIT_STORAGE_URI` | unset / unset | Override the automatic cache bus (see `WEB_CONCURRENCY`); shared rate-limit counters (`redis://…`, default per-process memory) |
 
 Other env vars (see `.env.example`): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FIREBASE_PROJECT_ID`, `DATABASE_URL` (or `DB_*`), `ALLOWED_ORIGINS`, `FRONTEND_URL` (used in email links), Stripe/Razorpay keys + webhook secrets, Brevo/SMTP, Twilio, `NOTIFICATION_SIGNING_SECRET`, `SENTRY_DSN`, `LOG_LEVEL`.
 
@@ -307,6 +308,7 @@ Other env vars (see `.env.example`): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `FIR
 | `course-content-quality/` | Content-quality improvements for generated courses |
 | `visual-intelligence/` | Visual learning objects pipeline |
 | `school-courses/` | Schools: tenants, student accounts, classes, PDF/Word → AI courses, updates, analytics. `TRACKER.md` (tickets/decisions/risks), `TESTING.md` (testing model + release gates) |
+| `feature-improvements/` | Backlog drafted 2026-11-22 from a code survey and production data: the notification queue flood (P0), activation and retention work (lazy quizzes, learning funnel, spaced review, share previews), reach features, platform health |
 
 ---
 
