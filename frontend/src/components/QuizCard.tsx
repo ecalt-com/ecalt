@@ -343,7 +343,7 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
               {q.intro_phrase && (
                 <p className="text-xs text-slate-400 dark:text-slate-500 italic">{q.intro_phrase}</p>
               )}
-              <p className="text-sm font-medium text-slate-800 dark:text-slate-200 leading-snug">
+              <p data-testid="quiz-question" className="text-sm font-medium text-slate-800 dark:text-slate-200 leading-snug">
                 {q.question}
               </p>
 
