@@ -613,8 +613,9 @@ export default function Home() {
 
       {/* ── REVIEW CARD (F1.3) ── */}
       {reviewDue > 0 && phase.kind === 'hero' && (
-        <div className="max-w-2xl mx-auto px-4 pt-24 pb-0" data-testid="review-card">
+        <div className="max-w-2xl mx-auto px-4 pt-24 pb-0">
           <button
+            data-testid="review-card"
             onClick={() => navigate('/review')}
             className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-900/20 hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors text-left group"
           >
