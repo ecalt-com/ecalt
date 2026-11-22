@@ -26,12 +26,17 @@ test('listen reads the lesson as plain sentences and can be paused and stopped',
       class Utt { text: string; rate = 1; lang = ''; onend: null | (() => void) = null; onerror: null | (() => void) = null
         constructor(t: string) { this.text = t } }
       w.SpeechSynthesisUtterance = Utt
-      w.speechSynthesis = {
-        speak: (u: Utt) => { (w.__spoken as { text: string; rate: number }[]).push({ text: u.text, rate: u.rate }); setTimeout(() => u.onend?.(), 40) },
-        cancel: () => (w.__calls as string[]).push('cancel'),
-        pause: () => (w.__calls as string[]).push('pause'),
-        resume: () => (w.__calls as string[]).push('resume'),
-      }
+      w.__speak = (u: Utt) => { (w.__spoken as { text: string; rate: number }[]).push({ text: u.text, rate: u.rate }); setTimeout(() => u.onend?.(), 40) }
+      // window.speechSynthesis is a read-only accessor in Chromium: it has to be redefined, not assigned.
+      Object.defineProperty(window, 'speechSynthesis', {
+        configurable: true,
+        value: {
+          speak: (u: Utt) => (w.__speak as (u: Utt) => void)(u),
+          cancel: () => (w.__calls as string[]).push('cancel'),
+          pause: () => (w.__calls as string[]).push('pause'),
+          resume: () => (w.__calls as string[]).push('resume'),
+        },
+      })
     })
 
     await page.goto(`/journey/${jid}`)
@@ -47,7 +52,7 @@ test('listen reads the lesson as plain sentences and can be paused and stopped',
 
     // Finished: back to "Listen". Start again, then pause / resume / stop.
     await expect(page.getByRole('button', { name: 'Listen to this' })).toBeVisible({ timeout: 15_000 })
-    await page.evaluate(() => { (window as unknown as { speechSynthesis: { speak: unknown } }).speechSynthesis.speak = () => undefined })
+    await page.evaluate(() => { (window as unknown as { __speak: unknown }).__speak = () => undefined })  // speak, but never finish
     await page.getByRole('button', { name: 'Listen to this' }).click()
     await page.getByRole('button', { name: 'Pause reading' }).click()
     await page.getByRole('button', { name: 'Resume reading' }).click()
@@ -56,8 +61,9 @@ test('listen reads the lesson as plain sentences and can be paused and stopped',
     const calls = await page.evaluate(() => (window as unknown as { __calls: string[] }).__calls)
     expect(calls).toEqual(expect.arrayContaining(['pause', 'resume', 'cancel']))
 
-    // The mic is a signed-in adult feature, and only where the browser supports it.
-    await expect(page.getByRole('button', { name: 'Dictate your question' })).toHaveCount(0)
+    // Chromium supports speech recognition and this is an adult account, so the tutor offers the mic
+    // (child profiles and school students never see it: see MicButton).
+    await expect(page.getByRole('button', { name: 'Dictate your question' })).toBeVisible()
   } finally {
     fixture('teardown', user.uid)
     await deleteFirebaseUser(user.uid)
