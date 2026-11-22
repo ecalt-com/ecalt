@@ -594,7 +594,7 @@ export default function Admin() {
 
           {tab === 'retention' && <RetentionTab retentionData={retentionData} />}
 
-          {tab === 'funnel' && <FunnelTab funnelData={funnelData} />}
+          {tab === 'funnel' && <FunnelTab funnelData={funnelData} getToken={getToken} />}
 
           {tab === 'content' && (
             <ContentTab

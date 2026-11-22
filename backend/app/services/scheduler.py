@@ -212,6 +212,14 @@ async def _queue_processor() -> None:
             logger.error("queue_processor: row=%s uid=%s failed: %s", row["id"], uid, e)
 
 
+async def _prune_learning_events() -> None:
+    from app.services.learning_events_service import prune_old_events
+    try:
+        logger.info("prune_learning_events: deleted %s rows", prune_old_events())
+    except Exception as e:
+        logger.error("prune_learning_events failed: %s", e)
+
+
 async def _prune_notification_queue() -> None:
     """Delete finished queue rows older than 30 days."""
     from app.core.database import get_db
@@ -1381,6 +1389,7 @@ def setup_scheduler() -> AsyncIOScheduler:
         (_marketplace_popularity_scan, "cron", {"hour": "*/6"},           "marketplace_popularity_scan"),
         (_prune_school_audit_log,      "cron", {"hour": 4, "minute": 20},  "prune_school_audit_log"),
         (_prune_notification_queue,    "cron", {"hour": 4, "minute": 50},  "prune_notification_queue"),
+        (_prune_learning_events,       "cron", {"hour": 4, "minute": 55},  "prune_learning_events"),
         (_school_offboarding_dispatch, "cron", {"hour": 4, "minute": 40},  "school_offboarding_dispatch"),
         (_school_jobs_health,          "cron", {"minute": "*/15"},         "school_jobs_health"),
     ]

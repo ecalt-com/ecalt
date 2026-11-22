@@ -284,12 +284,34 @@ def mark_step_complete(
             step_title, step_type, tags = meta
             background_tasks.add_task(credit_step_knowledge, uid, step_title, step_type, tags)
 
+    if row:
+        background_tasks.add_task(_record_completion_events, uid, journey_id, step_id, resolved)
+
     return ProgressResponse(
         journey_id=journey_id,
         step_id=step_id,
         completed=True,
         completed_at=str(row["completed_at"]) if row and row.get("completed_at") else None,
     )
+
+
+def _record_completion_events(uid: str, journey_id: str, step_id: str, resolved) -> None:
+    """Funnel events for a fresh completion: the step, and the journey when it was the last."""
+    from app.services.learning_events_service import record_event
+    record_event(uid, "step_complete", journey_id, step_id)
+    try:
+        total = len(resolved[0]) if resolved else 0
+        if not total:
+            return
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT COUNT(DISTINCT step_id) AS n FROM user_progress WHERE uid = %s AND journey_id = %s",
+                            (uid, journey_id))
+                done = int(cur.fetchone()["n"])
+        if done >= total:
+            record_event(uid, "journey_complete", journey_id, step_id)
+    except Exception:
+        pass
 
 
 @router.delete("/{journey_id}/{step_id}", response_model=ProgressResponse)

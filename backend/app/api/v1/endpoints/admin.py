@@ -1584,6 +1584,13 @@ def update_notification_template(
     )
 
 
+@router.get("/learning-funnel")
+def learning_funnel(days: int = 30, _uid: str = Depends(get_admin_user)):
+    """Where learners stop, by step position (F1.2). Counts only."""
+    from app.services.learning_events_service import funnel
+    return funnel(days)
+
+
 @router.get("/diagnostics/notification-queue")
 def notification_queue_diagnostics(_uid: str = Depends(get_admin_user)):
     """Queue depth by status and type, the oldest overdue row, and the users

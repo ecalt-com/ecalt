@@ -2,10 +2,11 @@ import { Loader2 } from 'lucide-react'
 import clsx from 'clsx'
 import type { FunnelData } from '../types'
 import { fmtMonth } from '../utils'
+import { LearningFunnelPanel } from './LearningFunnelPanel'
 
-interface FunnelTabProps { funnelData: FunnelData | null }
+interface FunnelTabProps { funnelData: FunnelData | null; getToken: () => Promise<string | null> }
 
-export function FunnelTab({ funnelData }: FunnelTabProps) {
+export function FunnelTab({ funnelData, getToken }: FunnelTabProps) {
   if (!funnelData) {
     return (
       <div className="flex items-center gap-2 text-slate-500 text-sm">
@@ -16,6 +17,7 @@ export function FunnelTab({ funnelData }: FunnelTabProps) {
 
   return (
     <>
+      <LearningFunnelPanel getToken={getToken} />
       <div className="glass-card rounded-xl p-5 mb-6">
         <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-1">Free → Paid Conversion</h2>
         <p className="text-xs text-slate-400 mb-4">

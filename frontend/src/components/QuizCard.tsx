@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { Lightbulb, Loader2, Award, RotateCcw, SkipForward } from 'lucide-react'
 import { apiErrorCode, generateQuizSet, getQuizHint, submitQuizAnswer, skipStepQuiz } from '../lib/api'
 import { schoolErrorMessage } from '../lib/schoolApi'
+import { trackLearning } from '../lib/learningEvents'
 import type { QuizSet, QuizHint, QuizResult, QuizVerdict } from '../lib/types'
 
 // Budget codes raised for a school student — they can't upgrade, so no CTA.
@@ -100,11 +101,14 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
     try {
       const token = await getToken()
       if (!token) return // guests never reach here — StepNode doesn't render the quiz
+      const started = performance.now()
+      trackLearning(getToken, 'quiz_view', { journeyId, stepId })
       const set = await generateQuizSet(
         { concept, context, journey_id: journeyId, step_id: stepId, num_questions: 3, ...(fresh ? { fresh: true } : {}) },
         token,
       )
       if (!set.questions.length) { setPhase('error'); return }
+      trackLearning(getToken, 'quiz_ready', { journeyId, stepId, props: { ms: Math.round(performance.now() - started), reused: !!(set as { reused?: boolean }).reused } })
       setQuizSet(set)
       setAnswers(set.questions.map(() => ''))
       setPhase('active')
@@ -173,6 +177,7 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
       )
       setResults(res)
       const correct = res.filter(r => r.is_correct).length
+      trackLearning(getToken, 'quiz_answer', { journeyId, stepId, props: { correct, total: res.length } })
       if (correct >= quizSet.pass_threshold) {
         setPhase('passed')
         fireCompleted()
@@ -195,6 +200,7 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
       const token = await getToken()
       if (!token) return
       await skipStepQuiz(journeyId, stepId, token)
+      trackLearning(getToken, 'quiz_skip', { journeyId, stepId })
       setPhase('skipped')
       fireCompleted()
     } catch {

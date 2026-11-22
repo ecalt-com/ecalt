@@ -8,6 +8,7 @@ import QuizCard from './QuizCard'
 import StepFeedbackBar from './StepFeedbackBar'
 import StepUpgradePanel from './StepUpgradePanel'
 import VisualLearningObject from './visual/VisualLearningObject'
+import { useStepEngagement } from '../lib/learningEvents'
 
 const typeConfig = {
   concept:   { icon: BookOpen, color: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 border-violet-200 dark:bg-violet-400/10 dark:border-violet-400/20', label: 'Learn' },
@@ -68,6 +69,9 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
   // Whether the quiz is required for this visit: steps completed before this
   // session never re-quiz, and a step stays mounted through its pass screen.
   const quizRequired = useRef(!step.completed)
+  const contentRef = useRef<HTMLDivElement>(null)
+  // Funnel events: opened, scrolled 50%/90%, seconds on screen (not for guests or students).
+  useStepEngagement(expanded && !locked && content !== null && !isGuest, journeyId, step.id, getToken, contentRef)
 
   const handleExpand = () => {
     if (locked) return
@@ -220,7 +224,9 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
               )}
               {content && !loadingContent && (
                 <div className="pt-4">
-                  <MarkdownContent content={content} />
+                  <div ref={contentRef}>
+                    <MarkdownContent content={content} />
+                  </div>
                   {visual?.status === 'ready' && (
                     <div className="mt-4">
                       <VisualLearningObject

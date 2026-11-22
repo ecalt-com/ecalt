@@ -3,7 +3,7 @@ from app.api.v1.endpoints import (
     health, spark, explore, journeys, session, users, progress, passport, sitemap,
     chat, knowledge, subscriptions, admin, mind_signature, coupons, notifications, geo, quiz,
     family, schools, admin_schools, school_roster, school_login, school_documents, school_courses,
-    school_student,
+    school_student, events,
 )
 from app.core.school_auth import require_schools_enabled
 
@@ -28,6 +28,7 @@ api_router.include_router(notifications.router, prefix="/notifications",  tags=[
 api_router.include_router(geo.router,           prefix="/geo",            tags=["geo"])
 api_router.include_router(quiz.router,          prefix="/quiz",           tags=["quiz"])
 api_router.include_router(family.router,        prefix="/family",         tags=["family"])
+api_router.include_router(events.router,        prefix="/events",         tags=["events"])
 
 # Schools (plans/school-courses) — 404 while SCHOOLS_ENABLED is off.
 _schools_flag = [Depends(require_schools_enabled)]

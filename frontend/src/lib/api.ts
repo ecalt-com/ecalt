@@ -369,3 +369,24 @@ export const submitQuizAnswer = (
   token: string,
 ): Promise<QuizResult> =>
   request(`/api/v1/quiz/${quizId}/submit`, { method: 'POST', body: JSON.stringify(body) }, token)
+
+// ── Admin: learning funnel + notification queue (feature-improvements F0.1/F1.2) ──
+
+export interface LearningFunnel {
+  days: number
+  by_step: { step_index: number; opened: number; read: number; quiz_seen: number; answered: number; completed: number }[]
+  quiz_generation: { quizzes: number; median_ms: number | null; p95_ms: number | null }
+  totals: { learners: number; journeys_completed: number; notification_clicks: number; median_step_seconds: number | null }
+}
+
+export const adminGetLearningFunnel = (days: number, token: string): Promise<LearningFunnel> =>
+  request(`/api/v1/admin/learning-funnel?days=${days}`, undefined, token)
+
+export interface NotificationQueueStats {
+  totals: { pending: number; due: number; oldest_due_seconds: number | null }
+  users_with_over_20_pending: number
+  by_status: { status: string; notification_type: string; n: number }[]
+}
+
+export const adminGetNotificationQueue = (token: string): Promise<NotificationQueueStats> =>
+  request('/api/v1/admin/diagnostics/notification-queue', undefined, token)
