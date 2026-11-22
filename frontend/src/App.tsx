@@ -37,6 +37,7 @@ const Profile       = lazy(() => import('./pages/Profile'))
 const ConsentConfirm = lazy(() => import('./pages/ConsentConfirm'))
 const ConsentReport = lazy(() => import('./pages/ConsentReport'))
 const Family        = lazy(() => import('./pages/Family'))
+const Review        = lazy(() => import('./pages/Review'))
 const FamilyChild   = lazy(() => import('./pages/FamilyChild'))
 const Profiles      = lazy(() => import('./pages/Profiles'))
 const Claim         = lazy(() => import('./pages/Claim'))
@@ -108,6 +109,7 @@ function AppShell() {
           <Route path="/consent/confirm" element={<ErrorBoundary><ConsentConfirm /></ErrorBoundary>} />
           <Route path="/consent/report" element={<ErrorBoundary><ConsentReport /></ErrorBoundary>} />
           <Route path="/family" element={<ErrorBoundary><Family /></ErrorBoundary>} />
+          <Route path="/review" element={<ErrorBoundary><Review /></ErrorBoundary>} />
           <Route path="/family/child/:uid" element={<ErrorBoundary><FamilyChild /></ErrorBoundary>} />
           <Route path="/profiles" element={<ErrorBoundary><Profiles /></ErrorBoundary>} />
           <Route path="/claim" element={<ErrorBoundary><Claim /></ErrorBoundary>} />

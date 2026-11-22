@@ -11,6 +11,7 @@ from app.core.school_auth import is_school_student_uid
 from app.services.knowledge_service import credit_step_knowledge
 from app.services.quiz_service import step_quiz_passed
 from app.services.interest_profile_service import invalidate as invalidate_profile
+from app.services.review_service import seed_item as seed_review_item
 from app.services.journey_access import assert_can_read_journey
 
 router = APIRouter()
@@ -286,6 +287,9 @@ def mark_step_complete(
 
     if row:
         background_tasks.add_task(_record_completion_events, uid, journey_id, step_id, resolved)
+        if not is_school_student_uid(uid):
+            meta = _resolve_step_meta(step_id, resolved)
+            background_tasks.add_task(seed_review_item, uid, journey_id, step_id, meta[0] if meta else "")
 
     return ProgressResponse(
         journey_id=journey_id,

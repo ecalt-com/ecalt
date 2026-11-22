@@ -18,7 +18,7 @@ UPDATE public.notification_queue q SET status = 'expired'
           FROM public.notification_queue
          WHERE status = 'pending'
            AND notification_type IN ('cliffhanger_return','weekly_digest','re_engagement',
-                                     'streak_at_risk','streak_lost','mind_signature_nudge')) d
+                                     'streak_at_risk','streak_lost','mind_signature_nudge','review_due')) d
  WHERE q.id = d.id AND d.rn > 1;
 
 DELETE FROM public.notification_queue
@@ -27,4 +27,4 @@ DELETE FROM public.notification_queue
 CREATE UNIQUE INDEX IF NOT EXISTS notification_queue_one_pending
   ON public.notification_queue (uid, notification_type)
   WHERE status = 'pending' AND notification_type IN
-    ('cliffhanger_return','weekly_digest','re_engagement','streak_at_risk','streak_lost','mind_signature_nudge');
+    ('cliffhanger_return','weekly_digest','re_engagement','streak_at_risk','streak_lost','mind_signature_nudge','review_due');

@@ -1529,7 +1529,7 @@ _VALID_NOTIFICATION_TYPES: frozenset[str] = frozenset({
     "daily_spark", "re_engagement", "cliffhanger_return", "connection_alert",
     "milestone_approach", "mind_signature_ready", "mind_signature_nudge",
     "world_event_hook", "streak_at_risk", "streak_lost", "streak_milestone",
-    "journey_almost_done", "weekly_digest", "family_highlight",
+    "journey_almost_done", "weekly_digest", "family_highlight", "review_due",
 })
 
 TEMPLATE_VARIABLES: dict[str, list[str]] = {
@@ -1547,6 +1547,7 @@ TEMPLATE_VARIABLES: dict[str, list[str]] = {
     "journey_almost_done":  ["name", "steps_remaining", "journey_title"],
     "weekly_digest":        ["name", "new_concepts", "active_domains", "domains", "journeys_touched"],
     "family_highlight":     ["name", "summary"],
+    "review_due":           ["name", "due_count", "concept"],
 }
 
 

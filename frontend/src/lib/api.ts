@@ -390,3 +390,29 @@ export interface NotificationQueueStats {
 
 export const adminGetNotificationQueue = (token: string): Promise<NotificationQueueStats> =>
   request('/api/v1/admin/diagnostics/notification-queue', undefined, token)
+
+// ── Spaced review (feature-improvements F1.3) ─────────────────────────────────
+
+export interface ReviewItem {
+  item_id: string
+  journey_id: string
+  step_id: string
+  concept: string
+  box: number
+  journey_title: string | null
+}
+
+export interface ReviewToday { due_count: number; items: ReviewItem[] }
+
+export const getReviewToday = (token: string, limit?: number): Promise<ReviewToday> =>
+  request(`/api/v1/review/today${limit !== undefined ? `?limit=${limit}` : ''}`, undefined, token)
+
+export const startReviewItem = (itemId: string, token: string): Promise<QuizQuestion> =>
+  request(`/api/v1/review/${itemId}/start`, { method: 'POST' }, token)
+
+export const answerReviewItem = (
+  itemId: string,
+  body: { quiz_id: string; user_answer: string },
+  token: string,
+): Promise<QuizResult & { box: number; next_review_in_days: number }> =>
+  request(`/api/v1/review/${itemId}/answer`, { method: 'POST', body: JSON.stringify(body) }, token)

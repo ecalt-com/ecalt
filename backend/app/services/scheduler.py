@@ -546,6 +546,44 @@ async def _journey_completion_nudge() -> None:
         )
 
 
+async def _review_due_nudge() -> None:
+    """Invite learners with review questions due back for a two-minute review (F1.3)."""
+    from app.core.database import get_db
+
+    try:
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT u.uid, u.email, u.display_name,
+                           COUNT(r.id) AS due_count,
+                           (ARRAY_AGG(r.concept ORDER BY r.due_at))[1] AS concept,
+                           COALESCE(np.preferred_channel, 'email') AS preferred_channel,
+                           np.email_enabled, np.whatsapp_opted_in, np.whatsapp_enabled
+                      FROM users u
+                      JOIN review_items r ON r.uid = u.uid AND r.due_at <= now()
+                      LEFT JOIN notification_preferences np ON np.uid = u.uid
+                     WHERE u.profile_type = 'account'
+                       AND {_active_channel_clause()}
+                       AND {_not_sent_recently("review_due", 3)}
+                       AND {_not_queued("review_due")}
+                     GROUP BY u.uid, u.email, u.display_name, np.preferred_channel,
+                              np.email_enabled, np.whatsapp_opted_in, np.whatsapp_enabled
+                     LIMIT 200
+                    """,
+                )
+                users = cur.fetchall()
+    except Exception as e:
+        logger.error("review_due_nudge failed: %s", e)
+        return
+
+    for u in users:
+        await _enqueue(
+            u["uid"], "review_due", _preferred_channel(u),
+            {"name": u["display_name"] or "", "due_count": int(u["due_count"]), "concept": u["concept"]},
+        )
+
+
 # ── Job 8: Mind signature nudge (runs 10:00 UTC) ─────────────────────────────
 
 async def _mind_signature_nudge() -> None:
@@ -1381,6 +1419,7 @@ def setup_scheduler() -> AsyncIOScheduler:
         (_streak_lost_check,         "cron", {"hour": 9,  "minute": 0},   "streak_lost_check"),
         (_streak_milestone_check,    "cron", {"hour": 10, "minute": 0},   "streak_milestone_check"),
         (_mind_signature_nudge,      "cron", {"hour": 10, "minute": 0},   "mind_signature_nudge"),
+        (_review_due_nudge,          "cron", {"hour": 11, "minute": 0},   "review_due_nudge"),
         (_streak_risk_check,         "cron", {"hour": 20, "minute": 0},   "streak_risk_check"),
         (_journey_completion_nudge,  "cron", {"hour": "*/6"},             "journey_completion_nudge"),
         (_weekly_digest_dispatch,    "cron", {"day_of_week": "sun",

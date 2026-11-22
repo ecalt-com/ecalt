@@ -11,7 +11,7 @@ import GoogleSignInButton from '../components/GoogleSignInButton'
 import Navigation from '../components/Navigation'
 import PageMeta from '../components/PageMeta'
 import StepUpgradePanel from '../components/StepUpgradePanel'
-import { askSpark, getSessionStatus, getPassport, getUserProfile, type PassportData } from '../lib/api'
+import { askSpark, getSessionStatus, getPassport, getReviewToday, getUserProfile, type PassportData } from '../lib/api'
 import { useAuth } from '../lib/AuthContext'
 import type { Mission, StepType } from '../lib/types'
 
@@ -513,6 +513,7 @@ export default function Home() {
   const [gateReason, setGateReason] = useState<'mission' | 'limit'>('mission')
   const [sessionSparks, setSessionSparks] = useState<{ used: number; remaining: number } | null>(null)
   const [recentJourney, setRecentJourney] = useState<RecentJourney | null>(null)
+  const [reviewDue, setReviewDue] = useState(0)
   const [streakDays, setStreakDays] = useState(0)
   const [waitlistEmail, setWaitlistEmail] = useState('')
   const [waitlistDone, setWaitlistDone] = useState(false)
@@ -539,6 +540,7 @@ export default function Home() {
         setRecentJourney(inProgress[0] ?? null)
         setStreakDays(profile.streak_days ?? 0)
       }).catch(() => {})
+      getReviewToday(token, 0).then(r => setReviewDue(r.due_count)).catch(() => {})
     })
   }, [user])
 
@@ -609,9 +611,28 @@ export default function Home() {
       />
       <Navigation />
 
+      {/* ── REVIEW CARD (F1.3) ── */}
+      {reviewDue > 0 && phase.kind === 'hero' && (
+        <div className="max-w-2xl mx-auto px-4 pt-24 pb-0" data-testid="review-card">
+          <button
+            onClick={() => navigate('/review')}
+            className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-900/20 hover:border-emerald-400 dark:hover:border-emerald-600 transition-colors text-left group"
+          >
+            <span className="text-3xl shrink-0">🧠</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-0.5">Today's review</p>
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                {Math.min(reviewDue, 5)} question{Math.min(reviewDue, 5) === 1 ? '' : 's'} · about {Math.max(1, Math.round(Math.min(reviewDue, 5) * 0.5))} min
+              </p>
+            </div>
+            <ArrowRight size={16} className="text-emerald-500 shrink-0 group-hover:translate-x-0.5 transition-transform" />
+          </button>
+        </div>
+      )}
+
       {/* ── CONTINUE CARD ── */}
       {recentJourney && phase.kind === 'hero' && (
-        <div className="max-w-2xl mx-auto px-4 pt-24 pb-0 flex flex-col gap-2">
+        <div className={`max-w-2xl mx-auto px-4 ${reviewDue > 0 ? "pt-3" : "pt-24"} pb-0 flex flex-col gap-2`}>
           <button
             onClick={() => navigate(`/journey/${recentJourney.id}`)}
             className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border border-violet-200 dark:border-violet-800/50 bg-violet-50 dark:bg-violet-900/20 hover:border-violet-400 dark:hover:border-violet-600 transition-colors text-left group"

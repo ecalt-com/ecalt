@@ -90,6 +90,13 @@ _TEMPLATES_FALLBACK: dict[str, str] = {
         "Write a warm, celebratory weekly summary that makes them feel like they've genuinely "
         "built something. Reference the specific domains they explored."
     ),
+    "review_due": (
+        "User's name: {name}. They have {due_count} question(s) due for a quick review, "
+        "starting with something they learned about '{concept}'. "
+        "Write a short, friendly nudge that makes a two-minute review feel easy and worthwhile — "
+        "memory fades, a quick recall locks it in. Name the topic. "
+        "NEVER say 'we miss you', 'come back' or 'don't miss out'."
+    ),
     "family_highlight": (
         "User's name: {name}. Weekly family learning summary: {summary}. "
         "Write a warm summary that celebrates the family's curiosity this week."
