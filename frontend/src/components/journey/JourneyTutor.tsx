@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Send, Sparkles, ChevronDown } from 'lucide-react'
 import clsx from 'clsx'
+import ListenButton from '../ListenButton'
+import MicButton from '../MicButton'
 import MarkdownContent from '../MarkdownContent'
 import UpgradePrompt from '../UpgradePrompt'
 import { useSubscription } from '../../lib/SubscriptionContext'
@@ -289,6 +291,7 @@ export default function JourneyTutor({
                       {msg.streaming && (
                         <span className="inline-block w-0.5 h-3.5 bg-violet-400 animate-pulse ml-0.5 align-middle rounded-full" />
                       )}
+                      {!msg.streaming && <ListenButton text={msg.content} compact className="-ml-1.5 mt-0.5" />}
                     </div>
                   )}
                 </div>
@@ -324,6 +327,7 @@ export default function JourneyTutor({
             className="flex-1 bg-transparent text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 resize-none outline-none py-0.5 max-h-28 leading-relaxed"
             style={{ overflowY: input.split('\n').length > 3 ? 'auto' : 'hidden' }}
           />
+          <MicButton onText={setInput} disabled={isStreaming} />
           <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || isStreaming}

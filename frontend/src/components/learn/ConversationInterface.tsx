@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Send, Loader2, MessageCircleOff } from 'lucide-react'
 import clsx from 'clsx'
+import ListenButton from '../ListenButton'
+import MicButton from '../MicButton'
 import MarkdownContent from '../MarkdownContent'
 import WarmthIndicator from './WarmthIndicator'
 import UpgradePrompt from '../UpgradePrompt'
@@ -212,6 +214,7 @@ export default function ConversationInterface({
                       {msg.streaming && (
                         <span className="inline-block w-1 h-4 bg-violet-400 animate-pulse ml-0.5 align-middle" />
                       )}
+                      {!msg.streaming && <ListenButton text={msg.content} compact className="-ml-1.5" />}
                     </div>
                   )}
                 </div>
@@ -252,6 +255,7 @@ export default function ConversationInterface({
             className="flex-1 bg-transparent text-sm text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500 resize-none outline-none py-1.5 px-2 max-h-32 leading-relaxed"
             style={{ overflowY: input.split('\n').length > 3 ? 'auto' : 'hidden' }}
           />
+          <MicButton onText={setInput} disabled={isStreaming || chatDisabled} />
           <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || isStreaming || chatDisabled}
