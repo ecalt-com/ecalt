@@ -49,7 +49,7 @@ python scripts/make_admin.py --email you@x.com [--revoke]   # or --uid <firebase
 
 - Run tests with a dead DB URL so nothing can reach production: `DATABASE_URL=postgresql://x:y@127.0.0.1:1/none pytest`. Repeated failed logins also trip the Supabase pooler's auth circuit breaker.
 - Settings are read from `.env`, so a test that depends on a flag (e.g. `ENABLE_MANAGED_CHILDREN`) must patch it explicitly — never rely on the local `.env` value.
-- 62 tests fail on `feature/dev` before any change (as of 2026-10-11), listed in `tests/known_failures.txt`. Compare the failure count before and after your change rather than expecting a clean run. CI (`.github/workflows/backend.yml`) sets `ECALT_KNOWN_FAILURES=xfail` so those run as non-strict xfails and any new failure fails the job; delete a line when you fix one.
+- The suite is green (941 passed). `tests/known_failures.txt` is empty; the `ECALT_KNOWN_FAILURES=xfail` mechanism in `tests/conftest.py` remains for short-term stopgaps. Tests built before the account-status and journey-access lookups use the `active_account` fixture (`pytest.mark.usefixtures`) so they don't need a database.
 - `schools_db` tests skip unless `TEST_DATABASE_URL` is set. The harness (`tests/schools/harness.py`) refuses any URL that isn't a local `ecalt_test` database and builds it from `tests/db/schema_baseline.sql` (schema only) + migrations after `BASELINE_MIGRATION`. Never load `supbase/data.sql` (a prod data dump) anywhere.
 
 ---

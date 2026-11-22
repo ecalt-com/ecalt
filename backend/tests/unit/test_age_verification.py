@@ -37,7 +37,7 @@ CURRENT_YEAR = date.today().year
 
 def test_under_13_returns_403(client):
     birth_year = CURRENT_YEAR - 10  # age 10
-    with patch("app.core.database.get_db") as mock_get_db:
+    with patch("app.api.v1.endpoints.users.get_db") as mock_get_db:
         mock_conn = MagicMock()
         mock_get_db.return_value.__enter__ = lambda s: mock_conn
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
@@ -68,7 +68,7 @@ def test_under_13_does_not_write_to_db(client):
         def rollback(self): pass
         def close(self): pass
 
-    with patch("app.core.database.get_db") as mock_get_db:
+    with patch("app.api.v1.endpoints.users.get_db") as mock_get_db:
         mock_get_db.return_value.__enter__ = lambda s: FakeConn()
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
 
@@ -84,7 +84,7 @@ def test_under_13_does_not_write_to_db(client):
 
 def test_teen_without_parent_email_returns_400(client):
     birth_year = CURRENT_YEAR - 15  # age 15
-    with patch("app.core.database.get_db") as mock_get_db:
+    with patch("app.api.v1.endpoints.users.get_db") as mock_get_db:
         mock_conn = MagicMock()
         mock_get_db.return_value.__enter__ = lambda s: mock_conn
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
@@ -187,7 +187,7 @@ def test_adult_gets_active_account(client):
 def test_birth_month_makes_age_conservative(client):
     """13 calendar years ago but December birthday → still 12 → blocked."""
     birth_year = CURRENT_YEAR - 13
-    with patch("app.core.database.get_db") as mock_get_db:
+    with patch("app.api.v1.endpoints.users.get_db") as mock_get_db:
         mock_conn = MagicMock()
         mock_get_db.return_value.__enter__ = lambda s: mock_conn
         mock_get_db.return_value.__exit__ = MagicMock(return_value=False)
@@ -310,7 +310,7 @@ def test_get_active_user_fails_closed_on_db_error():
     from app.core import auth as auth_module
 
     auth_module._status_cache.clear()
-    with patch("app.core.database.get_db", side_effect=Exception("db down")):
+    with patch("app.api.v1.endpoints.users.get_db", side_effect=Exception("db down")):
         with pytest.raises(HTTPException) as exc:
             auth_module.get_active_user(uid="some-uid")
 

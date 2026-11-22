@@ -19,8 +19,6 @@ jobs:
       # Unreachable on purpose: unit/API tests must never touch a real database.
       DATABASE_URL: postgresql://x:y@127.0.0.1:1/none
       SCHEDULER_ENABLED: "false"
-      # Pre-existing failures run as non-strict xfails; any new failure fails the job.
-      ECALT_KNOWN_FAILURES: xfail
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

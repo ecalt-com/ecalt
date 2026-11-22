@@ -45,6 +45,9 @@ from tests.conftest import FREE_TRIAL, INDIVIDUAL, usage, extras, TEST_UID, mock
 
 # ── App setup ──────────────────────────────────────────────────────────────────
 
+pytestmark = pytest.mark.usefixtures("active_account")
+
+
 @pytest.fixture
 def client():
     """TestClient with auth wired to TEST_UID."""
@@ -147,7 +150,7 @@ class TestChatStream:
         """
         captured = {}
 
-        async def fake_stream(uid, user_message, conversation_id=None, interaction_type="daily_chat"):
+        async def fake_stream(uid, user_message, conversation_id=None, interaction_type="daily_chat", **_):
             captured["interaction_type"] = interaction_type
             yield b'data: {"type":"done"}\n\n'
 

@@ -164,7 +164,8 @@ def test_export_returns_json_with_all_sections(client):
     def fake_get_db():
         yield ExportConn()
 
-    with patch("app.api.v1.endpoints.users.get_db", fake_get_db):
+    with patch("app.api.v1.endpoints.users.get_db", fake_get_db), \
+         patch("app.services.account_service.get_db", fake_get_db):
         resp = client.get("/api/v1/users/me/export")
 
     assert resp.status_code == 200
@@ -206,7 +207,8 @@ def test_export_has_attachment_header(client):
     def fake_get_db():
         yield MinConn()
 
-    with patch("app.api.v1.endpoints.users.get_db", fake_get_db):
+    with patch("app.api.v1.endpoints.users.get_db", fake_get_db), \
+         patch("app.services.account_service.get_db", fake_get_db):
         resp = client.get("/api/v1/users/me/export")
 
     assert "attachment" in resp.headers.get("content-disposition", "")

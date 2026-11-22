@@ -21,6 +21,9 @@ from tests.conftest import TEST_UID, mock_db, mock_db_fetchall
 # Static analysis — no zero-token calls in any endpoint
 # ═══════════════════════════════════════════════════════════════════════════════
 
+pytestmark = pytest.mark.usefixtures("active_account")
+
+
 class TestNoZeroTokenCalls:
 
     def test_no_record_usage_with_literal_zero_tokens(self):

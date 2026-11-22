@@ -26,6 +26,9 @@ STEPS = [
 TAGS = ["testing"]
 
 
+pytestmark = pytest.mark.usefixtures("active_account")
+
+
 @pytest.fixture
 def client():
     """TestClient with auth wired to TEST_UID."""

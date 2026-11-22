@@ -8,6 +8,9 @@ from fastapi.testclient import TestClient
 from tests.conftest import TEST_UID
 
 
+pytestmark = pytest.mark.usefixtures("active_account")
+
+
 @pytest.fixture
 def client():
     from app.main import app

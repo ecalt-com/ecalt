@@ -17,6 +17,9 @@ from fastapi.testclient import TestClient
 from tests.conftest import FREE_TRIAL, INDIVIDUAL, usage, extras, TEST_UID, mock_db
 
 
+pytestmark = pytest.mark.usefixtures("active_account")
+
+
 @pytest.fixture
 def client():
     from app.main import app

@@ -4,6 +4,8 @@ Shared fixtures and helpers for the ECALT test suite.
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
+import time
+
 import pytest
 
 
@@ -163,3 +165,15 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if item.nodeid in known:
             item.add_marker(marker)
+
+
+@pytest.fixture
+def active_account(monkeypatch):
+    """An ordinary active account with ordinary (non-school) journeys, without
+    touching the database: the status is cached as active and no journey belongs
+    to a school. For tests built before those lookups existed, which mock
+    everything else. Use with pytest.mark.usefixtures."""
+    from app.core import auth
+    from app.services import journey_access
+    monkeypatch.setitem(auth._status_cache, TEST_UID, ("active", time.monotonic()))
+    monkeypatch.setattr(journey_access, "journey_school_id", lambda journey_id: None)
