@@ -10,7 +10,7 @@ router = APIRouter()
     summary="Health check",
     response_description="Service liveness status with UTC timestamp",
 )
-async def health():
+def health():
     db_status = "ok"
     try:
         with get_db() as conn:
@@ -28,7 +28,7 @@ async def health():
 
 
 @router.get("/db-check", summary="Debug: check DB tables exist")
-async def db_check():
+def db_check():
     """Temporary debug endpoint — shows which tables exist and any errors."""
     tables = ["users", "plan_configs", "subscriptions", "token_usage",
               "conversations", "conversation_messages", "knowledge_nodes"]

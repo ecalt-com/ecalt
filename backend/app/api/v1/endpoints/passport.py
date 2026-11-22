@@ -29,7 +29,7 @@ class PassportResponse(BaseModel):
 
 
 @router.get("", response_model=PassportResponse)
-async def get_passport(ctx: tuple = Depends(get_acting_uid)):
+def get_passport(ctx: tuple = Depends(get_acting_uid)):
     """Return the authenticated user's full capability passport."""
     uid, _ = ctx
     with get_db() as conn:

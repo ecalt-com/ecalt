@@ -163,7 +163,7 @@ class ConfirmRequest(BaseModel):
     response_model=ExploreResponse,
     summary="Confirm a previewed journey and persist it",
 )
-async def explore_confirm(
+def explore_confirm(
     request: ConfirmRequest,
     background_tasks: BackgroundTasks,
     uid: str = Depends(get_active_user),

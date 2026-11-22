@@ -66,7 +66,7 @@ async def chat_stream(request: Request, body: ChatRequest, uid: str = Depends(ge
 
 
 @router.get("/conversations")
-async def list_conversations(ctx: tuple = Depends(get_acting_uid)):
+def list_conversations(ctx: tuple = Depends(get_acting_uid)):
     uid, _ = ctx
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -83,7 +83,7 @@ async def list_conversations(ctx: tuple = Depends(get_acting_uid)):
 
 
 @router.get("/conversations/{conversation_id}")
-async def get_conversation(conversation_id: str, ctx: tuple = Depends(get_acting_uid)):
+def get_conversation(conversation_id: str, ctx: tuple = Depends(get_acting_uid)):
     uid, _ = ctx
     with get_db() as conn:
         with conn.cursor() as cur:
@@ -107,7 +107,7 @@ async def get_conversation(conversation_id: str, ctx: tuple = Depends(get_acting
 
 
 @router.delete("/conversations/{conversation_id}")
-async def delete_conversation(conversation_id: str, uid: str = Depends(get_required_user)):
+def delete_conversation(conversation_id: str, uid: str = Depends(get_required_user)):
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(

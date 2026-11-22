@@ -208,9 +208,9 @@ app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/sitemap.xml", include_in_schema=False)
-async def sitemap_redirect():
+def sitemap_redirect():
     from app.api.v1.endpoints.sitemap import sitemap
-    return await sitemap()
+    return sitemap()
 
 
 @app.get("/", tags=["root"])

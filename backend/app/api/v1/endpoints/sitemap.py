@@ -19,7 +19,7 @@ STATIC_ROUTES = [
 
 
 @router.get("", response_class=Response, summary="XML sitemap including AI-generated journeys")
-async def sitemap():
+def sitemap():
     urls = list(STATIC_ROUTES)
 
     # Append public AI-generated journeys from DB
