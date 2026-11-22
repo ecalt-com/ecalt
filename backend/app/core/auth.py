@@ -6,6 +6,7 @@ import jwt
 from jwt import PyJWKClient
 from fastapi import Header, HTTPException, Depends, Request
 
+from app.core import cache_bus
 from app.core.config import settings
 
 _admin_cache: dict[str, tuple[bool, float]] = {}
@@ -103,8 +104,13 @@ def _map_identity(firebase_uid: str) -> str:
     return uid
 
 
-def invalidate_identity_cache(firebase_uid: str) -> None:
+def _evict_identity(firebase_uid: str) -> None:
     _identity_cache.pop(firebase_uid, None)
+
+
+def invalidate_identity_cache(firebase_uid: str) -> None:
+    _evict_identity(firebase_uid)
+    cache_bus.publish("identity", firebase_uid=firebase_uid)
 
 
 def get_signed_in_uid(request: Request, authorization: Optional[str] = Header(None)) -> Optional[str]:
@@ -133,13 +139,18 @@ _has_profiles_cache: dict[str, tuple[bool, float]] = {}
 _PROFILE_CACHE_TTL = 60.0
 
 
-def invalidate_profile_cache(parent_uid: Optional[str] = None, profile_uid: Optional[str] = None) -> None:
-    """Call after creating, deleting, revoking or claiming a profile."""
+def _evict_profile(parent_uid: Optional[str] = None, profile_uid: Optional[str] = None) -> None:
     if parent_uid:
         _has_profiles_cache.pop(parent_uid, None)
     for key in list(_profile_access_cache):
         if (parent_uid and key[0] == parent_uid) or (profile_uid and key[1] == profile_uid):
             _profile_access_cache.pop(key, None)
+
+
+def invalidate_profile_cache(parent_uid: Optional[str] = None, profile_uid: Optional[str] = None) -> None:
+    """Call after creating, deleting, revoking or claiming a profile."""
+    _evict_profile(parent_uid, profile_uid)
+    cache_bus.publish("profile", parent_uid=parent_uid, profile_uid=profile_uid)
 
 
 def _verify_profile_access(account_uid: str, profile_uid: str) -> None:
@@ -325,10 +336,20 @@ _status_cache: dict[str, tuple[str, float]] = {}
 _STATUS_CACHE_TTL = 60.0
 
 
+def _evict_status(uid: str) -> None:
+    _status_cache.pop(uid, None)
+
+
 def invalidate_status_cache(uid: str) -> None:
     """Call when account_status changes (e.g. consent granted) so the user isn't
     blocked for up to a TTL by a stale cached status."""
-    _status_cache.pop(uid, None)
+    _evict_status(uid)
+    cache_bus.publish("status", uid=uid)
+
+
+cache_bus.register("identity", _evict_identity)
+cache_bus.register("profile", _evict_profile)
+cache_bus.register("status", _evict_status)
 
 
 def get_active_user(uid: str = Depends(get_required_user)) -> str:

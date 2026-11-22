@@ -41,6 +41,8 @@ async def lifespan(_app: FastAPI):
         pass  # logged inside; don't prevent startup
     # With several uvicorn workers (WEB_CONCURRENCY), background work runs in
     # one leader process only (app/core/leader.py).
+    from app.core import cache_bus
+    cache_bus.start_listener()   # every worker: evict what other workers invalidated
     from app.core.leader import acquire_leadership, release_leadership
     leader = acquire_leadership()
     startup_log = logging.getLogger("ecalt.startup")
@@ -65,6 +67,7 @@ async def lifespan(_app: FastAPI):
     if worker_started:
         from app.services.school_jobs import stop_worker
         stop_worker()
+    cache_bus.stop_listener()
     if leader:
         release_leadership()
 

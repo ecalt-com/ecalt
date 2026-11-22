@@ -21,6 +21,7 @@ from typing import Any, Callable, Optional
 
 from fastapi import Depends, HTTPException, Request
 
+from app.core import cache_bus
 from app.core.auth import get_parent_session
 
 logger = logging.getLogger(__name__)
@@ -164,12 +165,20 @@ _member_cache: dict[tuple[str, str], tuple[Optional[tuple[str, str]], float]] = 
 _MEMBER_CACHE_TTL = 60.0
 
 
-def invalidate_school_member_cache(school_id: Optional[str] = None, uid: Optional[str] = None) -> None:
-    """Call after any membership, role or school-status change. With no
-    arguments it clears everything."""
+def _evict_school_member(school_id: Optional[str] = None, uid: Optional[str] = None) -> None:
     for key in list(_member_cache):
         if (school_id is None or key[1] == school_id) and (uid is None or key[0] == uid):
             _member_cache.pop(key, None)
+
+
+def invalidate_school_member_cache(school_id: Optional[str] = None, uid: Optional[str] = None) -> None:
+    """Call after any membership, role or school-status change. With no
+    arguments it clears everything."""
+    _evict_school_member(school_id, uid)
+    cache_bus.publish("school_member", school_id=school_id, uid=uid)
+
+
+cache_bus.register("school_member", _evict_school_member)
 
 
 def school_not_found() -> HTTPException:

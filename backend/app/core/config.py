@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 from pydantic_settings import BaseSettings
 
@@ -67,6 +68,10 @@ class Settings(BaseSettings):
     # Exactly ONE instance may run the notification scheduler. A second
     # instance (e.g. local dev against the shared DB) races the daily-cap
     # check and double-sends — keep this false everywhere but production.
+    # Cross-worker cache invalidation (core/cache_bus.py). None = on when WEB_CONCURRENCY > 1.
+    CACHE_BUS_ENABLED: Optional[bool] = None
+    # Shared rate-limit counters across workers, e.g. redis://… (None = per-process memory).
+    RATE_LIMIT_STORAGE_URI: Optional[str] = None
     SCHEDULER_ENABLED: bool = True
 
     # Visual Intelligence Layer — off by default. Planning without any

@@ -212,6 +212,14 @@ async def _queue_processor() -> None:
             logger.error("queue_processor: row=%s uid=%s failed: %s", row["id"], uid, e)
 
 
+async def _prune_cache_invalidations() -> None:
+    from app.core.cache_bus import prune
+    try:
+        logger.info("prune_cache_invalidations: deleted %s rows", prune())
+    except Exception as e:
+        logger.error("prune_cache_invalidations failed: %s", e)
+
+
 async def _prune_learning_events() -> None:
     from app.services.learning_events_service import prune_old_events
     try:
@@ -1435,6 +1443,7 @@ def setup_scheduler() -> AsyncIOScheduler:
         (_prune_school_audit_log,      "cron", {"hour": 4, "minute": 20},  "prune_school_audit_log"),
         (_prune_notification_queue,    "cron", {"hour": 4, "minute": 50},  "prune_notification_queue"),
         (_prune_learning_events,       "cron", {"hour": 4, "minute": 55},  "prune_learning_events"),
+        (_prune_cache_invalidations,   "cron", {"hour": 4, "minute": 58},  "prune_cache_invalidations"),
         (_school_offboarding_dispatch, "cron", {"hour": 4, "minute": 40},  "school_offboarding_dispatch"),
         (_school_jobs_health,          "cron", {"minute": "*/15"},         "school_jobs_health"),
     ]

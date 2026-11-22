@@ -44,4 +44,6 @@ def client_ip(request: Request) -> str:
     return _ip(h.get("x-real-ip")) or (request.client.host if request.client else "unknown")
 
 
-limiter = Limiter(key_func=client_ip)
+# Counters are per process by default, so N workers allow N times each limit.
+# RATE_LIMIT_STORAGE_URI (e.g. redis://…) makes them shared across workers.
+limiter = Limiter(key_func=client_ip, storage_uri=settings.RATE_LIMIT_STORAGE_URI or "memory://")

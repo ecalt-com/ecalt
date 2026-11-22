@@ -15,6 +15,7 @@ from typing import Optional
 
 from fastapi import HTTPException
 
+from app.core import cache_bus
 from app.core.database import get_db
 from app.core.school_auth import (
     OPEN_SCHOOL_STATUSES,
@@ -39,12 +40,20 @@ def remember_journey_school(journey_id: str, school_id: Optional[str]) -> None:
     _school_cache[journey_id] = (school_id, time.monotonic())
 
 
-def invalidate_journey_access(uid: Optional[str] = None, journey_id: Optional[str] = None) -> None:
-    """Call after enrollment, assignment or course-status changes. With no
-    arguments it clears everything."""
+def _evict_journey_access(uid: Optional[str] = None, journey_id: Optional[str] = None) -> None:
     for key in list(_access_cache):
         if (uid is None or key[0] == uid) and (journey_id is None or key[1] == journey_id):
             _access_cache.pop(key, None)
+
+
+def invalidate_journey_access(uid: Optional[str] = None, journey_id: Optional[str] = None) -> None:
+    """Call after enrollment, assignment or course-status changes. With no
+    arguments it clears everything."""
+    _evict_journey_access(uid, journey_id)
+    cache_bus.publish("journey_access", uid=uid, journey_id=journey_id)
+
+
+cache_bus.register("journey_access", _evict_journey_access)
 
 
 def journey_school_id(journey_id: str) -> Optional[str]:
