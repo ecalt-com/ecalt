@@ -310,6 +310,59 @@ _EXPERTISE_DEPTH_FLOOR = {
 }
 
 
+REUSE_WINDOW_HOURS = 24
+
+
+def find_reusable_quiz_set(uid: str, journey_id: str, step_id: str) -> dict | None:
+    """The learner's newest unanswered quiz set for this step, if it is under
+    REUSE_WINDOW_HOURS old: same questions, no model call, no budget charge.
+    A set with any submitted answer is consumed and never reused."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT s.quiz_set_id
+                  FROM quiz_sessions s
+                 WHERE s.uid = %s AND s.journey_id = %s AND s.step_id = %s
+                   AND s.quiz_set_id IS NOT NULL
+                   AND s.created_at > now() - make_interval(hours => %s)
+                 GROUP BY s.quiz_set_id
+                HAVING NOT bool_or(s.submitted)
+                 ORDER BY max(s.created_at) DESC
+                 LIMIT 1
+                """,
+                (uid, journey_id, step_id, REUSE_WINDOW_HOURS),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            cur.execute(
+                "SELECT id, concept, quiz_data, hints_given FROM quiz_sessions "
+                "WHERE quiz_set_id = %s AND uid = %s ORDER BY created_at, id",
+                (row["quiz_set_id"], uid),
+            )
+            sessions = cur.fetchall()
+    if len(sessions) < 2:
+        return None
+    questions = []
+    for r in sessions:
+        q = r["quiz_data"] if isinstance(r["quiz_data"], dict) else json.loads(r["quiz_data"])
+        questions.append({
+            "quiz_id":        str(r["id"]),
+            "concept":        q.get("concept_tested", r["concept"]),
+            "difficulty":     q.get("difficulty", "exploratory"),
+            "intro_phrase":   q.get("intro_phrase", ""),
+            "question":       q.get("question", ""),
+            "hint_available": max(0, 3 - int(r["hints_given"] or 0)),
+        })
+    return {
+        "quiz_set_id": str(row["quiz_set_id"]),
+        "questions": questions,
+        "pass_threshold": pass_threshold(len(questions)),
+        "reused": True,
+    }
+
+
 async def generate_quiz_set(
     uid: str,
     concept: str,

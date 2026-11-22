@@ -36,7 +36,7 @@ function getVerdict(r: QuizResult): QuizVerdict {
   return r.is_correct ? 'excellent' : 'off_track'
 }
 
-type Phase = 'loading' | 'active' | 'passed' | 'failed' | 'skipped' | 'error' | 'budget'
+type Phase = 'idle' | 'loading' | 'active' | 'passed' | 'failed' | 'skipped' | 'error' | 'budget'
 
 interface QuizCardProps {
   concept: string
@@ -56,7 +56,8 @@ const DIFFICULTY_COLORS: Record<string, string> = {
 }
 
 export default function QuizCard({ concept, context, getToken, journeyId, stepId, onPassed }: QuizCardProps) {
-  const [phase, setPhase] = useState<Phase>('loading')
+  const [phase, setPhase] = useState<Phase>('idle')
+  const sentinelRef = useRef<HTMLDivElement>(null)
   const [budgetCode, setBudgetCode] = useState<string | null>(null)
   const [quizSet, setQuizSet] = useState<QuizSet | null>(null)
   const [answers, setAnswers] = useState<string[]>([])
@@ -87,7 +88,7 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
     }
   }
 
-  async function loadSet() {
+  async function loadSet(fresh = false) {
     setPhase('loading')
     setQuizSet(null)
     setAnswers([])
@@ -100,7 +101,7 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
       const token = await getToken()
       if (!token) return // guests never reach here — StepNode doesn't render the quiz
       const set = await generateQuizSet(
-        { concept, context, journey_id: journeyId, step_id: stepId, num_questions: 3 },
+        { concept, context, journey_id: journeyId, step_id: stepId, num_questions: 3, ...(fresh ? { fresh: true } : {}) },
         token,
       )
       if (!set.questions.length) { setPhase('error'); return }
@@ -117,9 +118,24 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
     }
   }
 
-  // The quiz is mandatory — it loads as soon as the step content is read.
+  // The quiz is mandatory, but the questions are only generated once the learner
+  // reaches the card (or taps Start): a step that is opened and abandoned costs
+  // no model call, and a reload shows the same unanswered questions.
   useEffect(() => {
-    loadSet()
+    setPhase('idle')
+    const el = sentinelRef.current
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      loadSet()
+      return
+    }
+    const io = new IntersectionObserver((entries) => {
+      if (entries.some((e) => e.isIntersecting)) {
+        io.disconnect()
+        loadSet()
+      }
+    }, { rootMargin: '200px' })
+    io.observe(el)
+    return () => io.disconnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [journeyId, stepId])
 
@@ -221,6 +237,19 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
     </button>
   )
 
+  if (phase === 'idle') {
+    return (
+      <div ref={sentinelRef} className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 text-center">
+        <button
+          onClick={() => loadSet()}
+          className="text-xs px-3 py-1.5 min-h-[44px] rounded-lg font-semibold text-violet-600 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-colors"
+        >
+          Start the quiz
+        </button>
+      </div>
+    )
+  }
+
   if (phase === 'loading') {
     return (
       <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800">
@@ -257,7 +286,7 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
       <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800 text-center space-y-2">
         <p className="text-xs text-rose-500">Couldn't load the quiz for this step.</p>
         <div className="flex items-center justify-center gap-4">
-          <button onClick={loadSet} className="text-xs text-violet-500 hover:underline">
+          <button onClick={() => loadSet()} className="text-xs text-violet-500 hover:underline">
             Try again
           </button>
           {skipControl}
@@ -486,7 +515,7 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
         {submitError && (
           <div className="text-center space-y-1">
             <p className="text-xs text-rose-500">{submitError}</p>
-            <button onClick={loadSet} className="text-xs text-violet-500 hover:underline">
+            <button onClick={() => loadSet(true)} className="text-xs text-violet-500 hover:underline">
               Get a fresh quiz
             </button>
           </div>
@@ -522,7 +551,7 @@ export default function QuizCard({ concept, context, getToken, journeyId, stepId
             <p className="text-xs text-slate-500">Review the feedback below, then try a fresh set — or skip.</p>
             <div className="flex items-center justify-center gap-2">
               <button
-                onClick={loadSet}
+                onClick={() => loadSet(true)}
                 className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 min-h-[44px] rounded-lg font-semibold bg-violet-600 text-white hover:bg-violet-700 active:bg-violet-700 transition-colors"
               >
                 <RotateCcw size={11} />

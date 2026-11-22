@@ -1,4 +1,5 @@
 import logging
+from fastapi.concurrency import run_in_threadpool
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
@@ -9,6 +10,7 @@ from app.core.school_auth import is_school_student_uid, student_not_allowed
 from app.services.journey_access import assert_can_read_journey
 from app.services.quiz_service import (
     generate_quiz,
+    find_reusable_quiz_set,
     generate_quiz_set,
     get_hint,
     record_quiz_skip,
@@ -32,6 +34,7 @@ class QuizGenerateRequest(BaseModel):
     step_id: Optional[str] = None
     num_questions: Optional[int] = None
     step_type: str = "concept"  # concept | practice | challenge | explore
+    fresh: bool = False  # skip reuse of an unanswered set and generate new questions
 
 
 class QuizSubmitRequest(BaseModel):
@@ -47,6 +50,13 @@ async def generate_quiz_endpoint(
         assert_can_read_journey(uid, body.journey_id)
     elif is_school_student_uid(uid):
         raise student_not_allowed()  # students only take quizzes on assigned course steps
+
+    # Reloading a step shows the same unanswered questions: no model call, no charge.
+    if body.journey_id and body.step_id and not body.fresh:
+        reused = await run_in_threadpool(find_reusable_quiz_set, uid, body.journey_id, body.step_id)
+        if reused:
+            return reused
+
     allowed, reason = check_budget(uid)
     if not allowed:
         raise HTTPException(status_code=402, detail=budget_error_detail(reason))

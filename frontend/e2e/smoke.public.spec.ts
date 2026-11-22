@@ -16,6 +16,12 @@ test.describe('public smoke', () => {
     await expect(root).not.toBeEmpty()
   })
 
+  test('social preview image is a real PNG, not the SPA fallback', async ({ request }) => {
+    const res = await request.get('/og-image.png')
+    expect(res.ok()).toBeTruthy()
+    expect(res.headers()['content-type']).toContain('image/png')
+  })
+
   test('student class sign-in page renders', async ({ page }) => {
     await page.goto('/class')
     await expect(page).not.toHaveURL(/vercel\.com\/sso/)

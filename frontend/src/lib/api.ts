@@ -350,6 +350,7 @@ export const generateQuizSet = (
     step_id: string
     base_depth?: string
     num_questions?: number
+    fresh?: boolean
   },
   token: string,
 ): Promise<QuizSet> =>
