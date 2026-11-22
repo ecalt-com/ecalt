@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Optional
+from app.core.config import settings
 from app.core.auth import get_active_user, get_acting_uid
 from app.core.database import get_db
 from app.core.school_auth import is_school_student_uid
@@ -130,6 +131,8 @@ def _check_quiz_passed(
     if not resolved:
         return
     if step_id not in [s.get("id") for s in resolved[0]]:
+        return
+    if settings.QUIZ_GATE_MODE == "optional":
         return
     if not step_quiz_passed(uid, journey_id, step_id):
         raise HTTPException(
@@ -257,6 +260,11 @@ def mark_step_complete(
     else:
         _check_quiz_passed(uid, journey_id, step_id, resolved)
 
+    # 'read' = completed without passing the quiz because the gate is optional (QUIZ_GATE_MODE)
+    completion_method = "quiz"
+    if settings.QUIZ_GATE_MODE == "optional" and not is_school_student_uid(uid):
+        completion_method = "quiz" if step_quiz_passed(uid, journey_id, step_id) else "read"
+
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -286,7 +294,7 @@ def mark_step_complete(
             background_tasks.add_task(credit_step_knowledge, uid, step_title, step_type, tags)
 
     if row:
-        background_tasks.add_task(_record_completion_events, uid, journey_id, step_id, resolved)
+        background_tasks.add_task(_record_completion_events, uid, journey_id, step_id, resolved, completion_method)
         if not is_school_student_uid(uid):
             meta = _resolve_step_meta(step_id, resolved)
             background_tasks.add_task(seed_review_item, uid, journey_id, step_id, meta[0] if meta else "")
@@ -299,10 +307,10 @@ def mark_step_complete(
     )
 
 
-def _record_completion_events(uid: str, journey_id: str, step_id: str, resolved) -> None:
+def _record_completion_events(uid: str, journey_id: str, step_id: str, resolved, method: str = "quiz") -> None:
     """Funnel events for a fresh completion: the step, and the journey when it was the last."""
     from app.services.learning_events_service import record_event
-    record_event(uid, "step_complete", journey_id, step_id)
+    record_event(uid, "step_complete", journey_id, step_id, {"method": method})
     try:
         total = len(resolved[0]) if resolved else 0
         if not total:

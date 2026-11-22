@@ -310,6 +310,12 @@ export const optOutWhatsApp = (token: string): Promise<NotificationPreferences> 
 export const getUserProfile = (token: string): Promise<UserProfile> =>
   request('/api/v1/users/me', undefined, token)
 
+export interface AppConfig { quiz_gate_mode: 'required' | 'optional'; languages: { code: string; name: string }[] }
+let appConfigPromise: Promise<AppConfig> | null = null
+/** Non-secret feature settings, fetched once per page load; falls back to today's behaviour. */
+export const getAppConfig = (): Promise<AppConfig> =>
+  (appConfigPromise ??= request<AppConfig>('/api/v1/config/public').catch(() => ({ quiz_gate_mode: 'required' as const, languages: [] })))
+
 export const setPreferredLanguage = (language: string, token: string): Promise<UserProfile> =>
   request('/api/v1/users/me/language', { method: 'PATCH', body: JSON.stringify({ language }) }, token)
 

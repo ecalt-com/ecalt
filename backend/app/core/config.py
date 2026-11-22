@@ -72,6 +72,10 @@ class Settings(BaseSettings):
     CACHE_BUS_ENABLED: Optional[bool] = None
     # Shared rate-limit counters across workers, e.g. redis://… (None = per-process memory).
     RATE_LIMIT_STORAGE_URI: Optional[str] = None
+    # Step completion for ordinary journeys: 'required' = pass the step quiz (or skip it with
+    # confirmation); 'optional' = 'Mark as read' completes a step and the quiz is practice, with
+    # the step added to the spaced-review queue either way. School courses follow their class setting.
+    QUIZ_GATE_MODE: str = "required"
     SCHEDULER_ENABLED: bool = True
 
     # Visual Intelligence Layer — off by default. Planning without any

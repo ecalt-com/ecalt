@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import clsx from 'clsx'
 import { BookOpen, Wrench, Zap, Compass, Check, ChevronDown, Loader2, Lock, RefreshCw } from 'lucide-react'
 import type { JourneyStep, StepVisualResponse } from '../lib/types'
-import { getStepContent, getStepVisual } from '../lib/api'
+import { getAppConfig, getStepContent, getStepVisual } from '../lib/api'
 import MarkdownContent from './MarkdownContent'
 import QuizCard from './QuizCard'
 import StepFeedbackBar from './StepFeedbackBar'
@@ -71,6 +71,8 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
   // session never re-quiz, and a step stays mounted through its pass screen.
   const quizRequired = useRef(!step.completed)
   const contentRef = useRef<HTMLDivElement>(null)
+  const [quizOptional, setQuizOptional] = useState(false)   // QUIZ_GATE_MODE=optional: 'Mark as read' completes the step
+  useEffect(() => { getAppConfig().then(c => setQuizOptional(c.quiz_gate_mode === 'optional')) }, [])
   // Funnel events: opened, scrolled 50%/90%, seconds on screen (not for guests or students).
   useStepEngagement(expanded && !locked && content !== null && !isGuest, journeyId, step.id, getToken, contentRef)
 
@@ -166,7 +168,7 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
                 <span className="text-xs text-slate-400 dark:text-slate-600">· {step.estimated_minutes} min</span>
                 {!step.completed && (
                   <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-400/10 text-violet-600 dark:text-violet-400">
-                    Quiz · 2/3 to pass
+                    {quizOptional ? 'Quiz · practice' : 'Quiz · 2/3 to pass'}
                   </span>
                 )}
                 {step.completed && step.updated && (
@@ -246,6 +248,12 @@ export default function StepNode({ step, index, isLast, journeyId, getToken, onT
                       getToken={getToken}
                       onRegenerated={setContent}
                     />
+                  )}
+                  {!isGuest && quizRequired.current && quizOptional && !step.completed && (
+                    <div className="mt-4 flex flex-wrap items-center gap-3" data-testid="mark-as-read">
+                      <button onClick={() => onToggle?.(step.id)} className="btn-primary text-sm min-h-[44px]">Mark as read</button>
+                      <span className="text-xs text-slate-500">The quiz below is optional practice. We'll bring this step back for a quick review.</span>
+                    </div>
                   )}
                   {!isGuest && quizRequired.current && (
                     <QuizCard
