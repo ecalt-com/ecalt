@@ -107,3 +107,12 @@ def test_without_an_openai_key_nothing_is_called(monkeypatch):
     monkeypatch.setattr("app.core.config.settings.OPENAI_API_KEY", "")
     assert asyncio.run(content_filter.moderate_non_english("ब्लैक होल क्या है?")) == (True, "")
     create.assert_not_awaited()
+
+
+def test_non_english_gets_a_larger_token_allowance_for_learner_facing_types_only():
+    assert ls.scale_tokens(3000, "journey") == 3000
+    with ls.use_language("hi"):
+        assert ls.scale_tokens(3000, "journey") == 9000
+        assert ls.scale_tokens(1024, "daily_chat") == 3072
+        assert ls.scale_tokens(200, "content_critic") == 200      # not shown to anyone: unchanged
+    assert ls.scale_tokens(3000, "journey") == 3000

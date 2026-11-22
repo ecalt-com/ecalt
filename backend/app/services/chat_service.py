@@ -5,7 +5,7 @@ import openai as _openai
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 
-from app.services.language_service import apply as apply_language, use_language, user_language
+from app.services.language_service import apply as apply_language, scale_tokens, use_language, user_language
 from app.core.database import get_db
 from app.services.fingerprint_service import inject_fingerprint, update_fingerprint
 from app.services.provider_service import get_config, stream_completion
@@ -383,15 +383,17 @@ async def stream_chat(
 
     age_context = _get_chat_age_context(uid, journey_id)
     system = f"{base_system}\n\n[AGE CONTEXT]: {age_context}" if age_context else base_system
+    chat_tokens = 1024
     with use_language(user_language(uid)):   # chat follows the learner's own language setting
         system = apply_language(system, interaction_type)
+        chat_tokens = scale_tokens(chat_tokens, interaction_type)
 
     full_response = ""
     input_tokens = 0
     output_tokens = 0
     cached_input_tokens = 0
     try:
-        async for text, in_tok, out_tok, cached_tok in stream_completion(provider, model, system, messages):
+        async for text, in_tok, out_tok, cached_tok in stream_completion(provider, model, system, messages, max_tokens=chat_tokens):
             if text:
                 full_response += text
                 yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"

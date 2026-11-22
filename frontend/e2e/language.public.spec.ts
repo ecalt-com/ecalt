@@ -34,6 +34,7 @@ test('set Hindi, generate a journey in Hindi, see the language chip', async ({ p
 
     // A journey generated now is written in Hindi.
     await page.goto('/explore?q=' + encodeURIComponent('How do rainbows form?'))
+    await page.getByRole('button', { name: 'Skip' }).click()        // the optional quick-profile step
     await expect(page.getByText(DEVANAGARI).first()).toBeVisible({ timeout: 180_000 })
   } finally {
     fixture('teardown', user.uid)

@@ -27,6 +27,11 @@ LANGUAGE_AWARE_TYPES = frozenset({
     "journey", "step_content", "quiz", "journey_tutor", "daily_chat", "onboarding", "spark", "daily_spark",
 })
 
+# Devanagari and other non-Latin scripts take several times more tokens per word, and
+# reasoning models spend part of the allowance thinking: at the English limit a Hindi
+# journey came back empty (4.5k tokens needed against 3k allowed). Measured on dev.
+TOKEN_MULTIPLIER: dict[str, float] = {"hi": 3.0}
+
 _current: ContextVar[str] = ContextVar("content_language", default=DEFAULT_LANGUAGE)
 
 
@@ -67,6 +72,13 @@ def apply(system: str, interaction_type: Optional[str]) -> str:
     if code == DEFAULT_LANGUAGE or interaction_type not in LANGUAGE_AWARE_TYPES:
         return system
     return f"{system}\n\n{instruction(code)}"
+
+
+def scale_tokens(max_tokens: int, interaction_type: Optional[str]) -> int:
+    """The completion-token allowance for the current language (English unchanged)."""
+    if interaction_type not in LANGUAGE_AWARE_TYPES:
+        return max_tokens
+    return int(max_tokens * TOKEN_MULTIPLIER.get(current(), 1.0))
 
 
 def _one(sql: str, params: tuple) -> Optional[str]:
