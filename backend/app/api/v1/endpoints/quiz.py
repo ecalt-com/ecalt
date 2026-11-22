@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 
 from typing import Optional
 
+from app.services.language_service import for_journey_or_user, quiz_language, use_language
 from app.core.auth import get_active_user
 from app.core.school_auth import is_school_student_uid, student_not_allowed
 from app.services.journey_access import assert_can_read_journey
@@ -68,25 +69,27 @@ async def generate_quiz_endpoint(
 
     is_set = bool(body.journey_id and body.step_id) or body.num_questions is not None
 
+    lang = await run_in_threadpool(for_journey_or_user, body.journey_id, uid)   # questions match their lesson's language
     try:
-        if is_set:
-            quiz, in_tok, out_tok = await generate_quiz_set(
-                uid=uid,
-                concept=body.concept.strip(),
-                context=body.context.strip(),
-                base_depth=body.base_depth,
-                num_questions=body.num_questions or 3,
-                journey_id=body.journey_id,
-                step_id=body.step_id,
-                step_type=body.step_type,
-            )
-        else:
-            quiz, in_tok, out_tok = await generate_quiz(
-                uid=uid,
-                concept=body.concept.strip(),
-                context=body.context.strip(),
-                base_depth=body.base_depth,
-            )
+        with use_language(lang):
+            if is_set:
+                quiz, in_tok, out_tok = await generate_quiz_set(
+                    uid=uid,
+                    concept=body.concept.strip(),
+                    context=body.context.strip(),
+                    base_depth=body.base_depth,
+                    num_questions=body.num_questions or 3,
+                    journey_id=body.journey_id,
+                    step_id=body.step_id,
+                    step_type=body.step_type,
+                )
+            else:
+                quiz, in_tok, out_tok = await generate_quiz(
+                    uid=uid,
+                    concept=body.concept.strip(),
+                    context=body.context.strip(),
+                    base_depth=body.base_depth,
+                )
     except ValueError as e:
         raise HTTPException(status_code=502, detail=str(e))
     except Exception:
@@ -132,7 +135,8 @@ async def skip_step_quiz_endpoint(
 @router.post("/{quiz_id}/hint", summary="Get the next progressive hint")
 async def get_hint_endpoint(quiz_id: str, uid: str = Depends(get_active_user)):
     try:
-        return get_hint(quiz_id, uid)
+        with use_language(await run_in_threadpool(quiz_language, quiz_id, uid)):
+            return get_hint(quiz_id, uid)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
@@ -149,7 +153,8 @@ async def submit_answer_endpoint(
     if not body.user_answer.strip():
         raise HTTPException(status_code=400, detail="user_answer cannot be empty")
     try:
-        return await submit_answer(quiz_id, uid, body.user_answer.strip())
+        with use_language(await run_in_threadpool(quiz_language, quiz_id, uid)):
+            return await submit_answer(quiz_id, uid, body.user_answer.strip())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:

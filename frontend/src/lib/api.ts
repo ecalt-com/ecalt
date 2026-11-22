@@ -259,6 +259,7 @@ export interface UserProfile {
   age_group_flag?: 'adult' | 'teen' | 'child' | null
   managed?: boolean
   paused?: boolean
+  preferred_language?: string
 }
 
 // ── Notification preferences ──────────────────────────────────────────────────
@@ -308,6 +309,9 @@ export const optOutWhatsApp = (token: string): Promise<NotificationPreferences> 
 
 export const getUserProfile = (token: string): Promise<UserProfile> =>
   request('/api/v1/users/me', undefined, token)
+
+export const setPreferredLanguage = (language: string, token: string): Promise<UserProfile> =>
+  request('/api/v1/users/me/language', { method: 'PATCH', body: JSON.stringify({ language }) }, token)
 
 export const completeOnboarding = (token: string): Promise<UserProfile> =>
   request('/api/v1/users/me/onboarding', { method: 'PATCH' }, token)

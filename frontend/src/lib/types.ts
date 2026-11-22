@@ -20,6 +20,7 @@ export type MarketplaceStatus = 'private' | 'pending_review' | 'published' | 're
 
 export interface Journey {
   id: string
+  language?: string  // ISO 639-1; absent or 'en' for English
   question: string
   title: string
   description: string

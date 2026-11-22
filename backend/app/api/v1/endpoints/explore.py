@@ -11,6 +11,8 @@ from app.services.subscription_service import check_budget, record_usage
 from app.services.provider_service import get_config
 from app.services.interest_profile_service import invalidate as invalidate_profile
 from app.services.content_filter import check_topic_scope
+from app.services.content_filter import moderate_non_english
+from app.services.language_service import allowed_language, normalize as normalize_language, user_language
 from app.services.image_service import generate_and_attach_hero
 
 router = APIRouter()
@@ -79,6 +81,9 @@ async def explore_preview(
     topic_allowed, topic_reason = check_topic_scope(request.question)
     if not topic_allowed:
         raise HTTPException(status_code=422, detail=topic_reason)
+    topic_allowed, topic_reason = await moderate_non_english(request.question)
+    if not topic_allowed:
+        raise HTTPException(status_code=422, detail=topic_reason)
 
     allowed, reason = check_budget(uid)
     if not allowed:
@@ -86,6 +91,7 @@ async def explore_preview(
 
     learner_profile  = _get_learner_profile(uid, request)
     learning_context = _build_learning_context(uid)
+    language = allowed_language(uid, request.language or user_language(uid))
 
     try:
         journey, in_tok, out_tok = await generate_journey(
@@ -95,6 +101,7 @@ async def explore_preview(
             learner_profile=learner_profile,
             learning_context=learning_context or None,
             refinement_context=request.refinement_context or None,
+            language=language,
         )
     except ValueError as e:
         logger.warning("explore preview upstream error", extra={"question": request.question[:120], "error": str(e)})
@@ -128,6 +135,7 @@ async def explore_preview(
         "tags":             journey.tags,
         "steps":            [s.model_dump() for s in journey.steps],
         "created_at":       journey.created_at,
+        "language":         journey.language,
         "learner_purpose":  request.learner_purpose,
         "topic_expertise":  request.topic_expertise,
     })
@@ -217,6 +225,7 @@ def explore_confirm(
         tags=data.get("tags", []),
         icon=data.get("icon", "📚"),
         created_at=data["created_at"],
+        language=normalize_language(data.get("language")),
     )
 
     try:
@@ -241,6 +250,8 @@ def explore_confirm(
                         data.get("topic_expertise"),
                     ),
                 )
+                if journey.language != "en":   # English never touches the new column (safe before migration 025)
+                    cur.execute("UPDATE journeys SET language = %s WHERE id = %s", (journey.language, journey.id))
                 # Delete the used preview token
                 cur.execute(
                     "DELETE FROM journey_previews WHERE preview_token = %s::uuid",
@@ -284,6 +295,9 @@ async def explore(
     topic_allowed, topic_reason = check_topic_scope(request.question)
     if not topic_allowed:
         raise HTTPException(status_code=422, detail=topic_reason)
+    topic_allowed, topic_reason = await moderate_non_english(request.question)
+    if not topic_allowed:
+        raise HTTPException(status_code=422, detail=topic_reason)
 
     allowed, reason = check_budget(uid)
     if not allowed:
@@ -291,6 +305,7 @@ async def explore(
 
     learner_profile  = _get_learner_profile(uid, request)
     learning_context = _build_learning_context(uid)
+    language = allowed_language(uid, request.language or user_language(uid))
 
     try:
         journey, in_tok, out_tok = await generate_journey(
@@ -300,6 +315,7 @@ async def explore(
             learner_profile=learner_profile,
             learning_context=learning_context or None,
             refinement_context=request.refinement_context or None,
+            language=language,
         )
     except ValueError as e:
         logger.warning("explore upstream error", extra={"question": request.question[:120], "error": str(e)})
@@ -337,6 +353,8 @@ async def explore(
                         request.topic_expertise,
                     ),
                 )
+                if journey.language != "en":
+                    cur.execute("UPDATE journeys SET language = %s WHERE id = %s", (journey.language, journey.id))
     except Exception:
         logger.exception("failed to persist journey to db", extra={"journey_id": journey.id})
 

@@ -1,6 +1,6 @@
 """Dev-DB fixture for quiz-lazy.public.spec.ts (F1.1/F1.2): an adult learner, a one-step journey with cached lesson content.
 
-    backend/.venv/bin/python e2e/quiz_fixture.py seed <uid> <email> <journey_id>
+    backend/.venv/bin/python e2e/quiz_fixture.py seed <uid> <email> <journey_id> [language]
     backend/.venv/bin/python e2e/quiz_fixture.py counts <uid> <journey_id>   # JSON: events by name, quiz sets, quiz sessions
     backend/.venv/bin/python e2e/quiz_fixture.py teardown <uid>
 
@@ -27,7 +27,8 @@ LESSON = "## Why the sky is blue\n\n" + "\n\n".join(
 
 cmd, args = sys.argv[1], sys.argv[2:]
 if cmd == "seed":
-    uid, email, jid = args
+    uid, email, jid = args[:3]
+    language = args[3] if len(args) > 3 else 'en'
     step = {"id": "s1", "title": "Why the sky is blue", "type": "concept", "description": "Scattering of light",
             "estimated_minutes": 5}
     with get_db() as conn:
@@ -37,6 +38,8 @@ if cmd == "seed":
                         "ON CONFLICT (uid) DO NOTHING", (uid, email))
             cur.execute("INSERT INTO journeys (id, uid, title, question, description, estimated_hours, steps) "
                         "VALUES (%s,%s,'Light and colour','q','d',1,%s::jsonb)", (jid, uid, json.dumps([step])))
+            if language != "en":
+                cur.execute("UPDATE journeys SET language = %s WHERE id = %s", (language, jid))
     from app.services.ai_service import upsert_step_content
     upsert_step_content(jid, "s1", LESSON, [], "e2e", overwrite=True)
 elif cmd == "counts":

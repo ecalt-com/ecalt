@@ -827,6 +827,8 @@ async def complete_text(
     """Single-turn, non-streaming completion. Returns (text, input_tokens, output_tokens, cached_input_tokens)."""
     cfg = get_config(interaction_type)
     provider, model = cfg["provider"], cfg["model"]
+    from app.services.language_service import apply as apply_language
+    system = apply_language(system, interaction_type)
 
     messages = [{"role": "user", "content": user_content}]
 

@@ -8,6 +8,7 @@ from xml.etree import ElementTree
 from app.models.schemas import Journey, JourneyStep
 from app.services.fingerprint_service import inject_fingerprint
 from app.services.provider_service import complete_text, get_config
+from app.services.language_service import normalize as normalize_language, use_language
 
 logger = logging.getLogger(__name__)
 
@@ -490,23 +491,24 @@ async def warm_journey_steps(
 
         for attempt in (1, 2):
             try:
-                content, quiz_anchors, in_tok, out_tok = await generate_step_content(
-                    step_title=step.title,
-                    step_description=step.description,
-                    step_type=step.type,
-                    journey_title=journey.title,
-                    journey_question=journey.question,
-                    age_group=journey.age_group,
-                    uid=uid,
-                    difficulty=journey.difficulty,
-                    learner_purpose=learner_purpose,
-                    topic_expertise=topic_expertise,
-                    journey_outline=outline,
-                    step_position=(idx, total),
-                    covered_facts=_covered_block(covered),
-                    core_question=step.core_question,
-                    seed_facts=step.seed_facts,
-                )
+                with use_language(getattr(journey, "language", "en")):
+                    content, quiz_anchors, in_tok, out_tok = await generate_step_content(
+                        step_title=step.title,
+                        step_description=step.description,
+                        step_type=step.type,
+                        journey_title=journey.title,
+                        journey_question=journey.question,
+                        age_group=journey.age_group,
+                        uid=uid,
+                        difficulty=journey.difficulty,
+                        learner_purpose=learner_purpose,
+                        topic_expertise=topic_expertise,
+                        journey_outline=outline,
+                        step_position=(idx, total),
+                        covered_facts=_covered_block(covered),
+                        core_question=step.core_question,
+                        seed_facts=step.seed_facts,
+                    )
                 upsert_step_content(journey.id, step.id, content, quiz_anchors,
                                     model, overwrite=False)
                 if uid:
@@ -639,8 +641,10 @@ async def generate_journey(
     learner_profile: dict | None = None,
     learning_context: str | None = None,
     refinement_context: str | None = None,
+    language: str = "en",
 ) -> tuple[Journey, int, int]:
-    """Returns (journey, estimated_input_tokens, estimated_output_tokens)."""
+    """Returns (journey, estimated_input_tokens, estimated_output_tokens).
+    `language` (ISO 639-1, default English) is what the journey is written in."""
     profile_block = ""
     if learner_profile:
         purpose_labels = {
@@ -694,12 +698,13 @@ async def generate_journey(
     in_tok = out_tok = 0
     last_err: Exception = ValueError("AI did not return valid JSON")
     for attempt in range(2):
-        raw, i_tok, o_tok, _ = await complete_text(
-            interaction_type="journey",
-            system=system,
-            user_content=user_content,
-            max_tokens=3000,
-        )
+        with use_language(language):
+            raw, i_tok, o_tok, _ = await complete_text(
+                interaction_type="journey",
+                system=system,
+                user_content=user_content,
+                max_tokens=3000,
+            )
         in_tok += i_tok
         out_tok += o_tok
         start = raw.find("{")
@@ -749,5 +754,6 @@ async def generate_journey(
         tags=data.get("tags", []),
         icon=data.get("icon", "📚"),
         created_at=datetime.now(timezone.utc).isoformat(),
+        language=normalize_language(language),
     )
     return journey, in_tok, out_tok

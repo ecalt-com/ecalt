@@ -247,6 +247,8 @@ def _persist_journey(journey: Journey, uid: str) -> None:
                         journey.icon,
                     ),
                 )
+                if journey.language != "en":
+                    cur.execute("UPDATE journeys SET language = %s WHERE id = %s", (journey.language, journey.id))
     except Exception:
         logger.exception("failed to persist suggested journey", extra={"journey_id": journey.id})
 
@@ -278,6 +280,7 @@ async def generate_next_level(uid: str, source: Journey) -> Journey | None:
             question=question,
             age_group=source.age_group,
             uid=uid,
+            language=source.language,
         )
     except Exception:
         logger.exception("next-level generation failed", extra={"source_id": source.id})

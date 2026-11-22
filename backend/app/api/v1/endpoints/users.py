@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field, computed_field
 from app.core.auth import (
     assert_account_active,
     get_account_holder,
+    get_active_user,
     get_acting_uid,
     get_bootstrap_uid,
     get_required_user,
@@ -60,6 +61,7 @@ class UserProfile(BaseModel):
     birth_month: Optional[int] = None
     profession: Optional[str] = None
     role: str = "learner"  # 'parent' once they manage a family
+    preferred_language: str = "en"  # language new journeys and chat are written in (F2.2)
     # Parental-control state, so the client can show the right screen at
     # sign-in: a managed child awaiting the parent's card check must not be
     # shown the self-signup "enter your parent's email" form.
@@ -395,6 +397,29 @@ def complete_onboarding(uid: str = Depends(get_required_user)):
                 "UPDATE users SET onboarding_done = TRUE WHERE uid = %s RETURNING *",
                 (uid,),
             )
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="User not found")
+    return UserProfile(**dict(row))
+
+
+class LanguageRequest(BaseModel):
+    language: str = Field(..., min_length=2, max_length=5)
+
+
+@router.patch("/me/language", response_model=UserProfile, summary="Set the language journeys and chat are written in")
+def set_language(body: LanguageRequest, uid: str = Depends(get_active_user)):
+    from app.services.language_service import DEFAULT_LANGUAGE, LANGUAGES, is_adult
+    code = body.language.strip().lower()
+    if code not in LANGUAGES:
+        raise HTTPException(status_code=422, detail={"error": "unsupported_language",
+                                                      "message": "That language isn't available yet."})
+    if code != DEFAULT_LANGUAGE and not is_adult(uid):
+        raise HTTPException(status_code=403, detail={"error": "language_not_available",
+                                                      "message": "Other languages are available on adult accounts for now."})
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE users SET preferred_language = %s WHERE uid = %s RETURNING *", (code, uid))
             row = cur.fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="User not found")

@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Query, R
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 from typing import Literal, Optional
+from app.services.language_service import use_language, user_language
 from app.models.schemas import Journey, JourneyStep, JourneysResponse, JourneyWithProgress, StepContentResponse, ExploreResponse
 from app.models.visual_schemas import StepVisualResponse, VisualEvent, VisualEventRequest
 from app.services.visual_registry_service import get_step_visual as get_step_visual_row
@@ -171,6 +172,7 @@ def _row_to_journey(row: dict, viewer_uid: Optional[str] = None) -> Journey:
         tags=tags if isinstance(tags, list) else list(tags),
         icon=row.get("icon", "🎯"),
         hero_image_url=row.get("hero_image_url"),
+        language=row.get("language") or "en",
         created_at=str(row.get("created_at", "")),
         marketplace_status=row.get("marketplace_status", "private"),
         popularity_score=float(row.get("popularity_score") or 0),
@@ -467,6 +469,7 @@ async def journey_recommendations(background_tasks: BackgroundTasks, ctx: tuple 
                     question=question,
                     age_group=profile.age_group,
                     uid=uid,
+                    language=user_language(uid),
                 )
                 record_usage(uid, in_tok, out_tok, get_config("journey")["model"], interaction_type="journey")
                 try:
@@ -488,6 +491,9 @@ async def journey_recommendations(background_tasks: BackgroundTasks, ctx: tuple 
                                     journey.tags, journey.icon,
                                 ),
                             )
+                            if journey.language != "en":
+                                cur.execute("UPDATE journeys SET language = %s WHERE id = %s",
+                                            (journey.language, journey.id))
                 except Exception:
                     logger.exception("recommendations: failed to persist gap-fill journey")
                 background_tasks.add_task(generate_and_attach_hero, journey, uid)
@@ -723,6 +729,8 @@ def fork_journey(journey_id: str, ctx: tuple = Depends(get_active_acting_uid)):
                         source.get("hero_image_url"), journey_id,
                     ),
                 )
+                if (source.get("language") or "en") != "en":
+                    cur.execute("UPDATE journeys SET language = %s WHERE id = %s", (source["language"], new_id))
                 # Copy cached step content so the fork doesn't need to re-warm via AI.
                 cur.execute(
                     """
@@ -978,24 +986,25 @@ async def _generate_step_for_journey(
 ) -> tuple[str, list[dict], int, int]:
     learner_purpose, topic_expertise = _journey_learner_context(journey.id)
     outline, position, covered = _step_generation_context(journey, step.id)
-    return await generate_step_content(
-        step_title=step.title,
-        step_description=step.description,
-        step_type=step.type,
-        journey_title=journey.title,
-        journey_question=journey.question,
-        age_group=journey.age_group,
-        uid=uid,
-        difficulty=journey.difficulty,
-        learner_purpose=learner_purpose,
-        topic_expertise=topic_expertise,
-        journey_outline=outline,
-        step_position=position,
-        covered_facts=covered or None,
-        core_question=step.core_question,
-        seed_facts=step.seed_facts,
-        refinement_note=refinement_note,
-    )
+    with use_language(journey.language):   # a lesson is written in its journey's language
+        return await generate_step_content(
+            step_title=step.title,
+            step_description=step.description,
+            step_type=step.type,
+            journey_title=journey.title,
+            journey_question=journey.question,
+            age_group=journey.age_group,
+            uid=uid,
+            difficulty=journey.difficulty,
+            learner_purpose=learner_purpose,
+            topic_expertise=topic_expertise,
+            journey_outline=outline,
+            step_position=position,
+            covered_facts=covered or None,
+            core_question=step.core_question,
+            seed_facts=step.seed_facts,
+            refinement_note=refinement_note,
+        )
 
 
 async def _regenerate_step_task(

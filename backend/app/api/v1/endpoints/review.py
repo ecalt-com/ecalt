@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
 
+from app.services.language_service import quiz_language, use_language
 from app.core.auth import get_active_user
 from app.services import review_service as svc
 from app.services.learning_events_service import record_event
@@ -38,7 +39,8 @@ async def review_answer(item_id: str, body: ReviewAnswer, uid: str = Depends(get
     if not await run_in_threadpool(svc.quiz_belongs_to_item, uid, item_id, body.quiz_id):
         raise HTTPException(status_code=404, detail={"error": "no_question", "message": "That question isn't part of this review."})
     try:
-        graded = await submit_answer(body.quiz_id, uid, body.user_answer.strip())
+        with use_language(await run_in_threadpool(quiz_language, body.quiz_id, uid)):
+            graded = await submit_answer(body.quiz_id, uid, body.user_answer.strip())
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     schedule = await run_in_threadpool(svc.apply_result, uid, item_id, bool(graded["is_correct"]))

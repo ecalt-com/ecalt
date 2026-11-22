@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Loader2, MessageCircle, Mail, Clock, Globe2, Download, Trash2, AlertTriangle, X, CreditCard, Ticket, Eye } from 'lucide-react'
 import clsx from 'clsx'
 import Navigation from '../components/Navigation'
+import LanguageSetting from '../components/LanguageSetting'
 import PageMeta from '../components/PageMeta'
 import { useAuth } from '../lib/AuthContext'
 import { useToast } from '../lib/ToastContext'
@@ -256,6 +257,8 @@ export default function Profile() {
               <div className="flex flex-col sm:flex-row sm:justify-between gap-0.5"><dt className="text-slate-500">Email</dt><dd className="text-slate-800 dark:text-slate-200 break-all">{user.email || '—'}</dd></div>
             </dl>
           </div>
+
+          <LanguageSetting />
 
           {/* Family dashboard entry point for parents */}
           {role === 'parent' && (

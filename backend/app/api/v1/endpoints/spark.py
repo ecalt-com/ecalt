@@ -8,7 +8,7 @@ from app.services.subscription_service import check_budget, record_usage, get_us
 from app.services.provider_service import get_config
 from app.core.auth import assert_account_active, get_optional_user
 from app.core.limiter import limiter
-from app.services.content_filter import check_topic_scope
+from app.services.content_filter import check_topic_scope, moderate_non_english
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -35,6 +35,9 @@ async def spark(request: Request, body: SparkRequest, uid: Optional[str] = Depen
         raise HTTPException(status_code=400, detail="session_id required for unauthenticated requests")
 
     topic_allowed, topic_reason = check_topic_scope(body.question)
+    if not topic_allowed:
+        raise HTTPException(status_code=422, detail=topic_reason)
+    topic_allowed, topic_reason = await moderate_non_english(body.question)
     if not topic_allowed:
         raise HTTPException(status_code=422, detail=topic_reason)
 

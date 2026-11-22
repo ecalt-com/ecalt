@@ -47,6 +47,7 @@ class Journey(BaseModel):
     steps: List[JourneyStep] = Field(..., description="Ordered list of learning steps")
     tags: List[str] = Field(..., description="Topic tags for filtering and discovery")
     icon: str = Field(..., description="Emoji icon representing the journey topic")
+    language: str = Field("en", description="Language the journey is written in (ISO 639-1); fixed at creation")
     hero_image_url: Optional[str] = Field(None, description="Public URL of the generated hero/cover image (null until the background generation lands; icon is the fallback)")
     created_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
@@ -114,6 +115,7 @@ class ExploreRequest(BaseModel):
     learner_purpose: Optional[str] = Field(None, description="Why the user is exploring: research_paper | professional_growth | personal_curiosity | teaching_others | fun")
     topic_expertise: Optional[str] = Field(None, description="Self-reported expertise on this specific topic: beginner | intermediate | advanced | expert")
     refinement_context: Optional[str] = Field(None, max_length=600, description="Feedback on a rejected journey preview — triggers targeted regeneration")
+    language: Optional[str] = Field(None, max_length=5, description="Language to write the journey in (e.g. hi); defaults to the learner's preferred language")
 
     model_config = {
         "json_schema_extra": {

@@ -102,3 +102,41 @@ def check_topic_scope(question: str) -> tuple[bool, str]:
         if pattern in lower:
             return False, _REFUSAL
     return True, ""
+
+
+# ── Questions that aren't in a Latin script ───────────────────────────────────
+# The patterns above are English phrases, so a Hindi (or other non-Latin) question
+# would pass them untouched. For those, ask OpenAI's moderation model, which is
+# multilingual and free. It fails open (the model's own safety training and the
+# journey prompts still apply), and English questions never reach it.
+
+_MODERATION_BLOCKING_CATEGORIES = (
+    "sexual_minors", "illicit", "illicit_violent", "self_harm_instructions", "harassment_threatening",
+)
+
+
+def is_mostly_non_latin(text: str) -> bool:
+    """True when most letters are outside the Latin scripts (Devanagari, Arabic, CJK, …)."""
+    letters = [c for c in text if c.isalpha()]
+    if not letters:
+        return False
+    return sum(1 for c in letters if ord(c) > 0x024F) / len(letters) > 0.3
+
+
+async def moderate_non_english(question: str) -> tuple[bool, str]:
+    """(allowed, refusal_message), like check_topic_scope, for non-Latin-script questions."""
+    if not is_mostly_non_latin(question):
+        return True, ""
+    import logging
+    from app.core.config import settings
+    if not settings.OPENAI_API_KEY:
+        return True, ""
+    try:
+        from app.services.provider_service import _get_openai
+        resp = await _get_openai().moderations.create(model="omni-moderation-latest", input=question[:1000])
+        categories = resp.results[0].categories
+        if any(getattr(categories, name, False) for name in _MODERATION_BLOCKING_CATEGORIES):
+            return False, _REFUSAL
+    except Exception:
+        logging.getLogger(__name__).warning("non-English moderation unavailable; allowing", exc_info=True)
+    return True, ""

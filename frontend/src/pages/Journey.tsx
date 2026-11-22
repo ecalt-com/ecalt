@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import OfflineButton from '../components/OfflineButton'
+import LanguageBadge from '../components/LanguageBadge'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Clock, BookOpen, Share2, Award, TrendingUp, Loader2, MessageCircle, Heart, Plus, Send, CheckCircle2 } from 'lucide-react'
 import Navigation from '../components/Navigation'
@@ -429,6 +430,7 @@ export default function Journey() {
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold border border-violet-300/60 dark:border-violet-500/30 text-violet-700 dark:text-violet-300 capitalize">
                         {journey.difficulty}
                       </span>
+                      <LanguageBadge language={journey.language} />
                     </div>
                     <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-slate-900 dark:text-slate-50 leading-tight">
                       {journey.title}

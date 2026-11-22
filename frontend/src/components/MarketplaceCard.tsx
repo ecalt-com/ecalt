@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import LanguageBadge from './LanguageBadge'
 import { Link, useNavigate } from 'react-router-dom'
 import { Clock, BookOpen, Heart, Plus, Loader2, Users } from 'lucide-react'
 import clsx from 'clsx'
@@ -88,8 +89,11 @@ export default function MarketplaceCard({ journey }: MarketplaceCardProps) {
           {!journey.hero_image_url && (
             <div className="flex items-start justify-between mb-4">
               <span className="text-4xl leading-none">{journey.icon}</span>
-              <span className={clsx('px-2.5 py-1 rounded-full text-xs font-medium border', difficultyStyle[journey.difficulty])}>
-                {journey.difficulty}
+              <span className="flex items-center gap-1.5">
+                <LanguageBadge language={journey.language} />
+                <span className={clsx('px-2.5 py-1 rounded-full text-xs font-medium border', difficultyStyle[journey.difficulty])}>
+                  {journey.difficulty}
+                </span>
               </span>
             </div>
           )}
