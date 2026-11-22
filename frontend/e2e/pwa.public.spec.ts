@@ -38,7 +38,7 @@ test('a signed-in adult saves a journey and reads it offline; sign-out clears it
 
     // The worker installs on the first load and controls the page from the next one.
     await page.goto(`/journey/${jid}`)
-    await page.waitForFunction(async () => (await navigator.serviceWorker.getRegistration())?.active?.state === 'activated', null, { timeout: 30_000 })
+    await expect.poll(() => page.evaluate(async () => (await navigator.serviceWorker.getRegistration())?.active?.state), { timeout: 30_000 }).toBe('activated')
     await page.reload()
     await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBeTruthy()
     await expect(page.getByRole('button', { name: /Why the sky is blue/ }).first()).toBeVisible({ timeout: 30_000 })
