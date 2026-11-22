@@ -1,0 +1,23 @@
+import js from '@eslint/js'
+import globals from 'globals'
+import reactHooks from 'eslint-plugin-react-hooks'
+import reactRefresh from 'eslint-plugin-react-refresh'
+import tseslint from 'typescript-eslint'
+
+export default tseslint.config(
+  // src/app/** is the abandoned Next.js experiment (see CLAUDE.md): not built, not linted.
+  { ignores: ['dist', 'src/app/**', 'e2e/**', '.next', 'node_modules'] },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    languageOptions: { ecmaVersion: 2022, globals: globals.browser },
+    plugins: { 'react-hooks': reactHooks, 'react-refresh': reactRefresh },
+    rules: {
+      ...reactHooks.configs.recommended.rules,
+      'react-refresh/only-export-components': 'off',
+      '@typescript-eslint/no-explicit-any': 'warn',
+      // tsc (noUnusedLocals) already fails the build on unused locals.
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+)

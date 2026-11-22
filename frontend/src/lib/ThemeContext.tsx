@@ -32,7 +32,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
     try {
       localStorage.setItem('ecalt_theme', theme)
-    } catch {}
+    } catch {
+      // storage blocked (private window): the theme just isn't remembered
+    }
   }, [theme])
 
   const toggle = () => setTheme(t => (t === 'light' ? 'dark' : 'light'))

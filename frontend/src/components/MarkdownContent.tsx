@@ -46,6 +46,7 @@ function peelEmoji(text: string): [emoji: string, rest: string] | null {
   const sp = text.indexOf(' ')
   if (sp <= 0) return null
   const head = text.slice(0, sp)
+  // eslint-disable-next-line no-control-regex -- detecting any non-ASCII character
   return /[^\x00-\x7F]/.test(head) ? [head, text.slice(sp + 1)] : null
 }
 

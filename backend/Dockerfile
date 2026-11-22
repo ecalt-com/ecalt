@@ -2,8 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Pinned versions (regenerate with the uv command in requirements.lock)
+COPY requirements.lock .
+RUN pip install --no-cache-dir -r requirements.lock
 
 COPY . .
 
